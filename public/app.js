@@ -23,6 +23,10 @@ function describeLast(s) {
       return `${when} · 인증서 ${s.lastValue ?? '-'}일 남음`;
     case 'service':
       return `${when} · 서비스 ${s.state === 'down' ? '중지' : '실행 중'}`;
+    case 'dns':
+      return `${when} · 응답 ${s.lastResponseMs ?? '-'}ms · 레코드 ${s.lastValue ?? '-'}개`;
+    case 'domain':
+      return `${when} · 도메인 만료까지 ${s.lastValue ?? '-'}일`;
     default: // http, ping, tcp
       return `${when} · 응답 ${s.lastResponseMs ?? '-'}ms`;
   }

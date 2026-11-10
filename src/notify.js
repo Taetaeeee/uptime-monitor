@@ -21,6 +21,13 @@ export const REASON_TEXT = {
   disk_full: '디스크 사용률 기준 초과',
   service_stopped: '서비스 중지',
   measure_error: '측정 실패',
+  // DNS·도메인 만료
+  dns_nxdomain: 'DNS 이름 없음',
+  dns_error: 'DNS 조회 오류',
+  dns_no_answer: 'DNS 레코드 없음',
+  dns_mismatch: 'DNS 응답이 기대값과 다름',
+  domain_expiring: '도메인 만료 임박',
+  domain_expired: '도메인 만료',
 };
 
 /**

@@ -12,7 +12,7 @@
 
 | 기능 | 내용 |
 |---|---|
-| 외부 점검 | Cloudflare Worker 예약 실행(Cron, 5분)으로 HTTP 상태 코드·응답 시간·키워드 점검 |
+| 외부 점검 | Cloudflare Worker 예약 실행(Cron, 5분)으로 HTTP 상태 코드·응답 시간·키워드, DNS(DNS-over-HTTPS로 이름 풀림·기대값) 점검. 도메인 만료는 판정 로직만 ([한계](#알려진-한계와-다음-과제) 참고) |
 | 내부 점검 | Windows PC의 Python 에이전트가 ping·TCP 포트·SSL 만료·디스크·서비스 상태를 측정해 API로 보고 (바깥으로만 연결) |
 | 장애 판정 | 2회 연속 실패 → 장애, 1회 성공 → 복구. 상태가 바뀔 때만 알림 기록 |
 | 장애 이력·보고서 | 장애 1건마다 첫 실패·판정·복구 시각, 감지 시간(MTTD)·복구 시간(MTTR), 사후 보고서 5항목 |
@@ -30,6 +30,7 @@ flowchart LR
     W --- ST["정적 파일<br/>(public/)"]
   end
   W -- "HTTP 점검" --> SITE["내가 운영하는 사이트"]
+  W -- "DNS 질의 (DoH)" --> DOH["1.1.1.1<br/>DNS-over-HTTPS"]
   AG["Python 에이전트<br/>(Windows PC)"] -- "POST /api/agent/report<br/>Bearer 키" --> W
   ADMIN["관리자 (PowerShell)"] -- "/api/admin/…<br/>관리자 토큰" --> W
   USER["방문자"] -- "상태 페이지·보고서" --> ST
@@ -49,7 +50,7 @@ flowchart LR
 - 화면: 빌드 도구 없는 HTML/CSS/JS
 - 판정·계산 로직은 순수 함수로 분리해 `node --test`로 테스트
 - 에이전트: Python 3 표준 라이브러리만 사용
-- 테스트: JS 91개, Python 22개
+- 테스트: JS 102개, Python 22개
 
 ## 주요 설계 판단
 
@@ -73,9 +74,9 @@ flowchart LR
 
 | 출처 | 무엇 | 어떻게 들어가나 | 화면 표시 |
 |---|---|---|---|
-| `real` | **고쳐라! 웹게임**(`gochyeora.pages.dev`, 내가 운영하는 사이트)의 HTTP 점검 | Worker Cron (현재 **비활성** — 등록만 되어 있고 아직 점검하지 않음 → '점검 대기') | 표시 없음 |
+| `real` | **고쳐라! 웹게임**(`gochyeora.pages.dev`, 내가 운영하는 사이트)의 HTTP 점검과 DNS 점검 | Worker Cron (현재 **비활성** — 등록만 되어 있고 아직 점검하지 않음 → '점검 대기') | 표시 없음 |
 | `real` | 관리자가 등록한 '모든 대상' 계획 작업 | 관리자 API | 표시 없음 |
-| `sample` | 가상 서비스 3개(ERP·그룹웨어·고객센터)의 점검 결과·30일 집계·장애 7건·보고서·알림·계획 작업 | `seed/sample.sql` (다시 실행하면 지우고 새로 넣음) | **데모 데이터** |
+| `sample` | 가상 서비스 3개(ERP·그룹웨어·고객센터)의 점검 결과·30일 집계·장애 7건·보고서·알림·계획 작업, 도메인 만료 데모 1개(만료까지 41일) | `seed/sample.sql` (다시 실행하면 지우고 새로 넣음) | **데모 데이터** |
 | `simulator` | 가상 내부 장비 5개(코어 스위치·DB 서버·파일 서버 디스크·인증서·ERP 배치)의 측정값과 그로 인한 장애·알림 | `seed/simulator-monitors.sql`로 대상 등록 → `agent/agent.py --simulate`로 시나리오 전송 | **시뮬레이터** |
 
 - 가상 서비스의 주소는 모두 `.invalid`(RFC 2606 예약 도메인)라 실제로 접속될 수 없고, 비활성이라 점검되지도 않습니다.
@@ -86,7 +87,8 @@ flowchart LR
 ```
 src/            Worker 코드
   index.js        진입점 (Cron, HTTP 경로)
-  checker.js      HTTP 측정        judge.js       HTTP 1회 판정
+  checker.js      HTTP 측정        judge.js       HTTP·DNS·도메인 만료 판정
+  dns.js          DNS 측정 (DNS-over-HTTPS)
   agent-judge.js  에이전트 보고 검증·판정
   state.js        장애 판정(상태 전이)   record.js  기록 공용 경로
   notify.js       알림 발송         channels/log.js  log 채널 (D1 기록)
@@ -95,7 +97,7 @@ src/            Worker 코드
   ingest.js       에이전트 보고 API  admin.js  관리자 API
   api.js          공개 조회 API     auth.js   토큰 확인   db.js  SQL 모음
 public/         상태 페이지, 장애 상세, 월간 보고서 (HTML/CSS/JS)
-migrations/     D1 스키마 (0001 ~ 0006)
+migrations/     D1 스키마 (0001 ~ 0007)
 seed/           가짜 데이터 (sample.sql, simulator-monitors.sql)
 agent/          Python 에이전트 + 시뮬레이터 시나리오 + 테스트
 test/           node --test (가짜 D1: Node 내장 SQLite에 실제 마이그레이션 적용)
@@ -108,7 +110,7 @@ test/           node --test (가짜 D1: Node 내장 SQLite에 실제 마이그�
 ### 테스트
 ```powershell
 npm.cmd install
-npm.cmd test                                     # JS 91개
+npm.cmd test                                     # JS 102개
 python -m unittest discover -s agent\tests       # Python 22개
 ```
 
@@ -116,7 +118,7 @@ python -m unittest discover -s agent\tests       # Python 22개
 ```powershell
 npx.cmd wrangler login                           # 계정 인증 (직접)
 npx.cmd wrangler d1 create status-monitor-db     # 나온 database_id를 wrangler.jsonc에
-npm.cmd run db:migrate:remote                    # 마이그레이션 0001 ~ 0006
+npm.cmd run db:migrate:remote                    # 마이그레이션 0001 ~ 0007
 npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/sample.sql
 npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/simulator-monitors.sql
 npx.cmd wrangler secret put AGENT_API_KEY        # 에이전트 키 (직접 생성)
@@ -133,7 +135,7 @@ $bytes = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Cr
 
 ### 실제 사이트 점검 켜기
 ```powershell
-npx.cmd wrangler d1 execute status-monitor-db --remote --command "UPDATE monitors SET is_active = 1 WHERE url = 'https://gochyeora.pages.dev'"
+npx.cmd wrangler d1 execute status-monitor-db --remote --command "UPDATE monitors SET is_active = 1 WHERE url IN ('https://gochyeora.pages.dev', 'dns://gochyeora.pages.dev')"
 ```
 
 ### 에이전트 · 시뮬레이터
@@ -178,6 +180,7 @@ Invoke-RestMethod -Method Delete -Uri "$b/api/admin/maintenance/<작업 번호>"
 - **정밀도 5분:** 점검 간격 때문에 감지·복구 시간과 장애 시간은 5분 단위입니다.
 - **Cron 실행 지연:** 실행 시각이 정각보다 몇 초 늦어(실측 12초) 회차 내림으로 보정했습니다. 5분 넘게 늦으면 다음 회차로 묶입니다.
 - **로컬 Worker 실행 불가:** 개발 PC의 Windows 스마트 앱 컨트롤이 `workerd.exe`를 차단해 `wrangler dev`를 쓰지 못했습니다. 보안 설정을 끄지 않고, D1과 같은 SQLite(Node 내장)에 실제 마이그레이션을 적용한 가짜 D1로 Cron·API 흐름 전체를 테스트하고 원격에서 확인했습니다.
+- **도메인 만료는 판정 로직만:** 내 도메인이 없어서 실제 만료일 조회(RDAP/WHOIS)는 만들지 않았습니다. `judgeDomainExpiry`(30일 전부터 경고)를 가짜 날짜로 테스트하고, 화면에는 데모 대상 1개로만 보여 줍니다.
 - **SLA 목표는 하나(99.9%):** 대상별 목표, CSV 내보내기, 보고서 자동 발송은 없습니다.
 - **알림 채널은 log 하나:** 채널 구조(`{ name, send() }`)는 교체 가능하게 나눠 두었습니다. 외부 메신저는 쓰지 않습니다.
 - **실제 점검 대상 비활성:** 고쳐라! 웹게임 점검은 등록만 해 두었고, 실제 측정값 공개 여부와 함께 아직 정하지 않았습니다.
@@ -188,4 +191,5 @@ Cloudflare 설정은 버전에 따라 바뀔 수 있어, 확인하지 못한 것
 
 - 무료 플랜의 Cron 개수 제한, D1 쓰기 한도 수치
 - D1 `batch`의 트랜잭션 동작
+- Worker 안에서 DoH 서버(`cloudflare-dns.com`)로의 `fetch`가 제한 없이 되는지 (응답 형식은 PC에서 `curl.exe`로 확인, Worker 안에서는 DNS 점검을 켤 때 확인)
 - 정적 파일(`assets`)의 `.html` 리다이렉트 등 기본 동작 (배포본에서 `/incident.html` → `/incident` 307 확인)

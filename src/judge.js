@@ -54,3 +54,62 @@ export function judgeCheck(monitor, observation) {
 function fail(reason) {
   return { isSuccess: false, isSlow: false, failureReason: reason };
 }
+
+// ─────────────────────────────────────────────
+// DNS·도메인 만료 판정 (외부 점검 확장)
+// ─────────────────────────────────────────────
+
+export const DNS_FAILURE = Object.freeze({
+  NXDOMAIN: 'dns_nxdomain',     // 그런 이름이 없음 (RCODE 3)
+  ERROR: 'dns_error',           // 그 밖의 DNS 오류 (SERVFAIL 등)
+  NO_ANSWER: 'dns_no_answer',   // 이름은 있지만 물어본 종류의 레코드가 없음
+  MISMATCH: 'dns_mismatch',     // 기대한 값(예: 특정 IP)이 응답에 없음
+  CONFIG: 'measure_error',      // 대상 설정 오류 (에이전트 판정과 같은 코드)
+});
+
+/**
+ * DNS 조회 결과 판정
+ * @param {object} monitor  { keyword: 기대값(없으면 검사 안 함), maxResponseMs }
+ * @param {object} obs      dns.js observeDns의 결과
+ * @returns {{ isSuccess, isSlow, failureReason }}
+ */
+export function judgeDns(monitor, obs) {
+  // 우선순위는 HTTP와 같은 생각: 더 근본적인 문제부터
+  if (obs.configError) return fail(DNS_FAILURE.CONFIG);
+  if (obs.timedOut) return fail(FAILURE_REASON.TIMEOUT);
+  if (obs.networkError) return fail(FAILURE_REASON.NETWORK_ERROR);
+  if (obs.rcode === 3) return fail(DNS_FAILURE.NXDOMAIN);
+  if (obs.rcode !== 0) return fail(DNS_FAILURE.ERROR);
+  if (obs.answers.length === 0) return fail(DNS_FAILURE.NO_ANSWER);
+  // 기대값은 '포함' 검사: IP 하나 또는 CNAME 대상 이름의 일부를 지정 (레코드가 여러 개일 수 있어서)
+  if (monitor.keyword && !obs.answers.some((a) => a.includes(monitor.keyword))) return fail(DNS_FAILURE.MISMATCH);
+  return { isSuccess: true, isSlow: obs.responseMs > monitor.maxResponseMs, failureReason: null };
+}
+
+export const DOMAIN_FAILURE = Object.freeze({
+  EXPIRING: 'domain_expiring', // 만료 임박
+  EXPIRED: 'domain_expired',   // 이미 만료
+});
+
+// 도메인은 갱신(결제·등록 기관 처리)에 시간이 걸려서 SSL(14일)보다 여유 있게 30일 전부터 실패로 봅니다.
+export const DOMAIN_DEFAULT_THRESHOLD_DAYS = 30;
+
+/**
+ * 도메인 만료 판정 (순수 함수)
+ *
+ * 내 도메인이 없어서 실제 만료일 조회(RDAP/WHOIS)는 만들지 않았고,
+ * 판정 로직만 만들어 가짜 날짜로 검증합니다. (CLAUDE.md 프로젝트 설명)
+ *
+ * @param {string} expiresAt  만료 시각 (UTC ISO)
+ * @param {Date} now
+ * @param {number} [thresholdDays]  남은 일수가 이보다 적으면 실패
+ * @returns {{ isSuccess, isSlow, failureReason, daysLeft }}
+ *   daysLeft: 남은 '완전한' 날 수 (내림). 하루가 안 남았으면 0, 지났으면 음수
+ */
+export function judgeDomainExpiry(expiresAt, now, thresholdDays = DOMAIN_DEFAULT_THRESHOLD_DAYS) {
+  const ms = Date.parse(expiresAt) - now.getTime();
+  const daysLeft = Math.floor(ms / 86_400_000);
+  if (ms <= 0) return { ...fail(DOMAIN_FAILURE.EXPIRED), daysLeft };
+  if (daysLeft < thresholdDays) return { ...fail(DOMAIN_FAILURE.EXPIRING), daysLeft };
+  return { isSuccess: true, isSlow: false, failureReason: null, daysLeft };
+}

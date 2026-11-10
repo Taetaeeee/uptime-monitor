@@ -10,7 +10,8 @@
 // ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
 
 import { observe } from './checker.js';
-import { judgeCheck, FAILURE_REASON } from './judge.js';
+import { observeDns } from './dns.js';
+import { judgeCheck, judgeDns, FAILURE_REASON } from './judge.js';
 import { getActiveMonitors } from './db.js';
 import { toCheckSlot, toIsoSeconds } from './time.js';
 import { recordResults } from './record.js';
@@ -46,7 +47,10 @@ export async function runChecks(env, runTime, deps = {}) {
 
   // 동시에 점검. allSettled는 하나가 예외로 터져도 나머지 결과를 모두 기다려 줍니다.
   // (Promise.all은 하나만 실패해도 전체가 실패로 끝나요)
-  const settled = await Promise.allSettled(monitors.map((m) => observe(m, deps)));
+  // 종류에 따라 측정 방법이 다릅니다: HTTP는 checker.js, DNS는 dns.js (판정도 아래에서 종류별로)
+  const settled = await Promise.allSettled(
+    monitors.map((m) => (m.kind === 'dns' ? observeDns(m, deps) : observe(m, deps)))
+  );
 
   const rows = settled.map((outcome, i) => {
     const monitor = monitors[i];
@@ -68,6 +72,20 @@ export async function runChecks(env, runTime, deps = {}) {
     }
 
     const observation = outcome.value;
+    if (monitor.kind === 'dns') {
+      const verdict = judgeDns(monitor, observation);
+      if (observation.errorMessage) console.log(`[DNS] ${monitor.name}: ${observation.errorMessage}`);
+      return {
+        monitorId: monitor.id,
+        checkedAt,
+        isSuccess: verdict.isSuccess,
+        isSlow: verdict.isSlow,
+        statusCode: null, // HTTP가 아니므로 상태 코드 없음
+        responseMs: observation.responseMs,
+        failureReason: verdict.failureReason,
+        value: observation.answers.length, // 받은 레코드 개수 (화면 표시용)
+      };
+    }
     const verdict = judgeCheck(monitor, observation);
     return {
       monitorId: monitor.id,

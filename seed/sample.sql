@@ -50,6 +50,12 @@ INSERT INTO monitors (name, kind, url, expected_status, keyword, max_response_ms
   ('○○산업 그룹웨어',    'http', 'https://gw.ooindustry.invalid',       200, NULL,   3000, 0, 'sample'),
   ('○○산업 고객센터',    'http', 'https://support.ooindustry.invalid',  200, '고객센터', 3000, 0, 'sample');
 
+-- 도메인 만료 데모 대상 (외부 점검 확장)
+--   내 도메인이 없어서 실제 만료일 조회는 하지 않습니다. 판정 로직(judge.js judgeDomainExpiry)이
+--   화면·보고서에서 어떻게 보이는지 보여 주기 위한 데모입니다. value = 만료까지 남은 일수, threshold = 30일
+INSERT INTO monitors (name, kind, url, expected_status, keyword, max_response_ms, threshold, is_active, source) VALUES
+  ('○○산업 대표 도메인 만료', 'domain', 'domain://ooindustry.invalid', 200, NULL, 3000, 30, 0, 'sample');
+
 -- ─────────────────────────────────────────────
 -- 2) 원본 점검 결과: 대상마다 최근 2시간, 5분 간격 24행
 -- ─────────────────────────────────────────────
@@ -182,6 +188,35 @@ SELECT
   0,
   690 + (n * 29) % 140,
   'sample',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+FROM seq;
+
+-- 4-1b) 도메인 만료 데모: 원본(최근 2시간, 모두 성공, 만료까지 41일), 현재 상태, 지난 29일 집계
+--       하루에 한 번만 봐도 되는 항목이지만, 다른 대상과 같은 모양을 보여 주려고 5분 간격으로 넣습니다.
+INSERT INTO check_results
+  (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, value, source)
+WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < 23)
+SELECT
+  (SELECT id FROM monitors WHERE url = 'domain://ooindustry.invalid'),
+  strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - n * 300, 'unixepoch'),
+  1, 0, NULL, NULL, NULL, 41, 'sample'
+FROM seq;
+
+INSERT INTO monitor_state
+  (monitor_id, state, consecutive_failures, consecutive_successes, failing_since, last_checked_at, changed_at)
+VALUES
+  ((SELECT id FROM monitors WHERE url = 'domain://ooindustry.invalid'),
+   'up', 0, 24, NULL,
+   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-29 days') || ' 00:00:00', '-9 hours'));
+
+INSERT INTO daily_stats
+  (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at)
+WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 29)
+SELECT
+  (SELECT id FROM monitors WHERE url = 'domain://ooindustry.invalid'),
+  date('now', '+9 hours', '-' || n || ' days'),
+  288, 288, 0, NULL, 'sample',
   strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
 FROM seq;
 

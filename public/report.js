@@ -7,7 +7,10 @@ const GROUP_TITLE = {
   sample: '데모 데이터 (시드)',
 };
 
-const KIND_TEXT = { http: 'HTTP', ping: 'ping', tcp: 'TCP', ssl: 'SSL 인증서', disk: '디스크', service: '서비스' };
+const KIND_TEXT = {
+  http: 'HTTP', dns: 'DNS', domain: '도메인 만료',
+  ping: 'ping', tcp: 'TCP', ssl: 'SSL 인증서', disk: '디스크', service: '서비스',
+};
 
 const pct = (v) => (v === null || v === undefined ? '-' : `${v}%`);
 const num = (v) => (v === null || v === undefined ? '-' : v.toLocaleString('ko-KR'));

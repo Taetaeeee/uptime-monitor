@@ -2,7 +2,8 @@
 // SQL을 이 파일에 모아 두면, 스키마가 바뀌었을 때 고칠 곳이 한 군데입니다.
 
 /**
- * 활성화된 HTTP 점검 대상을 모두 가져온다.
+ * Worker의 Cron이 직접 점검하는 활성 대상(HTTP, DNS)을 모두 가져온다.
+ * 내부 점검(ping·tcp·disk 등)은 에이전트가 보고하므로 여기서 빠집니다.
  * DB 컬럼 이름(snake_case)을 JS에서 쓰기 편한 이름(camelCase)으로 바꿔서 돌려줍니다.
  */
 export async function getActiveMonitors(db) {
@@ -10,7 +11,7 @@ export async function getActiveMonitors(db) {
     .prepare(
       `SELECT id, name, kind, url, expected_status, keyword, max_response_ms
          FROM monitors
-        WHERE is_active = 1 AND kind = 'http'`
+        WHERE is_active = 1 AND kind IN ('http', 'dns')`
     )
     .all();
 
