@@ -14,6 +14,13 @@ const REASON_TEXT = {
   network_error: '네트워크 오류',
   status_mismatch: '상태 코드 불일치',
   keyword_missing: '키워드 없음',
+  // 내부 점검 에이전트 (B-4)
+  unreachable: 'ping 응답 없음',
+  port_closed: '포트 연결 실패',
+  ssl_expiring: '인증서 만료 임박',
+  disk_full: '디스크 사용률 기준 초과',
+  service_stopped: '서비스 중지',
+  measure_error: '측정 실패',
 };
 
 /**

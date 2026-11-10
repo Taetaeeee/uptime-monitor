@@ -30,8 +30,28 @@ function el(tag, className, text) {
   return node;
 }
 
-function demoBadge() {
-  return el('span', 'badge badge--demo', '데모 데이터');
+// 출처 표시: sample(시드) → '데모 데이터', simulator(에이전트 시뮬레이터) → '시뮬레이터', real → 표시 없음
+function sourceBadge(source) {
+  if (source === 'sample') return el('span', 'badge badge--demo', '데모 데이터');
+  if (source === 'simulator') return el('span', 'badge badge--sim', '시뮬레이터');
+  return null;
+}
+
+// 점검 종류별 "마지막 측정값" 문구
+//   HTTP·ping·TCP는 응답 시간, 디스크는 사용률, 인증서는 남은 일수, 서비스는 실행 여부
+function describeLast(s) {
+  if (s.state === 'paused') return '실제 점검 연결 예정 (아직 점검하지 않음)';
+  const when = `마지막 점검 ${formatKst(s.lastCheckedAt)}`;
+  switch (s.kind) {
+    case 'disk':
+      return `${when} · 디스크 사용 ${s.lastValue ?? '-'}%`;
+    case 'ssl':
+      return `${when} · 인증서 ${s.lastValue ?? '-'}일 남음`;
+    case 'service':
+      return `${when} · 서비스 ${s.state === 'down' ? '중지' : '실행 중'}`;
+    default: // http, ping, tcp
+      return `${when} · 응답 ${s.lastResponseMs ?? '-'}ms`;
+  }
 }
 
 // 가동률 → 막대 색 등급
@@ -63,16 +83,11 @@ function renderServices(services) {
 
       const top = el('div', 'card__top');
       const name = el('div', 'card__name', s.name);
-      if (s.source === 'sample') name.append(demoBadge());
+      const badge = sourceBadge(s.source);
+      if (badge) name.append(badge);
       top.append(name, el('span', `state state--${s.state}`, STATE_TEXT[s.state] ?? s.state));
 
-      const meta = el(
-        'div',
-        'card__meta',
-        s.state === 'paused'
-          ? '실제 점검 연결 예정 (아직 점검하지 않음)'
-          : `마지막 점검 ${formatKst(s.lastCheckedAt)} · 응답 ${s.lastResponseMs ?? '-'}ms`
-      );
+      const meta = el('div', 'card__meta', describeLast(s));
 
       // 30일 막대: 마우스를 올리면 날짜와 가동률 (title), 화면 낭독기용 설명은 aria-label
       const bars = el('div', 'bars');
@@ -111,7 +126,8 @@ function renderNotifications(notes) {
     ...notes.map((n) => {
       const li = el('li', `note note--${n.event}`);
       const msg = el('div', 'note__msg', n.message);
-      if (n.source === 'sample') msg.append(' ', demoBadge());
+      const badge = sourceBadge(n.source);
+      if (badge) msg.append(' ', badge);
       li.append(el('span', 'note__icon'), msg, el('div', 'note__time', formatKst(n.createdAt)));
       return li;
     })

@@ -41,10 +41,12 @@ export async function buildStatus(db, now) {
     return {
       id: m.id,
       name: m.name,
-      source: m.source, // 화면에서 'sample'이면 '데모 데이터'로 표시
+      kind: m.kind, // http / ping / tcp / ssl / disk / service — 화면에서 값 표시 방식을 고를 때 사용
+      source: m.source, // 화면에서 'sample'이면 '데모 데이터', 'simulator'면 '시뮬레이터'로 표시
       state: displayState(m),
       lastCheckedAt: m.lastCheckedAt,
       lastResponseMs: m.lastResponseMs,
+      lastValue: m.lastValue, // 디스크 사용률(%)·인증서 남은 일수 (그 밖에는 null)
       uptime30d: overallUptime(mine),
       daily: buildDailyBars(mine, today, BAR_DAYS),
     };

@@ -1,0 +1,9 @@
+# 로컬 개발용 비밀 값 예시 (이 파일에는 진짜 값을 넣지 않습니다)
+#
+# 사용법: 이 파일을 .dev.vars 로 복사한 뒤 값을 채우세요.
+#   .dev.vars 는 .gitignore에 들어 있어서 저장소에 올라가지 않습니다. (CLAUDE.md 규칙 3)
+# 배포본에는 .dev.vars가 아니라 wrangler secret으로 등록합니다:
+#   npx.cmd wrangler secret put AGENT_API_KEY
+
+# 내부 점검 에이전트가 보고할 때 쓰는 키 (Authorization: Bearer <이 값>)
+AGENT_API_KEY=여기에_직접_만든_긴_무작위_문자열

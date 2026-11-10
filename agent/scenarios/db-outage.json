@@ -1,0 +1,88 @@
+{
+  "name": "사내 DB 포트 장애와 파일 서버 디스크 증가",
+  "_설명": "시뮬레이터 시나리오. 모든 값은 가짜이며 서버에 source=simulator로 기록됩니다. steps는 오래된 회차 → 최근 회차 순서이고, 마지막 단계가 '지금' 시각으로 보내집니다. key는 seed/simulator-monitors.sql에 등록된 대상과 같아야 합니다.",
+  "agent_name": "simulator",
+  "interval_seconds": 300,
+  "steps": [
+    {
+      "note": "1단계: 모두 정상",
+      "checks": [
+        { "key": "sim-core-switch-ping", "ok": true, "response_ms": 2 },
+        { "key": "sim-db-tcp", "ok": true, "response_ms": 11 },
+        { "key": "sim-fileserver-disk", "ok": true, "value": 78.0 },
+        { "key": "sim-gw-ssl", "ok": true, "value": 41 },
+        { "key": "sim-erp-batch-svc", "ok": true }
+      ]
+    },
+    {
+      "note": "2단계: 정상, 디스크 조금 증가",
+      "checks": [
+        { "key": "sim-core-switch-ping", "ok": true, "response_ms": 3 },
+        { "key": "sim-db-tcp", "ok": true, "response_ms": 12 },
+        { "key": "sim-fileserver-disk", "ok": true, "value": 80.5 },
+        { "key": "sim-gw-ssl", "ok": true, "value": 41 },
+        { "key": "sim-erp-batch-svc", "ok": true }
+      ]
+    },
+    {
+      "note": "3단계: ERP 배치 서비스가 한 번 멈춤 (1회 실패는 장애 아님)",
+      "checks": [
+        { "key": "sim-core-switch-ping", "ok": true, "response_ms": 2 },
+        { "key": "sim-db-tcp", "ok": true, "response_ms": 14 },
+        { "key": "sim-fileserver-disk", "ok": true, "value": 83.0 },
+        { "key": "sim-gw-ssl", "ok": true, "value": 41 },
+        { "key": "sim-erp-batch-svc", "ok": false, "error": "STOPPED (시뮬레이션)" }
+      ]
+    },
+    {
+      "note": "4단계: DB 포트 연결 실패 시작",
+      "checks": [
+        { "key": "sim-core-switch-ping", "ok": true, "response_ms": 3 },
+        { "key": "sim-db-tcp", "ok": false, "error": "ConnectionRefusedError (시뮬레이션)" },
+        { "key": "sim-fileserver-disk", "ok": true, "value": 86.0 },
+        { "key": "sim-gw-ssl", "ok": true, "value": 41 },
+        { "key": "sim-erp-batch-svc", "ok": true }
+      ]
+    },
+    {
+      "note": "5단계: DB 포트 2회 연속 실패 → 장애 판정",
+      "checks": [
+        { "key": "sim-core-switch-ping", "ok": true, "response_ms": 2 },
+        { "key": "sim-db-tcp", "ok": false, "error": "ConnectionRefusedError (시뮬레이션)" },
+        { "key": "sim-fileserver-disk", "ok": true, "value": 89.0 },
+        { "key": "sim-gw-ssl", "ok": true, "value": 41 },
+        { "key": "sim-erp-batch-svc", "ok": true }
+      ]
+    },
+    {
+      "note": "6단계: DB 아직 장애, 디스크 90% 넘음(1회)",
+      "checks": [
+        { "key": "sim-core-switch-ping", "ok": true, "response_ms": 3 },
+        { "key": "sim-db-tcp", "ok": false, "error": "ConnectionRefusedError (시뮬레이션)" },
+        { "key": "sim-fileserver-disk", "ok": true, "value": 91.0 },
+        { "key": "sim-gw-ssl", "ok": true, "value": 41 },
+        { "key": "sim-erp-batch-svc", "ok": true }
+      ]
+    },
+    {
+      "note": "7단계: DB 복구, 디스크 2회 연속 90% 이상 → 장애 판정",
+      "checks": [
+        { "key": "sim-core-switch-ping", "ok": true, "response_ms": 2 },
+        { "key": "sim-db-tcp", "ok": true, "response_ms": 13 },
+        { "key": "sim-fileserver-disk", "ok": true, "value": 92.0 },
+        { "key": "sim-gw-ssl", "ok": true, "value": 41 },
+        { "key": "sim-erp-batch-svc", "ok": true }
+      ]
+    },
+    {
+      "note": "8단계(지금): 디스크는 아직 장애 중",
+      "checks": [
+        { "key": "sim-core-switch-ping", "ok": true, "response_ms": 2 },
+        { "key": "sim-db-tcp", "ok": true, "response_ms": 12 },
+        { "key": "sim-fileserver-disk", "ok": true, "value": 92.5 },
+        { "key": "sim-gw-ssl", "ok": true, "value": 41 },
+        { "key": "sim-erp-batch-svc", "ok": true }
+      ]
+    }
+  ]
+}

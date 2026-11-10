@@ -1,0 +1,12 @@
+{
+  "_설명": "실제 모드 설정 예시. 이 PC(내가 운영하는 장비)와 내 서비스만 점검합니다. 남의 서버는 넣지 마세요. 실제 설정은 agent/config.json으로 복사해 쓰면 저장소에 올라가지 않습니다(.gitignore). API 키는 여기 넣지 않고 환경 변수 AGENT_API_KEY로 줍니다.",
+  "agent_name": "my-pc",
+  "api_url": "https://<내 Worker 주소>/api/agent/report",
+  "checks": [
+    { "key": "pc-ping-localhost", "kind": "ping", "host": "127.0.0.1" },
+    { "key": "pc-tcp-smb", "kind": "tcp", "host": "127.0.0.1", "port": 445 },
+    { "key": "pc-disk-c", "kind": "disk", "path": "C:\\" },
+    { "key": "pc-svc-dnscache", "kind": "service", "name": "Dnscache" },
+    { "key": "gochyeora-ssl", "kind": "ssl", "host": "gochyeora.pages.dev", "port": 443 }
+  ]
+}

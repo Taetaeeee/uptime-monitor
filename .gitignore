@@ -7,6 +7,14 @@ node_modules/
 # 로컬 비밀 값 (규칙 3: 절대 저장소에 올리지 않음)
 .dev.vars
 .dev.vars.*
+# 단, 값 없는 예시 파일은 저장소에 둡니다 (어떤 비밀 값이 필요한지 알려 주는 용도)
+!.dev.vars.example
+
+# 에이전트 실제 설정 (내 PC 정보가 들어갈 수 있음 → 예시 파일만 저장소에)
+agent/config.json
+
+# 파이썬 캐시
+__pycache__/
 
 # 운영체제/편집기 부산물
 .DS_Store

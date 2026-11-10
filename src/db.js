@@ -32,7 +32,8 @@ export async function getActiveMonitors(db) {
 export async function getMonitorStates(db) {
   const { results } = await db
     .prepare(
-      `SELECT monitor_id, state, consecutive_failures, consecutive_successes, failing_since, changed_at
+      `SELECT monitor_id, state, consecutive_failures, consecutive_successes, failing_since, changed_at,
+              last_checked_at
          FROM monitor_state`
     )
     .all();
@@ -46,9 +47,38 @@ export async function getMonitorStates(db) {
         consecutiveSuccesses: row.consecutive_successes,
         failingSince: row.failing_since,
         changedAt: row.changed_at,
+        // 에이전트 보고의 중복·순서 뒤바뀜 판단에 씁니다 (B-4)
+        lastCheckedAt: row.last_checked_at,
       },
     ])
   );
+}
+
+/**
+ * 에이전트가 보낸 check_key들로 대상을 찾는다. (B-4)
+ * 키 개수는 보고 검증에서 50개 이하로 제한되므로 IN (?1, ?2, ...)을 그때그때 만들어도 안전합니다.
+ * (값은 여전히 bind로 넘기고, SQL 문자열에는 자리표시자만 이어 붙여요)
+ */
+export async function getMonitorsByKeys(db, keys) {
+  if (keys.length === 0) return [];
+  const placeholders = keys.map((_, i) => `?${i + 1}`).join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT id, name, kind, source, check_key, max_response_ms, threshold
+         FROM monitors
+        WHERE check_key IN (${placeholders})`
+    )
+    .bind(...keys)
+    .all();
+  return results.map((r) => ({
+    id: r.id,
+    name: r.name,
+    kind: r.kind,
+    source: r.source,
+    checkKey: r.check_key,
+    maxResponseMs: r.max_response_ms,
+    threshold: r.threshold,
+  }));
 }
 
 /**
@@ -66,15 +96,16 @@ export async function getMonitorStates(db) {
  * '?1, ?2 ...' 자리표시자를 쓰는 이유: 값을 SQL 문자열에 직접 이어 붙이면
  * SQL 인젝션 위험이 생깁니다. bind로 넘기면 DB가 값으로만 취급해요.
  */
-export async function saveCheckResults(db, rows, states = []) {
+export async function saveCheckResults(db, rows, states = [], source = 'real') {
   if (rows.length === 0 && states.length === 0) return;
 
-  // source는 'real'로 고정합니다. 이 함수는 Cron의 실제 점검 결과만 저장하기 때문이에요.
-  // (DB 기본값도 'real'이지만, 기본값에 기대지 않고 코드에 의도를 드러냅니다)
+  // source: Cron의 HTTP 점검과 실제 에이전트는 'real', 에이전트 시뮬레이터는 'simulator'.
+  // 호출하는 쪽이 출처를 명시하게 해서, 출처 없이 저장되는 일이 없도록 합니다. (CLAUDE.md 가짜 데이터 규칙)
+  // value: 디스크 사용률·인증서 남은 일수 같은 측정값 (HTTP 점검은 없음 → NULL)
   const stmt = db.prepare(
     `INSERT INTO check_results
-       (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, source)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'real')`
+       (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, value, source)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
   );
 
   // "있으면 갱신, 없으면 추가" (upsert). monitor_id가 기본 키라서 ON CONFLICT로 처리할 수 있어요.
@@ -98,9 +129,11 @@ export async function saveCheckResults(db, rows, states = []) {
         r.checkedAt,
         r.isSuccess ? 1 : 0, // boolean → 0/1
         r.isSlow ? 1 : 0,
-        r.statusCode,
-        r.responseMs,
-        r.failureReason
+        r.statusCode ?? null,
+        r.responseMs ?? null,
+        r.failureReason,
+        r.value ?? null,
+        source
       )
     ),
     ...states.map((s) =>
@@ -156,14 +189,14 @@ export async function getResultsInRange(db, monitorId, startUtc, endUtc) {
 }
 
 /**
- * 일별 집계를 저장한다 (있으면 덮어쓰기). Cron의 실제 점검에서 계산한 값이라 source = 'real'.
+ * 일별 집계를 저장한다 (있으면 덮어쓰기). source는 원본 점검 결과와 같은 출처를 넘겨받습니다.
  */
-export async function upsertDailyStats(db, stats, updatedAt) {
+export async function upsertDailyStats(db, stats, updatedAt, source = 'real') {
   if (stats.length === 0) return;
   const stmt = db.prepare(
     `INSERT INTO daily_stats
        (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'real', ?7)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7)
      ON CONFLICT (monitor_id, day) DO UPDATE SET
        total_checks    = excluded.total_checks,
        success_checks  = excluded.success_checks,
@@ -173,7 +206,7 @@ export async function upsertDailyStats(db, stats, updatedAt) {
   );
   await db.batch(
     stats.map((s) =>
-      stmt.bind(s.monitorId, s.day, s.totalChecks, s.successChecks, s.slowChecks, s.avgResponseMs, updatedAt)
+      stmt.bind(s.monitorId, s.day, s.totalChecks, s.successChecks, s.slowChecks, s.avgResponseMs, updatedAt, source)
     )
   );
 }
@@ -187,10 +220,11 @@ export async function upsertDailyStats(db, stats, updatedAt) {
 export async function getStatusMonitors(db) {
   const { results } = await db
     .prepare(
-      `SELECT m.id, m.name, m.source, m.is_active,
+      `SELECT m.id, m.name, m.kind, m.source, m.is_active,
               s.state,
               r.checked_at  AS last_checked_at,
-              r.response_ms AS last_response_ms
+              r.response_ms AS last_response_ms,
+              r.value       AS last_value
          FROM monitors m
          LEFT JOIN monitor_state s ON s.monitor_id = m.id
          -- 대상별 "가장 최근 결과 1건": 복합 인덱스로 대상마다 맨 끝 1행만 읽습니다
@@ -205,11 +239,13 @@ export async function getStatusMonitors(db) {
   return results.map((r) => ({
     id: r.id,
     name: r.name,
+    kind: r.kind,
     source: r.source,
     isActive: r.is_active === 1,
     state: r.state, // 상태 행이 없으면 null
     lastCheckedAt: r.last_checked_at,
     lastResponseMs: r.last_response_ms,
+    lastValue: r.last_value, // 디스크 %·인증서 남은 일수 (B-4)
   }));
 }
 
