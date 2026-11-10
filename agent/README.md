@@ -45,7 +45,7 @@ python agent\agent.py --config agent\config.example.json --once --dry-run
 키는 코드·설정 파일·저장소에 넣지 않습니다.
 ```powershell
 # 32바이트 무작위 키 만들기 (화면에 나온 값을 복사)
-$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
+$bytes = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); [Convert]::ToBase64String($bytes)
 
 # Worker에 등록 (붙여 넣으라는 안내가 나옴)
 npx.cmd wrangler secret put AGENT_API_KEY

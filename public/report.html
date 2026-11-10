@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>월간 가용성 보고서 · ○○산업 서비스 상태</title>
+  <meta name="description" content="가상 회사 ○○산업 서비스의 월간 가용성·SLA·장애 지표 보고서 (포트폴리오 프로젝트)">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- 주소: /report.html?month=YYYY-MM  → report.js가 /api/reports/monthly 를 불러와 채웁니다 -->
+  <header class="site-header">
+    <div class="wrap">
+      <p class="back no-print"><a href="/">← 서비스 상태로</a></p>
+      <h1 id="title">월간 가용성 보고서</h1>
+      <p id="subtitle" class="subtitle">불러오는 중…</p>
+      <div class="report-controls no-print">
+        <label for="month">기간</label>
+        <select id="month"></select>
+        <button type="button" id="print">인쇄 / PDF로 저장</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="groups"></section>
+
+    <section aria-labelledby="terms-title">
+      <h2 id="terms-title">용어와 계산 방법</h2>
+      <dl class="terms">
+        <dt>가동률</dt>
+        <dd>성공한 점검 수 ÷ 전체 점검 수 (5분마다 1회). 계획 작업 시간의 점검은 분모·분자 모두에서 뺍니다. 소수 둘째 자리에서 내림합니다.</dd>
+        <dt>SLA 목표 · 에러 버짓</dt>
+        <dd>목표 가동률 안에서 허용되는 중단 시간 = (1 − 목표) × 측정 시간. '사용'은 실패한 점검 수 × 5분, '남음'이 음수면 목표를 넘긴 것입니다.</dd>
+        <dt>장애 시간과 실패 시간이 다른 이유</dt>
+        <dd>장애는 2회 연속 실패부터 판정하므로 1회만 실패하고 회복된 점검은 '실패 시간'(에러 버짓)에는 들어가지만 '장애'는 아닙니다. 장애 시간은 첫 실패부터 복구까지이며, 달을 넘는 장애는 이 달에 속한 부분만 셉니다.</dd>
+        <dt>평균 감지 시간 · 평균 복구 시간</dt>
+        <dd>감지 = 첫 실패 → 장애 판정(알림). 복구 = 첫 실패 → 복구 확인(복구된 장애만). 점검 간격 때문에 5분 단위로 나옵니다.</dd>
+        <dt>측정 기간</dt>
+        <dd>기록이 있는 날 수 ÷ 그 달의 날 수. 전체 기간을 측정하지 않은 대상은 '부분 측정'으로 표시합니다.</dd>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>
+        <span class="badge badge--demo">데모 데이터</span>
+        <span class="badge badge--sim">시뮬레이터</span>
+        표시가 붙은 대상은 시연용 가짜 데이터입니다. 실제 데이터와 합산하지 않습니다. ○○산업은 가상의 회사입니다.
+      </p>
+      <p id="updated" class="muted"></p>
+    </div>
+  </footer>
+
+  <script src="/common.js" defer></script>
+  <script src="/report.js" defer></script>
+</body>
+</html>

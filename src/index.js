@@ -4,6 +4,7 @@
 //   [HTTP] GET  /api/status        → 상태 페이지용 JSON (화면 파일은 public/에서 정적 파일로 제공)
 //          POST /api/agent/report  → 내부 점검 에이전트 보고 수집 (ingest.js)
 //          GET  /api/incidents/:id → 장애 상세·보고서 (api.js)
+//          GET  /api/reports/monthly?month=YYYY-MM → 월간 가용성 보고서 (api.js + report.js)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
 // ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
@@ -13,7 +14,8 @@ import { judgeCheck, FAILURE_REASON } from './judge.js';
 import { getActiveMonitors } from './db.js';
 import { toCheckSlot, toIsoSeconds } from './time.js';
 import { recordResults } from './record.js';
-import { buildStatus, buildIncidentDetail } from './api.js';
+import { buildStatus, buildIncidentDetail, buildMonthlyReport } from './api.js';
+import { isValidMonth, kstMonthOf } from './report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
 
@@ -137,6 +139,21 @@ export default {
         return json(body, 200, { 'cache-control': 'public, max-age=60' });
       } catch (err) {
         console.error('[API 오류] /api/incidents:', err);
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    // 월간 가용성 보고서 (공개, B-6) — ?month=YYYY-MM, 없으면 이번 달(KST)
+    if (url.pathname === '/api/reports/monthly') {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+      const now = new Date();
+      const month = url.searchParams.get('month') ?? kstMonthOf(now);
+      if (!isValidMonth(month)) return json({ error: 'invalid_month' }, 400);
+      try {
+        const body = await buildMonthlyReport(env.DB, month, now);
+        return json(body, 200, { 'cache-control': 'public, max-age=60' });
+      } catch (err) {
+        console.error('[API 오류] /api/reports/monthly:', err);
         return json({ error: 'internal_error' }, 500);
       }
     }

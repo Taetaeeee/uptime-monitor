@@ -11,7 +11,11 @@ import {
   getRecentIncidents,
   getIncident,
   getNotificationsBetween,
+  getDailyStatsBetween,
+  getIncidentsOverlapping,
+  getReportMonths,
 } from './db.js';
+import { SLA_TARGET, monthRange, kstMonthOf, summarizeMonth } from './report.js';
 import { toKstDay, addDays, buildDailyBars, overallUptime } from './aggregate.js';
 import { isInMaintenance, incidentMetrics } from './incident.js';
 import { REASON_TEXT } from './notify.js';
@@ -110,5 +114,60 @@ export async function buildIncidentDetail(db, id, now) {
     causeText: causeText(incident.cause),
     ...incidentMetrics(incident, now),
     notifications,
+  };
+}
+
+// 보고서에서 출처를 묶는 순서: 실제 → 시뮬레이터 → 데모
+const SOURCE_ORDER = ['real', 'simulator', 'sample'];
+
+/**
+ * /api/reports/monthly 응답 본문 (B-6)
+ *
+ * 대상별로만 계산하고, 여러 대상을 합친 "전사 평균"은 만들지 않습니다.
+ * 실제 데이터와 가짜(sample·simulator) 데이터를 합친 숫자는 의미가 없고, 출처 규칙(CLAUDE.md 8)에도 어긋나기 때문이에요.
+ * 대신 출처별로 묶어(groups) 보여 줍니다.
+ *
+ * @param {object} db
+ * @param {string} month  'YYYY-MM' (검증은 호출하는 쪽에서)
+ * @param {Date} now
+ */
+export async function buildMonthlyReport(db, month, now) {
+  const range = monthRange(month);
+  const [monitors, stats, incidents, months] = await Promise.all([
+    getStatusMonitors(db),
+    getDailyStatsBetween(db, range.startDay, range.endDay),
+    getIncidentsOverlapping(db, range.startUtc, range.endUtc),
+    getReportMonths(db),
+  ]);
+
+  const services = monitors.map((m) => ({
+    id: m.id,
+    name: m.name,
+    kind: m.kind,
+    source: m.source,
+    ...summarizeMonth(
+      stats.filter((s) => s.monitorId === m.id),
+      incidents.filter((i) => i.monitorId === m.id),
+      range,
+      now
+    ),
+  }));
+
+  const nowMonth = kstMonthOf(now);
+  return {
+    generatedAt: toIsoSeconds(now),
+    month,
+    months, // 기록이 있는 달 (선택 목록)
+    targetPercent: Math.round(SLA_TARGET * 1000) / 10,
+    period: {
+      startDay: range.startDay,
+      endDay: range.endDay,
+      daysInMonth: range.daysInMonth,
+      inProgress: month === nowMonth, // 진행 중인 달이면 숫자가 계속 바뀜
+    },
+    groups: SOURCE_ORDER.map((source) => ({
+      source,
+      services: services.filter((s) => s.source === source),
+    })).filter((g) => g.services.length > 0),
   };
 }

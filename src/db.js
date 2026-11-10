@@ -483,3 +483,58 @@ export async function updateIncidentReport(db, id, columns, updatedAt) {
     .run();
   return r.meta?.changes ?? 0;
 }
+
+// ─────────────────────────────────────────────
+// 월간 보고서 (B-6)
+// ─────────────────────────────────────────────
+
+/** [fromDay, toDay] (KST 날짜, 양쪽 포함) 모든 대상의 일별 집계 */
+export async function getDailyStatsBetween(db, fromDay, toDay) {
+  const { results } = await db
+    .prepare(
+      `SELECT monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, maintenance_checks
+         FROM daily_stats
+        WHERE day >= ?1 AND day <= ?2`
+    )
+    .bind(fromDay, toDay)
+    .all();
+  return results.map((r) => ({
+    monitorId: r.monitor_id,
+    day: r.day,
+    totalChecks: r.total_checks,
+    successChecks: r.success_checks,
+    slowChecks: r.slow_checks,
+    avgResponseMs: r.avg_response_ms,
+    maintenanceChecks: r.maintenance_checks,
+  }));
+}
+
+/** [startUtc, endUtc) 구간에 조금이라도 걸친 장애 (진행 중 포함) */
+export async function getIncidentsOverlapping(db, startUtc, endUtc) {
+  const { results } = await db
+    .prepare(
+      `SELECT id, monitor_id, started_at, detected_at, resolved_at, cause, source
+         FROM incidents
+        WHERE started_at < ?2 AND (resolved_at IS NULL OR resolved_at > ?1)
+        ORDER BY started_at`
+    )
+    .bind(startUtc, endUtc)
+    .all();
+  return results.map((r) => ({
+    id: r.id,
+    monitorId: r.monitor_id,
+    startedAt: r.started_at,
+    detectedAt: r.detected_at,
+    resolvedAt: r.resolved_at,
+    cause: r.cause,
+    source: r.source,
+  }));
+}
+
+/** 기록이 있는 달 목록 'YYYY-MM' (최신 순) — 보고서의 달 선택용 */
+export async function getReportMonths(db) {
+  const { results } = await db
+    .prepare(`SELECT DISTINCT substr(day, 1, 7) AS month FROM daily_stats ORDER BY month DESC`)
+    .all();
+  return results.map((r) => r.month);
+}
