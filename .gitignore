@@ -1,0 +1,13 @@
+# 설치된 패키지 (npm install로 다시 만들 수 있음)
+node_modules/
+
+# wrangler 로컬 상태: 로컬 D1 데이터 파일이 여기 생깁니다
+.wrangler/
+
+# 로컬 비밀 값 (규칙 3: 절대 저장소에 올리지 않음)
+.dev.vars
+.dev.vars.*
+
+# 운영체제/편집기 부산물
+.DS_Store
+Thumbs.db

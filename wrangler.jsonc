@@ -1,0 +1,30 @@
+// Worker 설정 파일
+// 대시보드에서 클릭으로 바꾸지 않고, 이 파일로만 설정을 관리합니다.
+// (공식 문서: Wrangler로 관리하는 Worker는 Cron도 설정 파일로만 관리하라고 안내)
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "status-monitor",
+  "main": "src/index.js",
+
+  // 이 날짜 기준의 Workers 런타임 동작을 고정합니다.
+  // 너무 미래 날짜면 설치된 wrangler가 경고할 수 있어요 → 공식 문서에서 확인할 부분
+  "compatibility_date": "2026-10-01",
+
+  // 5분마다 실행. Cron 시간은 항상 UTC 기준입니다.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
+  "d1_databases": [
+    {
+      // 코드에서 env.DB 로 접근하는 이름
+      "binding": "DB",
+      // wrangler 명령에서 쓰는 이름
+      "database_name": "status-monitor-db",
+      // `npx wrangler d1 create status-monitor-db` 실행 결과로 나온 ID로 바꿔 주세요.
+      // DB를 가리키는 식별자일 뿐 비밀번호가 아니라서 저장소에 올려도 됩니다.
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
