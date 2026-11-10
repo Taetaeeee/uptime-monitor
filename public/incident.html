@@ -3,34 +3,52 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
   <title>장애 보고서 · ○○산업 서비스 상태</title>
   <meta name="description" content="가상 회사 ○○산업의 장애 1건 상세와 사후 보고서 (포트폴리오 프로젝트)">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <!-- 주소: /incident.html?id=장애번호  → incident.js가 /api/incidents/:id 를 불러와 채웁니다 -->
-  <header class="site-header">
-    <div class="wrap">
-      <p class="back"><a href="/">← 서비스 상태로</a></p>
-      <h1 id="title">장애 보고서</h1>
-      <p id="subtitle" class="subtitle">불러오는 중…</p>
+  <div class="glow glow--1" aria-hidden="true"></div>
+  <div class="glow glow--2" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="wrap topbar__in">
+      <a class="brand" href="/">
+        <span class="brand__logo" data-icon="activity"></span>
+        <span>
+          <span class="brand__name">○○산업 서비스 상태</span>
+          <span class="brand__sub">Incident Report</span>
+        </span>
+      </a>
+      <nav class="topnav" aria-label="주요 링크">
+        <a href="/report.html" class="is-primary"><span data-icon="report" data-icon-class="ico ico--sm"></span><span class="label">월간 보고서</span></a>
+        <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span><span class="label">GitHub</span></a>
+      </nav>
     </div>
   </header>
 
   <main class="wrap">
-    <section aria-labelledby="metrics-title">
-      <h2 id="metrics-title">요약 지표</h2>
+    <div class="page-head">
+      <a class="back" href="/"><span data-icon="arrowLeft" data-icon-class="ico ico--sm"></span>서비스 상태로</a>
+      <h1 class="page-title" id="title">장애 보고서</h1>
+      <p class="page-sub" id="subtitle">불러오는 중…</p>
+    </div>
+
+    <section class="panel" aria-labelledby="metrics-title">
+      <div class="panel__head"><h2 class="panel__title" id="metrics-title"><span data-icon="chart" data-icon-class="ico ico--sm"></span>요약 지표</h2></div>
       <dl id="metrics" class="metrics"></dl>
     </section>
 
-    <section aria-labelledby="timeline-title">
-      <h2 id="timeline-title">타임라인</h2>
+    <section class="panel" aria-labelledby="timeline-title">
+      <div class="panel__head"><h2 class="panel__title" id="timeline-title"><span data-icon="clock" data-icon-class="ico ico--sm"></span>타임라인</h2></div>
       <ol id="timeline" class="notes"></ol>
     </section>
 
-    <section aria-labelledby="report-title">
-      <h2 id="report-title">사후 보고서</h2>
-      <div id="report" class="report"></div>
+    <section class="panel" aria-labelledby="report-title">
+      <div class="panel__head"><h2 class="panel__title" id="report-title"><span data-icon="report" data-icon-class="ico ico--sm"></span>사후 보고서</h2></div>
+      <div id="report"></div>
     </section>
   </main>
 

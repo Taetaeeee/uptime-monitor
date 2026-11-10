@@ -3,30 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
   <title>월간 가용성 보고서 · ○○산업 서비스 상태</title>
   <meta name="description" content="가상 회사 ○○산업 서비스의 월간 가용성·SLA·장애 지표 보고서 (포트폴리오 프로젝트)">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <!-- 주소: /report.html?month=YYYY-MM  → report.js가 /api/reports/monthly 를 불러와 채웁니다 -->
-  <header class="site-header">
-    <div class="wrap">
-      <p class="back no-print"><a href="/">← 서비스 상태로</a></p>
-      <h1 id="title">월간 가용성 보고서</h1>
-      <p id="subtitle" class="subtitle">불러오는 중…</p>
-      <div class="report-controls no-print">
-        <label for="month">기간</label>
-        <select id="month"></select>
-        <button type="button" id="print">인쇄 / PDF로 저장</button>
-      </div>
+  <div class="glow glow--1" aria-hidden="true"></div>
+  <div class="glow glow--2" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="wrap topbar__in">
+      <a class="brand" href="/">
+        <span class="brand__logo" data-icon="activity"></span>
+        <span>
+          <span class="brand__name">○○산업 서비스 상태</span>
+          <span class="brand__sub">Monthly Availability</span>
+        </span>
+      </a>
+      <nav class="topnav" aria-label="주요 링크">
+        <a href="/" class="is-primary"><span data-icon="activity" data-icon-class="ico ico--sm"></span><span class="label">서비스 상태</span></a>
+        <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span><span class="label">GitHub</span></a>
+      </nav>
     </div>
   </header>
 
   <main class="wrap">
-    <section id="groups"></section>
+    <div class="page-head">
+      <a class="back no-print" href="/"><span data-icon="arrowLeft" data-icon-class="ico ico--sm"></span>서비스 상태로</a>
+      <h1 class="page-title" id="title">월간 가용성 보고서</h1>
+      <p class="page-sub" id="subtitle">불러오는 중…</p>
+      <div class="report-controls no-print">
+        <label for="month">기간</label>
+        <select id="month"></select>
+        <button type="button" id="print" class="btn"><span data-icon="printer" data-icon-class="ico ico--sm"></span>인쇄 / PDF로 저장</button>
+      </div>
+    </div>
 
-    <section aria-labelledby="terms-title">
-      <h2 id="terms-title">용어와 계산 방법</h2>
+    <section class="panel" id="groups"></section>
+
+    <section class="panel" aria-labelledby="terms-title">
+      <div class="panel__head"><h2 class="panel__title" id="terms-title">용어와 계산 방법</h2></div>
       <dl class="terms">
         <dt>가동률</dt>
         <dd>성공한 점검 수 ÷ 전체 점검 수 (5분마다 1회). 계획 작업 시간의 점검은 분모·분자 모두에서 뺍니다. 소수 둘째 자리에서 내림합니다.</dd>

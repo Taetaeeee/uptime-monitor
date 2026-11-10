@@ -12,8 +12,12 @@ const REPORT_SECTIONS = [
 function renderHeader(inc) {
   const title = document.getElementById('title');
   title.textContent = `${inc.monitorName} 장애`;
+  // 진행 중이면 '장애' 알약, 복구됐으면 '정상' 알약 (common.js statePill)
+  const pill = statePill(inc.ongoing ? 'down' : 'up');
+  pill.lastChild.textContent = inc.ongoing ? '진행 중' : '복구됨';
+  title.append(pill);
   const badge = sourceBadge(inc.source);
-  if (badge) title.append(' ', badge);
+  if (badge) title.append(badge);
   document.title = `${inc.monitorName} 장애 · ○○산업 서비스 상태`;
 
   document.getElementById('subtitle').textContent = inc.ongoing

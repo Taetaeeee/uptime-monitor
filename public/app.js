@@ -1,34 +1,54 @@
 // 상태 페이지 스크립트 — /api/status를 받아 화면을 그린다.
-// 공용 도우미(formatKst, el, sourceBadge, formatMinutes, fetchJson)는 common.js에 있습니다.
+// 공용 도우미(formatKst, el, icon, statePill, kindMeta, sourceBadge, formatMinutes, fetchJson)는 common.js에 있습니다.
+//
+// 화면 상태(검색어·필터·선택한 서비스)는 이 파일의 변수에 두고,
+// 60초마다 데이터를 새로 받아도 사용자가 고른 것은 그대로 유지합니다.
 
 const REFRESH_MS = 60_000; // 60초마다 새로 고침 (API 캐시 시간과 같게)
 
-const STATE_TEXT = {
-  up: '정상',
-  down: '장애',
-  unknown: '확인 중',
-  paused: '점검 대기',
-  maintenance: '계획 작업 중',
+const FILTERS = [
+  ['all', '전체'],
+  ['up', '정상'],
+  ['down', '장애'],
+  ['maintenance', '작업 중'],
+  ['paused', '점검 대기'],
+];
+
+// 종류별 설명 (상세 패널) — 무엇을 어떻게 점검하는지
+const KIND_DESC = {
+  http: 'Worker가 5분마다 HTTP 요청을 보내 상태 코드·응답 시간·본문 키워드를 확인합니다.',
+  dns: 'Worker가 5분마다 DNS-over-HTTPS로 이름이 풀리는지, 기대한 값으로 풀리는지 확인합니다.',
+  domain: '도메인 만료일까지 남은 날을 확인합니다. 30일 전부터 만료 임박으로 판정합니다.',
+  ping: '사내 PC의 에이전트가 ping 응답과 응답 시간을 측정해 보고합니다.',
+  tcp: '사내 PC의 에이전트가 TCP 포트에 연결되는지 측정해 보고합니다.',
+  ssl: '사내 PC의 에이전트가 인증서 만료까지 남은 날을 측정합니다. 14일 미만이면 실패입니다.',
+  disk: '사내 PC의 에이전트가 디스크 사용률을 측정합니다. 기준(90%) 이상이면 실패입니다.',
+  service: '사내 PC의 에이전트가 Windows 서비스가 실행 중인지 확인합니다.',
 };
 
-// 점검 종류별 "마지막 측정값" 문구
-//   HTTP·ping·TCP는 응답 시간, 디스크는 사용률, 인증서는 남은 일수, 서비스는 실행 여부
-function describeLast(s) {
-  if (s.state === 'paused') return '실제 점검 연결 예정 (아직 점검하지 않음)';
-  const when = `마지막 점검 ${formatKst(s.lastCheckedAt)}`;
+const SOURCE_TEXT = { real: '실제 점검', sample: '데모 데이터 (시드)', simulator: '시뮬레이터 (가짜 측정값)' };
+
+const view = {
+  data: null,
+  filter: 'all',
+  query: '',
+  selectedId: null,
+};
+
+// ─────────────────────────────────────────────
+// 작은 계산
+// ─────────────────────────────────────────────
+
+// 종류별 "마지막 측정값" — 카드의 두 번째 칸과 상세 패널에 사용
+function lastValue(s) {
+  if (s.state === 'paused' || !s.lastCheckedAt) return { label: '마지막 측정', value: '-' };
   switch (s.kind) {
-    case 'disk':
-      return `${when} · 디스크 사용 ${s.lastValue ?? '-'}%`;
-    case 'ssl':
-      return `${when} · 인증서 ${s.lastValue ?? '-'}일 남음`;
-    case 'service':
-      return `${when} · 서비스 ${s.state === 'down' ? '중지' : '실행 중'}`;
-    case 'dns':
-      return `${when} · 응답 ${s.lastResponseMs ?? '-'}ms · 레코드 ${s.lastValue ?? '-'}개`;
-    case 'domain':
-      return `${when} · 도메인 만료까지 ${s.lastValue ?? '-'}일`;
-    default: // http, ping, tcp
-      return `${when} · 응답 ${s.lastResponseMs ?? '-'}ms`;
+    case 'disk': return { label: '디스크 사용률', value: s.lastValue === null ? '-' : `${s.lastValue}%` };
+    case 'ssl': return { label: '인증서 남은 날', value: s.lastValue === null ? '-' : `${s.lastValue}일` };
+    case 'domain': return { label: '만료까지', value: s.lastValue === null ? '-' : `${s.lastValue}일` };
+    case 'service': return { label: '서비스', value: s.state === 'down' ? '중지' : '실행 중' };
+    case 'dns': return { label: 'DNS 응답', value: s.lastResponseMs === null ? '-' : `${s.lastResponseMs}ms · ${s.lastValue ?? 0}개` };
+    default: return { label: '응답 시간', value: s.lastResponseMs === null ? '-' : `${s.lastResponseMs}ms` };
   }
 }
 
@@ -40,80 +60,272 @@ function barClass(uptime) {
   return 'bar--bad';
 }
 
-function renderSummary(services) {
-  const box = document.getElementById('summary');
-  const text = document.getElementById('summary-text');
-  // 점검 대기(비활성 실제 대상)·계획 작업 중인 대상은 장애 판단에서 뺍니다
-  const down = services.filter((s) => s.state === 'down');
+const uptimeText = (v) => (v === null || v === undefined ? '-' : `${v}%`);
 
-  box.className = 'summary ' + (down.length ? 'summary--down' : 'summary--up');
-  text.textContent = down.length
-    ? `${down.length}개 서비스 장애: ${down.map((s) => s.name).join(', ')}`
-    : '모든 서비스 정상';
+// ─────────────────────────────────────────────
+// 상태 영역 + 요약 카드
+// ─────────────────────────────────────────────
+
+function renderHero(data) {
+  const hero = document.getElementById('hero');
+  const down = data.services.filter((s) => s.state === 'down');
+  const working = data.services.filter((s) => s.state === 'maintenance');
+
+  let tone = 'good', ico = 'check', title = '모든 서비스 정상';
+  if (down.length) {
+    tone = 'bad'; ico = 'x';
+    title = `${down.length}개 서비스 장애`;
+  } else if (working.length) {
+    tone = 'info'; ico = 'wrench';
+    title = '계획 작업 진행 중';
+  }
+  hero.className = `hero${tone === 'good' ? '' : ` hero--${tone}`}`;
+  document.getElementById('hero-title').textContent = down.length
+    ? `${title}: ${down.map((s) => s.name).join(', ')}`
+    : title;
+  document.getElementById('hero-icon').replaceChildren(icon(ico, 'ico ico--lg'));
+  document.getElementById('hero-updated').textContent = `마지막 갱신 ${formatKst(data.generatedAt)} (60초마다 자동 갱신)`;
 }
 
-// 계획 작업 안내 (진행 중 + 예정)
+// 요약 카드 — 여러 서비스를 합친 '평균 가동률'은 만들지 않습니다.
+// 실제·데모·시뮬레이터 데이터를 합친 숫자는 의미가 없기 때문이에요(출처 규칙). 대신 개수만 셉니다.
+function renderStats(data) {
+  const watched = data.services.filter((s) => s.state !== 'paused');
+  const up = watched.filter((s) => s.state === 'up').length;
+  const ongoing = data.incidents.filter((i) => i.ongoing).length;
+  const activeMaint = data.maintenance.filter((w) => w.active).length;
+  const bySource = (src) => data.services.filter((s) => s.source === src).length;
+
+  const cards = [
+    ['activity', '정상 운영', `${up}/${watched.length}`, '점검 대기를 뺀 서비스 중 정상'],
+    ['alert', '진행 중 장애', String(ongoing), `최근 장애 ${data.incidents.length}건 중`],
+    ['wrench', '계획 작업', `${activeMaint}건 진행`, `예정 포함 ${data.maintenance.length}건`],
+    ['layers', '점검 대상', `${data.services.length}개`, `실제 ${bySource('real')} · 시뮬 ${bySource('simulator')} · 데모 ${bySource('sample')}`],
+  ];
+  document.getElementById('stats').replaceChildren(
+    ...cards.map(([ico, label, value, helper]) => {
+      const card = el('div', 'stat');
+      const top = el('div', 'stat__top', label);
+      top.append(icon(ico, 'ico ico--sm'));
+      card.append(top, el('div', 'stat__value', value), el('div', 'stat__helper', helper));
+      return card;
+    })
+  );
+}
+
 function renderMaintenance(list) {
-  const root = document.getElementById('maintenance');
-  root.replaceChildren(
+  document.getElementById('maintenance').replaceChildren(
     ...list.map((w) => {
-      const box = el('div', `maint ${w.active ? 'maint--active' : ''}`);
+      const box = el('div', 'maint');
+      const ico = el('span', 'maint__icon');
+      ico.append(icon('wrench', 'ico ico--sm'));
+      const body = el('div');
       const head = el('div', 'maint__head', w.active ? '계획 작업 중' : '예정된 계획 작업');
       const badge = sourceBadge(w.source);
-      if (badge) head.append(' ', badge);
-      const target = w.monitorName ?? '모든 서비스';
-      box.append(
+      if (badge) head.append(badge);
+      body.append(
         head,
-        el('div', 'maint__title', `${w.title} — ${target}`),
-        el('div', 'maint__time', `${formatKst(w.startsAt)} ~ ${formatKst(w.endsAt)} (이 시간의 점검은 가동률에서 제외)`)
+        el('div', 'maint__title', `${w.title} — ${w.monitorName ?? '모든 서비스'}`),
+        el('div', 'maint__time', `${formatKst(w.startsAt)} ~ ${formatKst(w.endsAt)} · 이 시간의 점검은 장애로 보지 않고 가동률에서 제외`)
       );
+      box.append(ico, body);
       return box;
     })
   );
 }
 
-function renderServices(services) {
+// ─────────────────────────────────────────────
+// 검색·필터·서비스 카드
+// ─────────────────────────────────────────────
+
+function renderFilters(data) {
+  const counts = { all: data.services.length };
+  for (const s of data.services) counts[s.state] = (counts[s.state] ?? 0) + 1;
+  document.getElementById('filters').replaceChildren(
+    ...FILTERS.map(([key, label]) => {
+      const b = el('button', `filter${view.filter === key ? ' is-active' : ''}`, label);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(view.filter === key));
+      b.append(el('span', 'filter__count', String(counts[key] ?? 0)));
+      b.addEventListener('click', () => {
+        view.filter = key;
+        renderFilters(view.data);
+        renderServices(view.data);
+      });
+      return b;
+    })
+  );
+}
+
+function visibleServices(data) {
+  const q = view.query.trim().toLowerCase();
+  return data.services.filter(
+    (s) => (view.filter === 'all' || s.state === view.filter) && (!q || s.name.toLowerCase().includes(q))
+  );
+}
+
+function renderServices(data) {
   const root = document.getElementById('services');
+  const list = visibleServices(data);
+  if (list.length === 0) {
+    root.replaceChildren(el('div', 'services__empty', '조건에 맞는 서비스가 없습니다.'));
+    return;
+  }
   root.replaceChildren(
-    ...services.map((s) => {
-      const card = el('article', 'card');
+    ...list.map((s) => {
+      const card = el('button', `card${s.id === view.selectedId ? ' is-selected' : ''}`);
+      card.type = 'button';
+      card.setAttribute('aria-pressed', String(s.id === view.selectedId));
+      card.addEventListener('click', () => select(s.id));
 
+      // 위: 종류 아이콘 + 이름 + 상태·출처
       const top = el('div', 'card__top');
-      const name = el('div', 'card__name', s.name);
+      const kind = kindMeta(s.kind);
+      const kindIco = el('span', 'kind-ico');
+      kindIco.append(icon(kind.icon));
+      const title = el('div');
+      title.style.minWidth = '0';
+      const tags = el('div', 'card__tags');
+      tags.append(statePill(s.state));
       const badge = sourceBadge(s.source);
-      if (badge) name.append(badge);
-      top.append(name, el('span', `state state--${s.state}`, STATE_TEXT[s.state] ?? s.state));
+      if (badge) tags.append(badge);
+      tags.append(el('span', 'card__kind', kind.text));
+      title.append(el('h3', 'card__name', s.name), tags);
+      top.append(kindIco, title);
 
-      const meta = el('div', 'card__meta', describeLast(s));
+      // 가운데: 30일 가동률 / 마지막 측정값
+      const lv = lastValue(s);
+      const minis = el('div', 'minis');
+      for (const [label, value] of [['30일 가동률', uptimeText(s.uptime30d)], [lv.label, lv.value]]) {
+        const m = el('div', 'mini');
+        m.append(el('div', 'mini__label', label), el('div', 'mini__value', value));
+        minis.append(m);
+      }
 
-      // 30일 막대: 마우스를 올리면 날짜와 가동률 (title), 화면 낭독기용 설명은 aria-label
+      // 아래: 30일 막대 (마우스를 올리면 날짜와 가동률, 화면 낭독기용 설명은 aria-label)
+      const head = el('div', 'bars-head');
+      head.append(el('span', '', `${s.daily.length - 1}일 전`), el('span', '', '오늘'));
       const bars = el('div', 'bars');
       bars.setAttribute('role', 'img');
-      bars.setAttribute(
-        'aria-label',
-        `최근 ${s.daily.length}일 가동률 ${s.uptime30d === null ? '기록 없음' : s.uptime30d + '%'}`
-      );
+      bars.setAttribute('aria-label', `최근 ${s.daily.length}일 가동률 ${s.uptime30d === null ? '기록 없음' : s.uptime30d + '%'}`);
       for (const d of s.daily) {
         const bar = el('span', `bar ${barClass(d.uptime)}`);
         bar.title = d.uptime === null ? `${d.day} · 기록 없음` : `${d.day} · ${d.uptime}% (${d.total}회 점검)`;
         bars.append(bar);
       }
 
-      const foot = el('div', 'card__foot');
-      foot.append(
-        // 첫 막대는 오늘로부터 (막대 수 - 1)일 전 (30개면 29일 전 ~ 오늘)
-        el('span', '', `${s.daily.length - 1}일 전`),
-        el('span', '', s.uptime30d === null ? '가동률 기록 없음' : `가동률 ${s.uptime30d}%`),
-        el('span', '', '오늘')
-      );
-
-      card.append(top, meta, bars, foot);
+      card.append(top, minis, head, bars);
       return card;
     })
   );
 }
 
-// 장애 이력 (최근 10건) — 각 줄은 상세 페이지로 가는 링크
+// ─────────────────────────────────────────────
+// 상세 패널
+// ─────────────────────────────────────────────
+
+function select(id) {
+  view.selectedId = id;
+  renderServices(view.data);
+  renderDetail(view.data);
+  // 좁은 화면에서는 상세 패널이 카드 아래에 있으므로 그쪽으로 스크롤
+  if (window.matchMedia('(max-width: 1099px)').matches) {
+    document.getElementById('detail-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function renderDetail(data) {
+  const root = document.getElementById('detail');
+  const s = data.services.find((x) => x.id === view.selectedId);
+  if (!s) {
+    root.replaceChildren(el('p', 'detail__empty', '왼쪽에서 서비스를 선택하세요.'));
+    return;
+  }
+  const kind = kindMeta(s.kind);
+
+  // 이름·상태·설명
+  const card = el('div', 'detail__card');
+  const head = el('div', 'detail__head');
+  const kindIco = el('span', 'kind-ico');
+  kindIco.append(icon(kind.icon));
+  const nameBox = el('div');
+  nameBox.style.minWidth = '0';
+  const tags = el('div', 'card__tags');
+  tags.append(statePill(s.state));
+  const badge = sourceBadge(s.source);
+  if (badge) tags.append(badge);
+  nameBox.append(el('h3', 'detail__name', s.name), tags);
+  head.append(kindIco, nameBox);
+  card.append(head, el('p', 'detail__desc', KIND_DESC[s.kind] ?? '점검 정보'));
+
+  // 사실 4칸
+  const lv = lastValue(s);
+  const facts = el('dl', 'facts');
+  for (const [k, v] of [
+    ['점검 종류', kind.text],
+    ['데이터 출처', SOURCE_TEXT[s.source] ?? s.source],
+    ['마지막 점검', s.lastCheckedAt ? formatKst(s.lastCheckedAt) : '-'],
+    ['30일 가동률', uptimeText(s.uptime30d)],
+    [lv.label, lv.value],
+    ['기록이 있는 날', `${s.daily.filter((d) => d.total > 0).length}/${s.daily.length}일`],
+  ]) {
+    const f = el('div', 'fact');
+    f.append(el('dt', '', k), el('dd', '', v));
+    facts.append(f);
+  }
+
+  const nodes = [card, facts];
+
+  // 안내 상자: 점검 대기 / 데모 / 시뮬레이터
+  const notice = {
+    paused: ['점검 대기', '실제 대상으로 등록만 되어 있고 아직 점검을 켜지 않았습니다. 켜면 5분마다 실제 기록이 쌓입니다.'],
+    sample: ['데모 데이터', '시드 스크립트로 넣은 가짜 기록입니다. 실제로 점검하지 않으며, 보고서에서도 실제 데이터와 합산하지 않습니다.'],
+    simulator: ['시뮬레이터', '에이전트 시뮬레이터가 시나리오 파일의 가짜 측정값을 보낸 기록입니다. 판정·장애·알림은 실제와 같은 경로를 거칩니다.'],
+  }[s.state === 'paused' ? 'paused' : s.source];
+  if (notice) {
+    const box = el('div', 'note-box');
+    const t = el('div', 'note-box__title', notice[0]);
+    t.prepend(icon('shield', 'ico ico--sm'));
+    box.append(t, el('div', '', notice[1]));
+    nodes.push(box);
+  }
+
+  // 이 서비스의 최근 장애
+  const mine = data.incidents.filter((i) => i.monitorName === s.name).slice(0, 3);
+  const sub = el('div', 'subhead', '이 서비스의 최근 장애');
+  sub.prepend(icon('alert', 'ico ico--sm'));
+  nodes.push(sub);
+  if (mine.length === 0) {
+    nodes.push(el('p', 'detail__empty', '최근 장애가 없습니다.'));
+  } else {
+    const ul = el('ul', 'mini-list');
+    for (const i of mine) {
+      const li = el('li');
+      const a = el('a');
+      a.href = `/incident.html?id=${encodeURIComponent(i.id)}`;
+      const topRow = el('div', 'mini-list__top');
+      const pill = statePill(i.ongoing ? 'down' : 'up');
+      pill.lastChild.textContent = i.ongoing ? '진행 중' : '복구됨'; // 장애 이력에서는 '정상' 대신 '복구됨'
+      topRow.append(el('span', '', i.causeText ?? '원인 미상'), pill);
+      a.append(topRow, el('div', 'mini-list__time', `${formatKst(i.startedAt)} · ${formatMinutes(i.durationMinutes)}`));
+      li.append(a);
+      ul.append(li);
+    }
+    nodes.push(ul);
+  }
+
+  const btn = el('a', 'btn btn--block', '월간 가용성 보고서 보기');
+  btn.href = '/report.html';
+  btn.append(icon('arrowRight', 'ico ico--sm'));
+  nodes.push(btn);
+
+  root.replaceChildren(...nodes);
+}
+
+// ─────────────────────────────────────────────
+// 장애 이력·최근 알림
+// ─────────────────────────────────────────────
+
 function renderIncidents(list) {
   const root = document.getElementById('incidents');
   if (list.length === 0) {
@@ -122,24 +334,31 @@ function renderIncidents(list) {
   }
   root.replaceChildren(
     ...list.map((i) => {
-      const li = el('li', `inc ${i.ongoing ? 'inc--ongoing' : ''}`);
-      const link = el('a', 'inc__link');
-      link.href = `/incident.html?id=${encodeURIComponent(i.id)}`;
+      const li = el('li', 'incident');
+      const a = el('a');
+      a.href = `/incident.html?id=${encodeURIComponent(i.id)}`;
 
-      const title = el('div', 'inc__title', i.monitorName);
+      const top = el('div', 'incident__top');
+      const left = el('div');
+      left.style.minWidth = '0';
+      const tags = el('div', 'incident__tags');
+      const pill = el('span', `pill ${i.ongoing ? 'pill--bad' : 'pill--good'}`);
+      pill.append(icon(i.ongoing ? 'x' : 'check', 'ico ico--xs'), document.createTextNode(i.ongoing ? '진행 중' : '복구됨'));
+      tags.append(pill);
       const badge = sourceBadge(i.source);
-      if (badge) title.append(' ', badge);
-      title.append(' ', el('span', `inc__state ${i.ongoing ? 'inc__state--ongoing' : ''}`, i.ongoing ? '진행 중' : '복구됨'));
+      if (badge) tags.append(badge);
+      left.append(tags, el('h3', 'incident__title', i.causeText ?? '원인 미상'), el('div', 'incident__service', i.monitorName));
 
-      const when = i.ongoing
-        ? `${formatKst(i.startedAt)} ~ 진행 중 (${formatMinutes(i.durationMinutes)} 경과)`
-        : `${formatKst(i.startedAt)} ~ ${formatKst(i.resolvedAt)} (${formatMinutes(i.durationMinutes)})`;
-      const meta = el('div', 'inc__meta', `${when} · 원인: ${i.causeText ?? '-'}`);
-      const summary = el('div', 'inc__summary', i.hasReport ? i.summary : '보고서 작성 전');
-      if (!i.hasReport) summary.classList.add('muted');
+      const time = el('div', 'incident__time');
+      time.append(
+        el('div', '', `시작 ${formatKst(i.startedAt)}`),
+        el('div', '', i.ongoing ? `${formatMinutes(i.durationMinutes)} 경과` : `복구 ${formatKst(i.resolvedAt)} · ${formatMinutes(i.durationMinutes)}`)
+      );
+      top.append(left, time);
 
-      link.append(title, meta, summary);
-      li.append(link);
+      const summary = el('p', `incident__summary${i.hasReport ? '' : ' is-empty'}`, i.hasReport ? i.summary : '사후 보고서 작성 전');
+      a.append(top, summary);
+      li.append(a);
       return li;
     })
   );
@@ -163,24 +382,41 @@ function renderNotifications(notes) {
   );
 }
 
+// ─────────────────────────────────────────────
+// 불러오기
+// ─────────────────────────────────────────────
+
 async function load() {
   try {
     const data = await fetchJson('/api/status');
-    renderSummary(data.services);
+    view.data = data;
+    // 처음이거나 선택했던 서비스가 사라졌으면: 장애 중인 서비스 → 첫 서비스 순으로 고름
+    if (!data.services.some((s) => s.id === view.selectedId)) {
+      view.selectedId = (data.services.find((s) => s.state === 'down') ?? data.services[0])?.id ?? null;
+    }
+    renderHero(data);
+    renderStats(data);
     renderMaintenance(data.maintenance ?? []);
-    renderServices(data.services);
+    renderFilters(data);
+    renderServices(data);
+    renderDetail(data);
     renderIncidents(data.incidents ?? []);
     renderNotifications(data.notifications);
-    document.getElementById('updated').textContent = `마지막 갱신: ${formatKst(data.generatedAt)}`;
+    document.getElementById('updated').textContent = `데이터 생성 시각: ${formatKst(data.generatedAt)}`;
   } catch (err) {
     // 불러오기에 실패해도 이전 화면은 그대로 두고 안내만 바꿉니다
     console.error(err);
-    const box = document.getElementById('summary');
-    box.className = 'summary summary--error';
-    document.getElementById('summary-text').textContent =
-      '상태를 불러오지 못했습니다. 잠시 후 자동으로 다시 시도합니다.';
+    document.getElementById('hero').className = 'hero hero--error';
+    document.getElementById('hero-title').textContent = '상태를 불러오지 못했습니다';
+    document.getElementById('hero-icon').replaceChildren(icon('alert', 'ico ico--lg'));
+    document.getElementById('hero-updated').textContent = '잠시 후 자동으로 다시 시도합니다.';
   }
 }
+
+document.getElementById('search').addEventListener('input', (e) => {
+  view.query = e.target.value;
+  if (view.data) renderServices(view.data);
+});
 
 load();
 setInterval(load, REFRESH_MS);
