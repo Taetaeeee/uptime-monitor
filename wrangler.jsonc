@@ -21,9 +21,9 @@
       "binding": "DB",
       // wrangler 명령에서 쓰는 이름
       "database_name": "status-monitor-db",
-      // `npx wrangler d1 create status-monitor-db` 실행 결과로 나온 ID로 바꿔 주세요.
+      // `npx wrangler d1 create status-monitor-db` 실행 결과로 나온 ID로 채웠습니다.
       // DB를 가리키는 식별자일 뿐 비밀번호가 아니라서 저장소에 올려도 됩니다.
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "database_id": "a22791f6-596d-452b-bead-a55f6b624cc1",
       "migrations_dir": "migrations"
     }
   ]

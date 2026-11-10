@@ -39,10 +39,12 @@ export async function getActiveMonitors(db) {
 export async function saveCheckResults(db, rows) {
   if (rows.length === 0) return;
 
+  // source는 'real'로 고정합니다. 이 함수는 Cron의 실제 점검 결과만 저장하기 때문이에요.
+  // (DB 기본값도 'real'이지만, 기본값에 기대지 않고 코드에 의도를 드러냅니다)
   const stmt = db.prepare(
     `INSERT INTO check_results
-       (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+       (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, source)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'real')`
   );
 
   await db.batch(

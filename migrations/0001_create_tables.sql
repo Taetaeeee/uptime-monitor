@@ -20,6 +20,10 @@ CREATE TABLE monitors (
   max_response_ms INTEGER NOT NULL DEFAULT 3000,    -- 넘으면 '느림'
   -- SQLite에는 boolean이 없어서 0/1 정수로 저장
   is_active       INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  -- 출처: real(실제 점검) / sample(시드 스크립트) / simulator(에이전트 시뮬레이터)
+  -- kind와 달리 CHECK로 막은 이유: 출처는 프로젝트 규칙으로 세 가지로 정해져 있고,
+  -- 오타 하나로 가짜 데이터가 실제 데이터처럼 보이면 안 되기 때문입니다.
+  source          TEXT    NOT NULL DEFAULT 'real' CHECK (source IN ('real', 'sample', 'simulator')),
   created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))  -- UTC
 );
 
@@ -40,6 +44,10 @@ CREATE TABLE check_results (
   -- 문장 대신 코드값: timeout / network_error / status_mismatch / keyword_missing
   -- (집계하기 쉽고, 화면 문구는 나중에 바꿔도 데이터는 그대로)
   failure_reason TEXT,
+  -- 출처 (monitors.source와 같은 규칙). 결과 행마다 따로 두는 이유:
+  -- 같은 대상이라도 실제 점검 결과와 시뮬레이터 결과가 섞일 수 있어서
+  -- 보고서에서 행 단위로 구분해야 하기 때문입니다.
+  source         TEXT    NOT NULL DEFAULT 'real' CHECK (source IN ('real', 'sample', 'simulator')),
 
   -- '느림'은 성공한 점검에만 붙는다는 규칙을 DB에서도 한 번 더 지킵니다.
   CHECK (is_success = 1 OR is_slow = 0)
