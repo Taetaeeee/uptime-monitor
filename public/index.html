@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>○○산업 서비스 상태</title>
+  <meta name="description" content="가상 회사 ○○산업의 서비스 가동 상태와 최근 알림 (포트폴리오 프로젝트)">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- 빌드 도구 없이 HTML/CSS/JS만 씁니다. 데이터는 app.js가 /api/status에서 받아와 채워요. -->
+  <header class="site-header">
+    <div class="wrap">
+      <h1>○○산업 서비스 상태</h1>
+      <p class="subtitle">5분마다 점검한 결과입니다. 시각은 모두 한국 시간이에요.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- 전체 요약: 모든 서비스 정상 / 일부 장애 -->
+    <section id="summary" class="summary summary--loading" aria-live="polite">
+      <span class="summary__dot" aria-hidden="true"></span>
+      <span id="summary-text">상태를 불러오는 중…</span>
+    </section>
+
+    <section aria-labelledby="services-title">
+      <div class="section-head">
+        <h2 id="services-title">서비스</h2>
+        <span class="legend" aria-hidden="true">
+          <span class="bar bar--good"></span>99.9% 이상
+          <span class="bar bar--warn"></span>99% 이상
+          <span class="bar bar--bad"></span>99% 미만
+          <span class="bar bar--empty"></span>기록 없음
+        </span>
+      </div>
+      <div id="services" class="services"></div>
+    </section>
+
+    <section aria-labelledby="notes-title">
+      <h2 id="notes-title">최근 알림</h2>
+      <ol id="notifications" class="notes"></ol>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>
+        <span class="badge badge--demo">데모 데이터</span>
+        표시가 붙은 항목은 시연용 가짜 데이터이며 실제 점검 결과가 아닙니다.
+        ○○산업은 가상의 회사입니다.
+      </p>
+      <p id="updated" class="muted"></p>
+    </div>
+  </footer>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

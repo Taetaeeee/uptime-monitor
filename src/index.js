@@ -1,16 +1,25 @@
 // Worker 진입점
 // 여기에는 "흐름"만 둡니다:
-//   대상 조회 → 동시 점검 → 판정 → 상태 계산 → (결과 + 상태) 저장 → 상태가 바뀌었으면 알림
+//   [Cron] 대상 조회 → 동시 점검 → 판정 → 상태 계산 → (결과 + 상태) 저장 → 상태가 바뀌었으면 알림 → 일별 집계
+//   [HTTP] /api/status → 상태 페이지용 JSON (화면 파일은 public/에서 정적 파일로 제공)
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), state.js(장애 판정),
 // db.js(저장), notify.js + channels/(알림)가 맡습니다.
 
 import { observe } from './checker.js';
 import { judgeCheck, FAILURE_REASON } from './judge.js';
-import { getActiveMonitors, getMonitorStates, saveCheckResults } from './db.js';
+import {
+  getActiveMonitors,
+  getMonitorStates,
+  saveCheckResults,
+  getResultsInRange,
+  upsertDailyStats,
+} from './db.js';
 import { toCheckSlot, toIsoSeconds } from './time.js';
 import { initialState, nextState } from './state.js';
 import { dispatch } from './notify.js';
 import { logChannel } from './channels/log.js';
+import { toKstDay, addDays, kstDayRange, summarizeDay } from './aggregate.js';
+import { buildStatus } from './api.js';
 
 // 지금 사용하는 알림 채널 목록. 채널을 바꾸거나 추가할 때는 이 배열만 고치면 됩니다.
 const DEFAULT_CHANNELS = [logChannel];
@@ -122,7 +131,47 @@ export async function runChecks(env, runTime, deps = {}) {
     console.log(`[알림] ${when} 이벤트 ${events.length}건, 전송 ${sent} / 실패 ${failed}`);
   }
 
+  // ── 일별 집계: 점검한 대상의 '어제'와 '오늘'(KST)을 다시 계산 ──
+  // 집계는 화면용 요약이라, 실패해도 이미 저장한 점검 기록에는 영향이 없도록 예외를 따로 잡습니다.
+  try {
+    await refreshDailyStats(env.DB, monitors.map((m) => m.id), checkedAt);
+  } catch (err) {
+    console.error(`[집계 실패] ${when}:`, err);
+  }
+
   return rows;
+}
+
+/**
+ * 대상별로 KST '어제'와 '오늘'의 일별 집계를 원본에서 다시 계산해 덮어쓴다.
+ *
+ * 왜 매 회차 다시 계산하나?
+ *   - 하루 288행 정도라 매번 다시 세도 부담이 거의 없고, 별도 Cron을 만들 필요가 없습니다.
+ *   - "증가분만 더하기" 방식보다 단순하고, 중간에 한 번 실패해도 다음 회차에 저절로 바로잡혀요.
+ * 왜 '어제'도?
+ *   - 자정 직후 첫 회차에서 어제 마지막 회차(23:55)까지 빠짐없이 반영하기 위해서입니다.
+ */
+async function refreshDailyStats(db, monitorIds, checkedAt) {
+  const today = toKstDay(checkedAt);
+  const days = [addDays(today, -1), today];
+  const stats = [];
+  for (const monitorId of monitorIds) {
+    for (const day of days) {
+      const { startUtc, endUtc } = kstDayRange(day);
+      const rows = await getResultsInRange(db, monitorId, startUtc, endUtc);
+      if (rows.length === 0) continue; // 기록이 없는 날은 행을 만들지 않음 (화면에서 빈 칸)
+      stats.push({ monitorId, day, ...summarizeDay(rows) });
+    }
+  }
+  await upsertDailyStats(db, stats, checkedAt);
+}
+
+/** JSON 응답 도우미 */
+function json(body, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8', ...extraHeaders },
+  });
 }
 
 export default {
@@ -133,11 +182,25 @@ export default {
     await runChecks(env, new Date(controller.scheduledTime));
   },
 
-  // 브라우저로 Worker 주소를 열었을 때의 응답.
-  // 점검 데이터는 아직 공개하지 않습니다 (공개 API는 B-3).
-  async fetch() {
-    return new Response('status-monitor 동작 중입니다. (점검 결과 공개는 아직 준비 중)', {
-      headers: { 'content-type': 'text/plain; charset=utf-8' },
-    });
+  // HTTP 요청 처리.
+  // 상태 페이지 파일(public/의 index.html 등)은 Cloudflare가 정적 파일로 먼저 응답하고,
+  // 파일이 없는 경로(/api/... 등)만 이 함수로 들어옵니다. (assets 설정 → 공식 문서에서 확인할 부분)
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (url.pathname === '/api/status') {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+      try {
+        const body = await buildStatus(env.DB, new Date());
+        // 60초 캐시: 접속이 몰려도 D1 조회가 덜 일어나게 합니다. 점검 주기가 5분이라 60초 늦어도 괜찮아요.
+        return json(body, 200, { 'cache-control': 'public, max-age=60' });
+      } catch (err) {
+        console.error('[API 오류] /api/status:', err);
+        // 내부 오류 내용은 공개 응답에 넣지 않습니다 (로그에만 남김)
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    return json({ error: 'not_found' }, 404);
   },
 };

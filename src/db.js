@@ -130,3 +130,128 @@ export async function insertNotification(db, n) {
     .bind(n.monitorId, n.event, n.channel, n.message, n.failureReason, n.createdAt, n.source)
     .run();
 }
+
+// ─────────────────────────────────────────────
+// 일별 집계 (B-3)
+// ─────────────────────────────────────────────
+
+/**
+ * 한 대상의 [startUtc, endUtc) 구간 점검 결과를 가져온다. (일별 집계 계산용)
+ * (monitor_id, checked_at) 복합 인덱스 덕분에 해당 대상·구간만 바로 읽습니다.
+ */
+export async function getResultsInRange(db, monitorId, startUtc, endUtc) {
+  const { results } = await db
+    .prepare(
+      `SELECT is_success, is_slow, response_ms
+         FROM check_results
+        WHERE monitor_id = ?1 AND checked_at >= ?2 AND checked_at < ?3`
+    )
+    .bind(monitorId, startUtc, endUtc)
+    .all();
+  return results.map((r) => ({
+    isSuccess: r.is_success === 1,
+    isSlow: r.is_slow === 1,
+    responseMs: r.response_ms,
+  }));
+}
+
+/**
+ * 일별 집계를 저장한다 (있으면 덮어쓰기). Cron의 실제 점검에서 계산한 값이라 source = 'real'.
+ */
+export async function upsertDailyStats(db, stats, updatedAt) {
+  if (stats.length === 0) return;
+  const stmt = db.prepare(
+    `INSERT INTO daily_stats
+       (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'real', ?7)
+     ON CONFLICT (monitor_id, day) DO UPDATE SET
+       total_checks    = excluded.total_checks,
+       success_checks  = excluded.success_checks,
+       slow_checks     = excluded.slow_checks,
+       avg_response_ms = excluded.avg_response_ms,
+       updated_at      = excluded.updated_at`
+  );
+  await db.batch(
+    stats.map((s) =>
+      stmt.bind(s.monitorId, s.day, s.totalChecks, s.successChecks, s.slowChecks, s.avgResponseMs, updatedAt)
+    )
+  );
+}
+
+// ─────────────────────────────────────────────
+// 상태 페이지 조회 (B-3)
+// 공개 화면에 쓰이므로 점검 주소(url) 같은 불필요한 값은 아예 조회하지 않습니다.
+// ─────────────────────────────────────────────
+
+/** 모든 대상 + 현재 상태 + 가장 최근 점검 결과 1건 */
+export async function getStatusMonitors(db) {
+  const { results } = await db
+    .prepare(
+      `SELECT m.id, m.name, m.source, m.is_active,
+              s.state,
+              r.checked_at  AS last_checked_at,
+              r.response_ms AS last_response_ms
+         FROM monitors m
+         LEFT JOIN monitor_state s ON s.monitor_id = m.id
+         -- 대상별 "가장 최근 결과 1건": 복합 인덱스로 대상마다 맨 끝 1행만 읽습니다
+         LEFT JOIN check_results r ON r.id = (
+                SELECT id FROM check_results
+                 WHERE monitor_id = m.id
+                 ORDER BY checked_at DESC
+                 LIMIT 1)
+        ORDER BY m.id`
+    )
+    .all();
+  return results.map((r) => ({
+    id: r.id,
+    name: r.name,
+    source: r.source,
+    isActive: r.is_active === 1,
+    state: r.state, // 상태 행이 없으면 null
+    lastCheckedAt: r.last_checked_at,
+    lastResponseMs: r.last_response_ms,
+  }));
+}
+
+/** fromDay(KST, 포함) 이후의 모든 대상 일별 집계 */
+export async function getDailyStatsSince(db, fromDay) {
+  const { results } = await db
+    .prepare(
+      `SELECT monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms
+         FROM daily_stats
+        WHERE day >= ?1`
+    )
+    .bind(fromDay)
+    .all();
+  return results.map((r) => ({
+    monitorId: r.monitor_id,
+    day: r.day,
+    totalChecks: r.total_checks,
+    successChecks: r.success_checks,
+    slowChecks: r.slow_checks,
+    avgResponseMs: r.avg_response_ms,
+  }));
+}
+
+/** 최근 알림 N건 (최신 순) + 대상 이름 */
+export async function getRecentNotifications(db, limit) {
+  const { results } = await db
+    .prepare(
+      `SELECT n.id, n.monitor_id, m.name AS monitor_name, n.event, n.message, n.created_at, n.source
+         FROM notifications n
+         JOIN monitors m ON m.id = n.monitor_id
+        ORDER BY n.created_at DESC, n.id DESC
+        LIMIT ?1`
+    )
+    .bind(limit)
+    .all();
+  return results.map((r) => ({
+    id: r.id,
+    monitorId: r.monitor_id,
+    monitorName: r.monitor_name,
+    event: r.event,
+    message: r.message,
+    createdAt: r.created_at,
+    source: r.source,
+  }));
+}

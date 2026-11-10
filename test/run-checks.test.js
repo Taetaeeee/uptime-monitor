@@ -73,6 +73,14 @@ test('실패 → 실패 → 실패 → 성공: 장애 알림 1건, 복구 알림
   assert.equal(state.consecutive_failures, 0);
   assert.equal(state.failing_since, null);
   assert.equal(state.last_checked_at, '2026-11-10T03:15:00Z');
+
+  // 일별 집계: 한국 날짜 2026-11-10(UTC 03시 = 한국 12시)에 4회 중 1회 성공, 출처 real
+  const daily = db.sqlite.prepare(`SELECT * FROM daily_stats WHERE monitor_id = ?`).all(monitorId);
+  assert.equal(daily.length, 1);
+  assert.equal(daily[0].day, '2026-11-10');
+  assert.equal(daily[0].total_checks, 4);
+  assert.equal(daily[0].success_checks, 1);
+  assert.equal(daily[0].source, 'real');
 });
 
 test('처음부터 정상이면 알림이 없다', async () => {
