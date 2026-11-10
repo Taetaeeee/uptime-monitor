@@ -43,7 +43,16 @@ test('하루 요약: 느림은 성공에 포함, 평균 응답 시간은 성공�
     { isSuccess: false, isSlow: false, responseMs: null }, // 시간 초과
     { isSuccess: false, isSlow: false, responseMs: 50 },   // 503 같은 실패 응답은 평균에서 제외
   ]);
-  assert.deepEqual(s, { totalChecks: 4, successChecks: 2, slowChecks: 1, avgResponseMs: 1800 });
+  assert.deepEqual(s, { totalChecks: 4, successChecks: 2, slowChecks: 1, avgResponseMs: 1800, maintenanceChecks: 0 });
+});
+
+test('하루 요약: 계획 작업 중 점검은 가동률 계산에서 빼고 개수만 센다 (B-5)', () => {
+  const s = summarizeDay([
+    { isSuccess: true, isSlow: false, responseMs: 100 },
+    { isSuccess: false, isSlow: false, responseMs: null, inMaintenance: true }, // 작업 중 실패 → 제외
+    { isSuccess: true, isSlow: false, responseMs: 900, inMaintenance: true },   // 작업 중 성공도 제외
+  ]);
+  assert.deepEqual(s, { totalChecks: 1, successChecks: 1, slowChecks: 0, avgResponseMs: 100, maintenanceChecks: 2 });
 });
 
 test('하루 요약: 성공이 없으면 평균 응답 시간 null', () => {

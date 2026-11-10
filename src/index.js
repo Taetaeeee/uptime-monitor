@@ -3,6 +3,8 @@
 //   [Cron] 대상 조회 → 동시 점검 → 판정 → 기록(record.js: 상태 전이 → 저장 → 알림 → 일별 집계)
 //   [HTTP] GET  /api/status        → 상태 페이지용 JSON (화면 파일은 public/에서 정적 파일로 제공)
 //          POST /api/agent/report  → 내부 점검 에이전트 보고 수집 (ingest.js)
+//          GET  /api/incidents/:id → 장애 상세·보고서 (api.js)
+//          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
 // ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
 
@@ -11,8 +13,9 @@ import { judgeCheck, FAILURE_REASON } from './judge.js';
 import { getActiveMonitors } from './db.js';
 import { toCheckSlot, toIsoSeconds } from './time.js';
 import { recordResults } from './record.js';
-import { buildStatus } from './api.js';
+import { buildStatus, buildIncidentDetail } from './api.js';
 import { handleAgentReport } from './ingest.js';
+import { handleAdmin } from './admin.js';
 
 /**
  * 예약 실행 1회분: 활성 HTTP 대상을 모두 점검하고 기록한다.
@@ -120,6 +123,30 @@ export default {
       } catch (err) {
         console.error('[API 오류] /api/status:', err);
         // 내부 오류 내용은 공개 응답에 넣지 않습니다 (로그에만 남김)
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    // 장애 상세 (공개, B-5)
+    const incidentMatch = url.pathname.match(/^\/api\/incidents\/([1-9]\d{0,9})$/);
+    if (incidentMatch) {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+      try {
+        const body = await buildIncidentDetail(env.DB, Number(incidentMatch[1]), new Date());
+        if (!body) return json({ error: 'not_found' }, 404);
+        return json(body, 200, { 'cache-control': 'public, max-age=60' });
+      } catch (err) {
+        console.error('[API 오류] /api/incidents:', err);
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    // 관리자 API (B-5) — 인증은 admin.js 안에서
+    if (url.pathname.startsWith('/api/admin/')) {
+      try {
+        return await handleAdmin(request, env, url);
+      } catch (err) {
+        console.error('[API 오류] 관리자:', err);
         return json({ error: 'internal_error' }, 500);
       }
     }

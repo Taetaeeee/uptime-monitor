@@ -20,6 +20,7 @@
 --   4) 최근 30일 일별 집계: 어제까지 29일은 집계만 직접 넣고, 오늘은 2)의 원본에서 계산
 --      → 원본을 30일치(약 2.6만 행) 넣으면 D1 쓰기 한도를 크게 쓰기 때문에 집계(90행)로 대신합니다.
 --   5) 장애·복구 알림 (2)·4)의 장애와 시각·메시지가 맞도록)
+--   6) 장애 이력과 보고서(일부), 7) 계획 작업 지난 1건·예정 1건 (B-5)
 --
 -- 시각 계산
 --   회차 시각 slot(n): 지금을 5분 단위로 내림한 뒤 n회차 전. n = 0이 가장 최근.
@@ -36,6 +37,9 @@ DELETE FROM notifications WHERE source = 'sample';
 DELETE FROM daily_stats   WHERE source = 'sample';
 DELETE FROM check_results WHERE source = 'sample';
 DELETE FROM monitor_state WHERE monitor_id IN (SELECT id FROM monitors WHERE source = 'sample');
+-- B-5: 장애 이력·계획 작업 (가상 서비스를 가리키는 것은 출처와 상관없이 함께 지움 — 대상이 사라지므로)
+DELETE FROM incidents           WHERE source = 'sample' OR monitor_id IN (SELECT id FROM monitors WHERE source = 'sample');
+DELETE FROM maintenance_windows WHERE source = 'sample' OR monitor_id IN (SELECT id FROM monitors WHERE source = 'sample');
 DELETE FROM monitors      WHERE source = 'sample';
 
 -- ─────────────────────────────────────────────
@@ -135,18 +139,20 @@ VALUES
 --        고객센터  9일 전 실패 6회(30분)
 
 -- ERP
+--   20일 전 02:00~04:00은 계획 작업(아래 6번) → 그 2시간(24회)은 가동률 계산에서 빼고 maintenance_checks로만 셉니다
 INSERT INTO daily_stats
-  (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at)
+  (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at, maintenance_checks)
 WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 29)
 SELECT
   (SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
   date('now', '+9 hours', '-' || n || ' days'),
-  288,
-  288 - CASE n WHEN 6 THEN 4 WHEN 17 THEN 13 ELSE 0 END,
+  288 - CASE n WHEN 20 THEN 24 ELSE 0 END,
+  288 - CASE n WHEN 20 THEN 24 ELSE 0 END - CASE n WHEN 6 THEN 4 WHEN 17 THEN 13 ELSE 0 END,
   CASE WHEN n % 5 = 0 THEN 2 ELSE 0 END,
   420 + (n * 37) % 120,
   'sample',
-  strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+  CASE n WHEN 20 THEN 24 ELSE 0 END
 FROM seq;
 
 -- 그룹웨어
@@ -252,3 +258,95 @@ INSERT INTO notifications (monitor_id, event, channel, message, failure_reason, 
   ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'), 'down', 'log',
    '[장애] ○○산업 고객센터: 연속 실패로 장애 판정 (키워드 없음)', 'keyword_missing',
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'), 'sample');
+
+-- ─────────────────────────────────────────────
+-- 6) 장애 이력 (B-5) — 5)의 알림과 같은 장애를 1건씩 묶은 것
+-- ─────────────────────────────────────────────
+-- started_at = 첫 실패, detected_at = 장애 판정(알림 시각), resolved_at = 복구 (진행 중이면 NULL)
+-- 보고서는 일부 장애에만 작성해 두어 '작성 전' 상태도 화면에서 보이게 합니다. 내용은 모두 가상입니다.
+INSERT INTO incidents
+  (monitor_id, started_at, detected_at, resolved_at, cause,
+   report_summary, report_impact, report_root_cause, report_action, report_prevention, report_updated_at, source)
+VALUES
+  -- ERP 17일 전 14:00~15:05 (65분), 보고서 있음
+  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-17 days') || ' 14:00:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-17 days') || ' 14:05:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-17 days') || ' 15:05:00', '-9 hours'),
+   'timeout',
+   'ERP 응답 지연으로 약 65분간 접속이 원활하지 않았습니다. (데모)',
+   '오후 업무 시간에 ERP 조회·전표 입력이 10초 이상 걸리거나 시간 초과로 실패했습니다.',
+   '월말 정산 배치가 업무 시간에 수동 실행되어 DB 잠금이 길어졌습니다.',
+   '배치를 중지하고 잠금을 해제한 뒤 정상 응답을 확인했습니다. 배치는 야간에 다시 실행했습니다.',
+   '정산 배치는 업무 시간 실행을 막고 야간 스케줄로만 돌리도록 운영 절차를 바꿉니다.',
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-16 days') || ' 10:00:00', '-9 hours'),
+   'sample'),
+  -- 그룹웨어 12일 전 02:00~04:30 (150분), 보고서 있음
+  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-12 days') || ' 02:00:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-12 days') || ' 02:05:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-12 days') || ' 04:30:00', '-9 hours'),
+   'status_mismatch',
+   '새벽 시간 그룹웨어가 503 오류를 반환했습니다. (데모)',
+   '야간 근무자의 메일·결재 확인이 약 2시간 30분 동안 불가했습니다.',
+   '디스크 용량 부족으로 애플리케이션 로그를 쓰지 못해 서비스가 멈췄습니다.',
+   '오래된 로그를 정리해 공간을 확보하고 서비스를 재시작했습니다.',
+   '로그 보관 주기를 30일로 정하고, 디스크 사용률을 내부 점검 대상으로 추가합니다.',
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-11 days') || ' 09:30:00', '-9 hours'),
+   'sample'),
+  -- 고객센터 9일 전 09:00~09:30 (30분), 보고서 없음
+  ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-9 days') || ' 09:00:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-9 days') || ' 09:05:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-9 days') || ' 09:30:00', '-9 hours'),
+   'keyword_missing', NULL, NULL, NULL, NULL, NULL, NULL, 'sample'),
+  -- ERP 6일 전 21:10~21:30 (20분), 보고서 있음
+  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:10:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:15:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:30:00', '-9 hours'),
+   'timeout',
+   '야간 백업과 겹쳐 ERP 응답이 20분간 지연되었습니다. (데모)',
+   '야간 근무자의 재고 조회가 지연되었습니다.',
+   '백업 시작 시각이 변경되면서 야간 집계 작업과 겹쳤습니다.',
+   '집계 작업을 백업 이후로 미뤄 응답을 정상화했습니다.',
+   '야간 작업 일정을 한 표로 관리하고, 겹치는 작업은 계획 작업 시간으로 미리 공지합니다.',
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-5 days') || ' 11:00:00', '-9 hours'),
+   'sample'),
+  -- 그룹웨어 3일 전 11:40~11:50 (10분), 보고서 없음
+  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-3 days') || ' 11:40:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-3 days') || ' 11:45:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-3 days') || ' 11:50:00', '-9 hours'),
+   'network_error', NULL, NULL, NULL, NULL, NULL, NULL, 'sample'),
+  -- 그룹웨어 오늘: 원본 n=6(첫 실패) → n=5(판정) → n=4(복구), 보고서 없음
+  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 6 * 300, 'unixepoch'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 5 * 300, 'unixepoch'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 4 * 300, 'unixepoch'),
+   'status_mismatch', NULL, NULL, NULL, NULL, NULL, NULL, 'sample'),
+  -- 고객센터 지금: 원본 n=1(첫 실패) → n=0(판정), 진행 중 (resolved_at NULL)
+  ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 1 * 300, 'unixepoch'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'),
+   NULL,
+   'keyword_missing', NULL, NULL, NULL, NULL, NULL, NULL, 'sample');
+
+-- ─────────────────────────────────────────────
+-- 7) 계획 작업 (B-5) — 가상 서비스에만 (실제 대상의 점검에는 영향 없음)
+-- ─────────────────────────────────────────────
+INSERT INTO maintenance_windows (monitor_id, title, starts_at, ends_at, source, created_at) VALUES
+  -- 지난 작업: ERP 20일 전 02:00~04:00 (4)의 일별 집계에서 그날 24회를 가동률에서 제외한 것과 같은 시간)
+  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+   'ERP DB 정기 점검 (데모)',
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-20 days') || ' 02:00:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-20 days') || ' 04:00:00', '-9 hours'),
+   'sample',
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-27 days') || ' 10:00:00', '-9 hours')),
+  -- 예정 작업: 그룹웨어 2일 뒤 22:00~23:30
+  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+   '그룹웨어 보안 패치 (데모)',
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '+2 days') || ' 22:00:00', '-9 hours'),
+   strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '+2 days') || ' 23:30:00', '-9 hours'),
+   'sample',
+   strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));

@@ -18,6 +18,9 @@ DELETE FROM notifications WHERE source = 'simulator';
 DELETE FROM daily_stats   WHERE source = 'simulator';
 DELETE FROM check_results WHERE source = 'simulator';
 DELETE FROM monitor_state WHERE monitor_id IN (SELECT id FROM monitors WHERE source = 'simulator');
+-- B-5: 장애 이력·계획 작업 (시뮬레이터 대상을 가리키는 것은 함께 지움 — 대상이 사라지므로)
+DELETE FROM incidents           WHERE source = 'simulator' OR monitor_id IN (SELECT id FROM monitors WHERE source = 'simulator');
+DELETE FROM maintenance_windows WHERE source = 'simulator' OR monitor_id IN (SELECT id FROM monitors WHERE source = 'simulator');
 DELETE FROM monitors      WHERE source = 'simulator';
 
 -- max_response_ms: ping·tcp의 '느림' 기준 / threshold: disk = 사용률 상한(%), ssl = 남은 일수 하한(일)

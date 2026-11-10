@@ -7,3 +7,7 @@
 
 # 내부 점검 에이전트가 보고할 때 쓰는 키 (Authorization: Bearer <이 값>)
 AGENT_API_KEY=여기에_직접_만든_긴_무작위_문자열
+
+# 관리자 API(보고서 작성, 계획 작업 등록·취소) 토큰 — 에이전트 키와 다른 값으로 (B-5)
+#   배포본: npx.cmd wrangler secret put ADMIN_TOKEN
+ADMIN_TOKEN=여기에_에이전트_키와_다른_긴_무작위_문자열

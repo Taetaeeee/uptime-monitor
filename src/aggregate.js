@@ -40,17 +40,21 @@ export function uptimePercent(success, total) {
 
 /**
  * 하루치 점검 결과를 요약한다.
- * @param {Array<{isSuccess:boolean, isSlow:boolean, responseMs:number|null}>} rows
+ * 계획 작업 중 점검(inMaintenance)은 가동률 계산(전체·성공·느림·평균)에서 빼고 개수만 따로 셉니다. (B-5)
+ *   → 미리 알린 작업 시간의 중단은 "장애"가 아니므로 가동률을 깎지 않는 것이 SLA의 일반적인 규칙이에요.
+ * @param {Array<{isSuccess:boolean, isSlow:boolean, responseMs:number|null, inMaintenance?:boolean}>} rows
  */
 export function summarizeDay(rows) {
-  const successes = rows.filter((r) => r.isSuccess);
+  const counted = rows.filter((r) => !r.inMaintenance);
+  const successes = counted.filter((r) => r.isSuccess);
   const times = successes.map((r) => r.responseMs).filter((ms) => ms !== null && ms !== undefined);
   return {
-    totalChecks: rows.length,
+    totalChecks: counted.length,
     successChecks: successes.length,
     slowChecks: successes.filter((r) => r.isSlow).length,
     // 평균 응답 시간은 성공한 점검만으로 계산 (실패는 응답이 없거나 의미가 달라서)
     avgResponseMs: times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null,
+    maintenanceChecks: rows.length - counted.length,
   };
 }
 

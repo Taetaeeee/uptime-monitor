@@ -9,33 +9,13 @@ import { getMonitorsByKeys, getMonitorStates } from './db.js';
 import { validateReport, judgeAgentCheck, AGENT_KINDS, MAX_REPORT_BYTES } from './agent-judge.js';
 import { recordResults } from './record.js';
 import { toCheckSlot } from './time.js';
+import { checkBearer } from './auth.js';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
-}
-
-/**
- * 두 문자열이 같은지 "걸리는 시간이 내용과 상관없게" 비교한다.
- *
- * 왜? 보통의 a === b 는 앞에서부터 비교하다 다른 글자를 만나면 바로 끝나서,
- * 응답 시간을 재면 키를 한 글자씩 맞혀 볼 수 있습니다(타이밍 공격).
- * 두 값을 SHA-256으로 같은 길이(32바이트)로 만든 뒤 모든 바이트를 끝까지 비교하면 이 단서가 사라져요.
- * (crypto.subtle은 Workers와 Node 모두에 있어서 테스트에서도 그대로 동작합니다)
- */
-async function safeEqual(a, b) {
-  const enc = new TextEncoder();
-  const [ha, hb] = await Promise.all([
-    crypto.subtle.digest('SHA-256', enc.encode(a)),
-    crypto.subtle.digest('SHA-256', enc.encode(b)),
-  ]);
-  const x = new Uint8Array(ha);
-  const y = new Uint8Array(hb);
-  let diff = 0;
-  for (let i = 0; i < x.length; i += 1) diff |= x[i] ^ y[i];
-  return diff === 0;
 }
 
 /**
@@ -46,15 +26,14 @@ async function safeEqual(a, b) {
 export async function handleAgentReport(request, env, deps = {}) {
   const now = deps.now ?? new Date();
 
-  // ── 1) 인증 ──
+  // ── 1) 인증 (auth.js: 타이밍 안전 비교) ──
   // 키가 등록되지 않았으면 아무도 보고할 수 없게 막습니다 ("키 없음 = 누구나 허용"이 되면 안 되므로)
-  if (!env.AGENT_API_KEY) {
+  const auth = await checkBearer(request, env.AGENT_API_KEY);
+  if (auth === 'disabled') {
     console.error('[수집] AGENT_API_KEY가 등록되지 않아 보고를 받지 않습니다.');
     return json({ error: 'agent_api_disabled' }, 503);
   }
-  const auth = request.headers.get('authorization') ?? '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  if (!token || !(await safeEqual(token, env.AGENT_API_KEY))) {
+  if (auth !== 'ok') {
     // 키가 틀렸다는 것 외에는 아무 정보도 주지 않습니다
     return json({ error: 'unauthorized' }, 401);
   }

@@ -8,8 +8,8 @@
 
 import { TRANSITION } from './state.js';
 
-// 실패 이유 코드 → 사람이 읽는 문장
-const REASON_TEXT = {
+// 실패 이유 코드 → 사람이 읽는 문장 (알림 메시지와 장애 이력 화면(api.js)이 함께 사용)
+export const REASON_TEXT = {
   timeout: '응답 시간 초과',
   network_error: '네트워크 오류',
   status_mismatch: '상태 코드 불일치',

@@ -1,7 +1,5 @@
 // 상태 페이지 스크립트 — /api/status를 받아 화면을 그린다.
-//
-// 안전: 서버에서 온 글자(서비스 이름, 알림 메시지)는 innerHTML이 아니라 textContent로 넣습니다.
-//       그래야 데이터에 HTML 태그가 섞여 있어도 실행되지 않아요(XSS 방지).
+// 공용 도우미(formatKst, el, sourceBadge, formatMinutes, fetchJson)는 common.js에 있습니다.
 
 const REFRESH_MS = 60_000; // 60초마다 새로 고침 (API 캐시 시간과 같게)
 
@@ -10,32 +8,8 @@ const STATE_TEXT = {
   down: '장애',
   unknown: '확인 중',
   paused: '점검 대기',
+  maintenance: '계획 작업 중',
 };
-
-// UTC ISO → 한국 시간 문자열 (예: 11. 10. 오후 12:05)
-const kstFormat = new Intl.DateTimeFormat('ko-KR', {
-  timeZone: 'Asia/Seoul',
-  month: 'numeric',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-});
-const formatKst = (iso) => (iso ? kstFormat.format(new Date(iso)) : '-');
-
-// 작은 요소 생성 도우미: el('span', 'class', '글자')
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined && text !== null) node.textContent = text;
-  return node;
-}
-
-// 출처 표시: sample(시드) → '데모 데이터', simulator(에이전트 시뮬레이터) → '시뮬레이터', real → 표시 없음
-function sourceBadge(source) {
-  if (source === 'sample') return el('span', 'badge badge--demo', '데모 데이터');
-  if (source === 'simulator') return el('span', 'badge badge--sim', '시뮬레이터');
-  return null;
-}
 
 // 점검 종류별 "마지막 측정값" 문구
 //   HTTP·ping·TCP는 응답 시간, 디스크는 사용률, 인증서는 남은 일수, 서비스는 실행 여부
@@ -65,14 +39,33 @@ function barClass(uptime) {
 function renderSummary(services) {
   const box = document.getElementById('summary');
   const text = document.getElementById('summary-text');
-  // 점검 대기(비활성 실제 대상)는 전체 판단에서 뺍니다
-  const watched = services.filter((s) => s.state !== 'paused');
-  const down = watched.filter((s) => s.state === 'down');
+  // 점검 대기(비활성 실제 대상)·계획 작업 중인 대상은 장애 판단에서 뺍니다
+  const down = services.filter((s) => s.state === 'down');
 
   box.className = 'summary ' + (down.length ? 'summary--down' : 'summary--up');
   text.textContent = down.length
     ? `${down.length}개 서비스 장애: ${down.map((s) => s.name).join(', ')}`
     : '모든 서비스 정상';
+}
+
+// 계획 작업 안내 (진행 중 + 예정)
+function renderMaintenance(list) {
+  const root = document.getElementById('maintenance');
+  root.replaceChildren(
+    ...list.map((w) => {
+      const box = el('div', `maint ${w.active ? 'maint--active' : ''}`);
+      const head = el('div', 'maint__head', w.active ? '계획 작업 중' : '예정된 계획 작업');
+      const badge = sourceBadge(w.source);
+      if (badge) head.append(' ', badge);
+      const target = w.monitorName ?? '모든 서비스';
+      box.append(
+        head,
+        el('div', 'maint__title', `${w.title} — ${target}`),
+        el('div', 'maint__time', `${formatKst(w.startsAt)} ~ ${formatKst(w.endsAt)} (이 시간의 점검은 가동률에서 제외)`)
+      );
+      return box;
+    })
+  );
 }
 
 function renderServices(services) {
@@ -116,6 +109,38 @@ function renderServices(services) {
   );
 }
 
+// 장애 이력 (최근 10건) — 각 줄은 상세 페이지로 가는 링크
+function renderIncidents(list) {
+  const root = document.getElementById('incidents');
+  if (list.length === 0) {
+    root.replaceChildren(el('li', 'notes__empty', '기록된 장애가 없습니다.'));
+    return;
+  }
+  root.replaceChildren(
+    ...list.map((i) => {
+      const li = el('li', `inc ${i.ongoing ? 'inc--ongoing' : ''}`);
+      const link = el('a', 'inc__link');
+      link.href = `/incident.html?id=${encodeURIComponent(i.id)}`;
+
+      const title = el('div', 'inc__title', i.monitorName);
+      const badge = sourceBadge(i.source);
+      if (badge) title.append(' ', badge);
+      title.append(' ', el('span', `inc__state ${i.ongoing ? 'inc__state--ongoing' : ''}`, i.ongoing ? '진행 중' : '복구됨'));
+
+      const when = i.ongoing
+        ? `${formatKst(i.startedAt)} ~ 진행 중 (${formatMinutes(i.durationMinutes)} 경과)`
+        : `${formatKst(i.startedAt)} ~ ${formatKst(i.resolvedAt)} (${formatMinutes(i.durationMinutes)})`;
+      const meta = el('div', 'inc__meta', `${when} · 원인: ${i.causeText ?? '-'}`);
+      const summary = el('div', 'inc__summary', i.hasReport ? i.summary : '보고서 작성 전');
+      if (!i.hasReport) summary.classList.add('muted');
+
+      link.append(title, meta, summary);
+      li.append(link);
+      return li;
+    })
+  );
+}
+
 function renderNotifications(notes) {
   const root = document.getElementById('notifications');
   if (notes.length === 0) {
@@ -136,12 +161,11 @@ function renderNotifications(notes) {
 
 async function load() {
   try {
-    const res = await fetch('/api/status', { headers: { accept: 'application/json' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
+    const data = await fetchJson('/api/status');
     renderSummary(data.services);
+    renderMaintenance(data.maintenance ?? []);
     renderServices(data.services);
+    renderIncidents(data.incidents ?? []);
     renderNotifications(data.notifications);
     document.getElementById('updated').textContent = `마지막 갱신: ${formatKst(data.generatedAt)}`;
   } catch (err) {

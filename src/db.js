@@ -96,16 +96,30 @@ export async function getMonitorsByKeys(db, keys) {
  * '?1, ?2 ...' 자리표시자를 쓰는 이유: 값을 SQL 문자열에 직접 이어 붙이면
  * SQL 인젝션 위험이 생깁니다. bind로 넘기면 DB가 값으로만 취급해요.
  */
-export async function saveCheckResults(db, rows, states = [], source = 'real') {
+export async function saveCheckResults(db, rows, states = [], source = 'real', incidents = {}) {
   if (rows.length === 0 && states.length === 0) return;
+  const opens = incidents.open ?? [];
+  const closes = incidents.close ?? [];
 
   // source: Cron의 HTTP 점검과 실제 에이전트는 'real', 에이전트 시뮬레이터는 'simulator'.
   // 호출하는 쪽이 출처를 명시하게 해서, 출처 없이 저장되는 일이 없도록 합니다. (CLAUDE.md 가짜 데이터 규칙)
   // value: 디스크 사용률·인증서 남은 일수 같은 측정값 (HTTP 점검은 없음 → NULL)
   const stmt = db.prepare(
     `INSERT INTO check_results
-       (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, value, source)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+       (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, value, source,
+        in_maintenance)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`
+  );
+
+  // 장애 이력 (B-5): 상태 전이와 같은 batch에 넣어서 "상태는 down인데 장애 기록이 없는" 어긋남을 막습니다.
+  //   열기: 진행 중 장애가 이미 있으면(부분 UNIQUE 인덱스) 무시 → 중복 장애가 쌓이지 않음
+  //   닫기: 그 대상의 진행 중 장애를 복구 처리
+  const openStmt = db.prepare(
+    `INSERT OR IGNORE INTO incidents (monitor_id, started_at, detected_at, cause, source)
+     VALUES (?1, ?2, ?3, ?4, ?5)`
+  );
+  const closeStmt = db.prepare(
+    `UPDATE incidents SET resolved_at = ?2 WHERE monitor_id = ?1 AND resolved_at IS NULL`
   );
 
   // "있으면 갱신, 없으면 추가" (upsert). monitor_id가 기본 키라서 ON CONFLICT로 처리할 수 있어요.
@@ -133,7 +147,8 @@ export async function saveCheckResults(db, rows, states = [], source = 'real') {
         r.responseMs ?? null,
         r.failureReason,
         r.value ?? null,
-        source
+        source,
+        r.inMaintenance ? 1 : 0
       )
     ),
     ...states.map((s) =>
@@ -147,6 +162,8 @@ export async function saveCheckResults(db, rows, states = [], source = 'real') {
         s.changedAt
       )
     ),
+    ...closes.map((c) => closeStmt.bind(c.monitorId, c.resolvedAt)),
+    ...opens.map((o) => openStmt.bind(o.monitorId, o.startedAt, o.detectedAt, o.cause, source)),
   ]);
 }
 
@@ -175,7 +192,7 @@ export async function insertNotification(db, n) {
 export async function getResultsInRange(db, monitorId, startUtc, endUtc) {
   const { results } = await db
     .prepare(
-      `SELECT is_success, is_slow, response_ms
+      `SELECT is_success, is_slow, response_ms, in_maintenance
          FROM check_results
         WHERE monitor_id = ?1 AND checked_at >= ?2 AND checked_at < ?3`
     )
@@ -185,6 +202,7 @@ export async function getResultsInRange(db, monitorId, startUtc, endUtc) {
     isSuccess: r.is_success === 1,
     isSlow: r.is_slow === 1,
     responseMs: r.response_ms,
+    inMaintenance: r.in_maintenance === 1,
   }));
 }
 
@@ -195,18 +213,23 @@ export async function upsertDailyStats(db, stats, updatedAt, source = 'real') {
   if (stats.length === 0) return;
   const stmt = db.prepare(
     `INSERT INTO daily_stats
-       (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7)
+       (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at,
+        maintenance_checks)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7, ?9)
      ON CONFLICT (monitor_id, day) DO UPDATE SET
-       total_checks    = excluded.total_checks,
-       success_checks  = excluded.success_checks,
-       slow_checks     = excluded.slow_checks,
-       avg_response_ms = excluded.avg_response_ms,
-       updated_at      = excluded.updated_at`
+       total_checks       = excluded.total_checks,
+       success_checks     = excluded.success_checks,
+       slow_checks        = excluded.slow_checks,
+       avg_response_ms    = excluded.avg_response_ms,
+       updated_at         = excluded.updated_at,
+       maintenance_checks = excluded.maintenance_checks`
   );
   await db.batch(
     stats.map((s) =>
-      stmt.bind(s.monitorId, s.day, s.totalChecks, s.successChecks, s.slowChecks, s.avgResponseMs, updatedAt, source)
+      stmt.bind(
+        s.monitorId, s.day, s.totalChecks, s.successChecks, s.slowChecks, s.avgResponseMs, updatedAt, source,
+        s.maintenanceChecks ?? 0
+      )
     )
   );
 }
@@ -290,4 +313,173 @@ export async function getRecentNotifications(db, limit) {
     createdAt: r.created_at,
     source: r.source,
   }));
+}
+
+// ─────────────────────────────────────────────
+// 계획 작업 (B-5)
+// ─────────────────────────────────────────────
+
+function mapWindow(r) {
+  return {
+    id: r.id,
+    monitorId: r.monitor_id, // NULL = 모든 대상
+    monitorName: r.monitor_name ?? null,
+    title: r.title,
+    startsAt: r.starts_at,
+    endsAt: r.ends_at,
+    source: r.source,
+  };
+}
+
+/** 이 시각에 진행 중인 작업 [starts_at, ends_at) */
+export async function getActiveMaintenanceAt(db, atIso) {
+  const { results } = await db
+    .prepare(
+      `SELECT id, monitor_id, title, starts_at, ends_at, source
+         FROM maintenance_windows
+        WHERE starts_at <= ?1 AND ends_at > ?1`
+    )
+    .bind(atIso)
+    .all();
+  return results.map(mapWindow);
+}
+
+/** 진행 중이거나 앞으로 예정된 작업 (시작 순) + 대상 이름 */
+export async function getCurrentAndUpcomingMaintenance(db, nowIso, limit = 20) {
+  const { results } = await db
+    .prepare(
+      `SELECT w.id, w.monitor_id, m.name AS monitor_name, w.title, w.starts_at, w.ends_at, w.source
+         FROM maintenance_windows w
+         LEFT JOIN monitors m ON m.id = w.monitor_id
+        WHERE w.ends_at > ?1
+        ORDER BY w.starts_at
+        LIMIT ?2`
+    )
+    .bind(nowIso, limit)
+    .all();
+  return results.map(mapWindow);
+}
+
+/**
+ * 계획 작업을 저장한다.
+ * @param {string} source  작업 대상의 출처 (admin.js가 대상에서 가져옴) — 가짜 대상의 작업이 실제 작업처럼 보이지 않게
+ */
+export async function insertMaintenance(db, w, createdAt, source) {
+  const r = await db
+    .prepare(
+      `INSERT INTO maintenance_windows (monitor_id, title, starts_at, ends_at, source, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?6, ?5)`
+    )
+    .bind(w.monitorId, w.title, w.startsAt, w.endsAt, createdAt, source)
+    .run();
+  return r.meta?.last_row_id ?? null;
+}
+
+/** @returns 지운 행 수 (0이면 없는 작업) */
+export async function deleteMaintenance(db, id) {
+  const r = await db.prepare(`DELETE FROM maintenance_windows WHERE id = ?1`).bind(id).run();
+  return r.meta?.changes ?? 0;
+}
+
+/** 대상의 출처 ('real' | 'sample' | 'simulator'). 없는 대상이면 null */
+export async function getMonitorSource(db, id) {
+  const row = await db.prepare(`SELECT source FROM monitors WHERE id = ?1`).bind(id).first();
+  return row ? row.source : null;
+}
+
+// ─────────────────────────────────────────────
+// 장애 이력 (B-5)
+// ─────────────────────────────────────────────
+
+/** 진행 중인 장애: monitorId → { id, startedAt } (복구 메시지의 장애 시간 계산용) */
+export async function getOpenIncidents(db) {
+  const { results } = await db
+    .prepare(`SELECT id, monitor_id, started_at FROM incidents WHERE resolved_at IS NULL`)
+    .all();
+  return new Map(results.map((r) => [r.monitor_id, { id: r.id, startedAt: r.started_at }]));
+}
+
+function mapIncident(r) {
+  return {
+    id: r.id,
+    monitorId: r.monitor_id,
+    monitorName: r.monitor_name,
+    monitorKind: r.monitor_kind,
+    startedAt: r.started_at,
+    detectedAt: r.detected_at,
+    resolvedAt: r.resolved_at,
+    cause: r.cause,
+    source: r.source,
+  };
+}
+
+/** 최근 장애 N건 (시작 최신 순) + 보고서 작성 여부 */
+export async function getRecentIncidents(db, limit) {
+  const { results } = await db
+    .prepare(
+      `SELECT i.id, i.monitor_id, m.name AS monitor_name, m.kind AS monitor_kind,
+              i.started_at, i.detected_at, i.resolved_at, i.cause, i.source,
+              i.report_summary
+         FROM incidents i
+         JOIN monitors m ON m.id = i.monitor_id
+        ORDER BY i.started_at DESC, i.id DESC
+        LIMIT ?1`
+    )
+    .bind(limit)
+    .all();
+  return results.map((r) => ({ ...mapIncident(r), summary: r.report_summary }));
+}
+
+/** 장애 1건 + 보고서 전체 */
+export async function getIncident(db, id) {
+  const r = await db
+    .prepare(
+      `SELECT i.*, m.name AS monitor_name, m.kind AS monitor_kind
+         FROM incidents i
+         JOIN monitors m ON m.id = i.monitor_id
+        WHERE i.id = ?1`
+    )
+    .bind(id)
+    .first();
+  if (!r) return null;
+  return {
+    ...mapIncident(r),
+    report: {
+      summary: r.report_summary,
+      impact: r.report_impact,
+      rootCause: r.report_root_cause,
+      action: r.report_action,
+      prevention: r.report_prevention,
+      updatedAt: r.report_updated_at,
+    },
+  };
+}
+
+/** 장애 기간 [from, to]의 해당 대상 알림 (상세 페이지 타임라인용) */
+export async function getNotificationsBetween(db, monitorId, fromIso, toIso) {
+  const { results } = await db
+    .prepare(
+      `SELECT event, message, created_at, source
+         FROM notifications
+        WHERE monitor_id = ?1 AND created_at >= ?2 AND created_at <= ?3
+        ORDER BY created_at, id`
+    )
+    .bind(monitorId, fromIso, toIso)
+    .all();
+  return results.map((r) => ({ event: r.event, message: r.message, createdAt: r.created_at, source: r.source }));
+}
+
+/**
+ * 보고서 항목을 고친다. columns는 incident.js의 validateIncidentReport가 만든 {DB컬럼: 값}만 받습니다.
+ * 컬럼 이름을 SQL에 이어 붙이지만, 값은 정해진 5개 이름 목록에서만 오므로 인젝션 위험이 없어요(값은 bind).
+ * @returns 바뀐 행 수 (0이면 없는 장애)
+ */
+export async function updateIncidentReport(db, id, columns, updatedAt) {
+  const names = Object.keys(columns);
+  const sets = names.map((c, i) => `${c} = ?${i + 3}`).join(', ');
+  const r = await db
+    .prepare(`UPDATE incidents SET report_updated_at = ?2, ${sets} WHERE id = ?1`)
+    .bind(id, updatedAt, ...names.map((c) => columns[c]))
+    .run();
+  return r.meta?.changes ?? 0;
 }

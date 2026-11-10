@@ -28,7 +28,8 @@ class FakeStatement {
   }
   runSync() {
     const info = this.sqlite.prepare(this.sql).run(...this.params);
-    return { success: true, meta: { changes: info.changes } };
+    // D1의 run() 결과처럼 바뀐 행 수와 마지막으로 추가된 행 id를 돌려줍니다
+    return { success: true, meta: { changes: info.changes, last_row_id: Number(info.lastInsertRowid) } };
   }
   async run() {
     return this.runSync();
