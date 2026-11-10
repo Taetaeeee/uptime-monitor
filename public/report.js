@@ -104,7 +104,7 @@ async function load() {
   try {
     const data = await fetchJson(url);
     document.getElementById('title').textContent = `${monthLabel(data.month)} 가용성 보고서`;
-    document.title = `${monthLabel(data.month)} 가용성 보고서 · ○○산업`;
+    document.title = `${monthLabel(data.month)} 가용성 보고서 · Uptime Monitor`;
     document.getElementById('subtitle').textContent =
       `${data.period.startDay} ~ ${data.period.endDay} (한국 시간) · SLA 목표 ${data.targetPercent}%` +
       (data.period.inProgress ? ' · 진행 중인 달이라 숫자가 계속 바뀝니다' : '');

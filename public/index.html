@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>○○산업 서비스 상태</title>
-  <meta name="description" content="가상 회사 ○○산업의 서비스 가동 상태·장애 이력·최근 알림 (포트폴리오 프로젝트)">
+  <title>Uptime Monitor</title>
+  <meta name="description" content="가상 회사의 서비스 가동 상태·장애 이력·최근 알림 (포트폴리오 프로젝트)">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -19,8 +19,8 @@
       <a class="brand" href="/">
         <span class="brand__logo" data-icon="activity"></span>
         <span>
-          <span class="brand__name">○○산업 서비스 상태</span>
-          <span class="brand__sub">Service Status · Portfolio</span>
+          <span class="brand__name">Uptime Monitor</span>
+          <span class="brand__sub">서비스 상태 진단</span>
         </span>
       </a>
       <nav class="topnav" aria-label="주요 링크">
@@ -44,7 +44,7 @@
             </div>
           </div>
           <p class="hero__desc">
-            가상 회사 ○○산업의 웹 서비스(HTTP·DNS)와 사내 시스템(ping·포트·디스크·인증서·서비스)을 5분마다 점검하고,
+            가상 회사의 웹 서비스(HTTP·DNS)와 사내 시스템(ping·포트·디스크·인증서·서비스)을 5분마다 점검하고,
             2회 연속 실패를 장애로 판정해 기록합니다. 서비스 카드를 누르면 '서비스 상세'에서 자세한 정보를 볼 수 있어요.
           </p>
         </div>
@@ -55,64 +55,63 @@
     <!-- 계획 작업 안내 (진행 중·예정). 없으면 숨김 -->
     <section id="maintenance" class="maint-list" aria-label="계획 작업"></section>
 
-    <div class="layout">
-      <div class="col-main">
-        <section class="panel" aria-labelledby="services-title">
-          <div class="panel__head">
-            <div>
-              <h2 class="panel__title" id="services-title">서비스 현황</h2>
-              <p class="panel__desc">검색과 상태 필터로 원하는 서비스를 빠르게 찾을 수 있습니다.</p>
-            </div>
-            <div class="toolbar">
-              <label class="search">
-                <span data-icon="search" data-icon-class="ico ico--sm"></span>
-                <input id="search" type="search" placeholder="서비스 이름 검색" aria-label="서비스 이름 검색" autocomplete="off">
-              </label>
-              <div class="filters" id="filters" role="group" aria-label="상태 필터"></div>
-            </div>
-          </div>
-          <div class="services" id="services"></div>
-          <div class="legend" style="margin-top:14px" aria-hidden="true">
-            <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-good)"></span>99.9% 이상</span>
-            <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-warn)"></span>99% 이상</span>
-            <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-bad)"></span>99% 미만</span>
-            <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-empty)"></span>기록 없음</span>
-          </div>
-        </section>
-
-        <section class="panel" aria-labelledby="incidents-title">
-          <div class="panel__head">
-            <div>
-              <h2 class="panel__title" id="incidents-title">장애 이력</h2>
-              <p class="panel__desc">최근 장애를 시작 시각 순으로 정리했습니다. 누르면 사후 보고서를 볼 수 있어요.</p>
-            </div>
-          </div>
-          <ol id="incidents" class="incidents"></ol>
-        </section>
-
-        <section class="panel" aria-labelledby="notes-title">
-          <div class="panel__head">
-            <div>
-              <h2 class="panel__title" id="notes-title">최근 알림</h2>
-              <p class="panel__desc">상태가 바뀔 때(장애·복구)만 기록되는 알림입니다.</p>
-            </div>
-          </div>
-          <ol id="notifications" class="notes"></ol>
-        </section>
+    <!-- ① 한눈에 보기: 서비스 현황 (전체 폭) -->
+    <section class="panel" aria-labelledby="services-title">
+      <div class="panel__head">
+        <div>
+          <h2 class="panel__title" id="services-title">서비스 현황</h2>
+          <p class="panel__desc">카드를 누르면 아래 '서비스 상세'에서 자세한 정보를 볼 수 있습니다.</p>
+        </div>
+        <div class="toolbar">
+          <label class="search">
+            <span data-icon="search" data-icon-class="ico ico--sm"></span>
+            <input id="search" type="search" placeholder="서비스 이름 검색" aria-label="서비스 이름 검색" autocomplete="off">
+          </label>
+          <div class="filters" id="filters" role="group" aria-label="상태 필터"></div>
+        </div>
       </div>
+      <div class="services" id="services"></div>
+      <div class="legend" style="margin-top:14px" aria-hidden="true">
+        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-good)"></span>99.9% 이상</span>
+        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-warn)"></span>99% 이상</span>
+        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-bad)"></span>99% 미만</span>
+        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-empty)"></span>기록 없음</span>
+      </div>
+    </section>
 
-      <aside class="col-side">
-        <section class="panel panel--sticky" aria-labelledby="detail-title">
-          <div class="panel__head">
-            <div>
-              <h2 class="panel__title" id="detail-title">서비스 상세</h2>
-              <p class="panel__desc">선택한 서비스의 점검 정보입니다.</p>
-            </div>
+    <!-- ② 상세: 왼쪽 선택한 서비스, 오른쪽 최근 알림 -->
+    <div class="split">
+      <section class="panel" id="detail-panel" aria-labelledby="detail-title">
+        <div class="panel__head">
+          <div>
+            <h2 class="panel__title" id="detail-title">서비스 상세</h2>
+            <p class="panel__desc">선택한 서비스의 점검 정보입니다.</p>
           </div>
-          <div id="detail"><p class="detail__empty">불러오는 중…</p></div>
-        </section>
-      </aside>
+        </div>
+        <div id="detail"><p class="detail__empty">불러오는 중…</p></div>
+      </section>
+
+      <section class="panel" aria-labelledby="notes-title">
+        <div class="panel__head">
+          <div>
+            <h2 class="panel__title" id="notes-title">최근 알림</h2>
+            <p class="panel__desc">상태가 바뀔 때(장애·복구)만 기록됩니다. 최근 5건을 먼저 보여 줍니다.</p>
+          </div>
+        </div>
+        <div id="notifications"></div>
+      </section>
     </div>
+
+    <!-- ③ 장애 이력 -->
+    <section class="panel" aria-labelledby="incidents-title">
+      <div class="panel__head">
+        <div>
+          <h2 class="panel__title" id="incidents-title">장애 이력</h2>
+          <p class="panel__desc">최근 장애를 시작 시각 순으로 정리했습니다. 누르면 사후 보고서를 볼 수 있어요.</p>
+        </div>
+      </div>
+      <div id="incidents"></div>
+    </section>
   </main>
 
   <footer class="site-footer">
@@ -121,7 +120,7 @@
         <span class="badge badge--demo">데모 데이터</span>
         <span class="badge badge--sim">시뮬레이터</span>
         표시가 붙은 항목은 시연용 가짜 데이터(시드 스크립트·에이전트 시뮬레이터)이며 실제 점검 결과가 아닙니다.
-        ○○산업은 가상의 회사입니다.
+        서비스·회사 이름은 모두 가상입니다.
       </p>
       <p id="updated"></p>
     </div>

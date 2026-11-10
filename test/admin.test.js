@@ -69,7 +69,7 @@ test('보고서: 잘못된 입력 400, 없는 장애 404, 잘못된 JSON 400', a
 
 test('계획 작업 등록 → 상태 API에 표시 → 취소', async () => {
   const { db, env } = setup();
-  const gw = db.sqlite.prepare("SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'").get().id;
+  const gw = db.sqlite.prepare("SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'").get().id;
   const starts = new Date(Date.now() + 3600_000).toISOString();
   const ends = new Date(Date.now() + 7200_000).toISOString();
 

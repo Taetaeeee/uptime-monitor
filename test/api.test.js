@@ -35,15 +35,15 @@ test('시드 + API: 서비스 6개(실제 HTTP·DNS + 데모 4), 출처·상태�
   assert.equal(real.uptime30d, null);
 
   // 가상 서비스는 모두 sample 표시
-  for (const name of ['○○산업 ERP', '○○산업 그룹웨어', '○○산업 고객센터']) {
+  for (const name of ['사내 ERP', '그룹웨어', '고객센터']) {
     assert.equal(byName[name].source, 'sample', name);
     assert.equal(byName[name].daily.length, BAR_DAYS, name);
     // 30일 모두 기록이 있어야 함 (29일 집계 + 오늘 원본 계산)
     assert.ok(byName[name].daily.every((d) => d.total > 0), `${name}: 빈 날이 있음`);
   }
-  assert.equal(byName['○○산업 고객센터'].state, 'down');
-  assert.equal(byName['○○산업 ERP'].state, 'up');
-  assert.ok(byName['○○산업 ERP'].uptime30d < 100);
+  assert.equal(byName['고객센터'].state, 'down');
+  assert.equal(byName['사내 ERP'].state, 'up');
+  assert.ok(byName['사내 ERP'].uptime30d < 100);
 
   // 공개 응답에는 점검 주소를 넣지 않음
   assert.ok(body.services.every((s) => !('url' in s)));
@@ -57,7 +57,7 @@ test('시드 + API: 최근 알림은 최신 순, 모두 sample 표시', async ()
   const times = notifications.map((n) => n.createdAt);
   assert.deepEqual(times, [...times].sort().reverse());
   // 가장 최근 알림 = 지금 장애 중인 고객센터
-  assert.equal(notifications[0].monitorName, '○○산업 고객센터');
+  assert.equal(notifications[0].monitorName, '고객센터');
   assert.equal(notifications[0].event, 'down');
 });
 

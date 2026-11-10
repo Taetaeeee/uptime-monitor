@@ -1,4 +1,4 @@
-"""○○산업 내부 점검 에이전트
+"""Uptime Monitor 내부 점검 에이전트
 
 사용 예 (PowerShell, 프로젝트 폴더에서):
   # 이 PC에서 실제로 측정만 하고 화면에 출력 (전송 안 함)
@@ -132,7 +132,7 @@ def run_simulator(scenario: dict, api_url: str | None, dry_run: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="○○산업 내부 점검 에이전트")
+    p = argparse.ArgumentParser(description="Uptime Monitor 내부 점검 에이전트")
     p.add_argument("--config", help="실제 점검 설정 JSON (agent/config.example.json 참고)")
     p.add_argument("--simulate", metavar="SCENARIO", help="시나리오 JSON의 가짜 측정값을 보냄 (source=simulator)")
     p.add_argument("--api-url", help="보고 받을 주소 (예: https://<Worker 주소>/api/agent/report). 설정의 api_url보다 우선")

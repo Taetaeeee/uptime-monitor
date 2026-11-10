@@ -46,15 +46,15 @@ DELETE FROM monitors      WHERE source = 'sample';
 -- 1) 가상 점검 대상 3개 (모두 비활성)
 -- ─────────────────────────────────────────────
 INSERT INTO monitors (name, kind, url, expected_status, keyword, max_response_ms, is_active, source) VALUES
-  ('○○산업 ERP',         'http', 'https://erp.ooindustry.invalid',      200, NULL,   3000, 0, 'sample'),
-  ('○○산업 그룹웨어',    'http', 'https://gw.ooindustry.invalid',       200, NULL,   3000, 0, 'sample'),
-  ('○○산업 고객센터',    'http', 'https://support.ooindustry.invalid',  200, '고객센터', 3000, 0, 'sample');
+  ('사내 ERP',         'http', 'https://erp.demo.invalid',      200, NULL,   3000, 0, 'sample'),
+  ('그룹웨어',    'http', 'https://gw.demo.invalid',       200, NULL,   3000, 0, 'sample'),
+  ('고객센터',    'http', 'https://support.demo.invalid',  200, '고객센터', 3000, 0, 'sample');
 
 -- 도메인 만료 데모 대상 (외부 점검 확장)
 --   내 도메인이 없어서 실제 만료일 조회는 하지 않습니다. 판정 로직(judge.js judgeDomainExpiry)이
 --   화면·보고서에서 어떻게 보이는지 보여 주기 위한 데모입니다. value = 만료까지 남은 일수, threshold = 30일
 INSERT INTO monitors (name, kind, url, expected_status, keyword, max_response_ms, threshold, is_active, source) VALUES
-  ('○○산업 대표 도메인 만료', 'domain', 'domain://ooindustry.invalid', 200, NULL, 3000, 30, 0, 'sample');
+  ('대표 도메인 만료', 'domain', 'domain://demo.invalid', 200, NULL, 3000, 30, 0, 'sample');
 
 -- ─────────────────────────────────────────────
 -- 2) 원본 점검 결과: 대상마다 최근 2시간, 5분 간격 24행
@@ -70,7 +70,7 @@ INSERT INTO check_results
   (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, source)
 WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < 23)
 SELECT
-  (SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+  (SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'),
   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - n * 300, 'unixepoch'),
   CASE WHEN n = 3 THEN 0 ELSE 1 END,
   CASE WHEN n = 10 THEN 1 ELSE 0 END,
@@ -85,7 +85,7 @@ INSERT INTO check_results
   (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, source)
 WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < 23)
 SELECT
-  (SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+  (SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'),
   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - n * 300, 'unixepoch'),
   CASE WHEN n IN (5, 6) THEN 0 ELSE 1 END,
   CASE WHEN n IN (15, 16) THEN 1 ELSE 0 END,
@@ -102,7 +102,7 @@ INSERT INTO check_results
   (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, source)
 WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < 23)
 SELECT
-  (SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'),
+  (SELECT id FROM monitors WHERE url = 'https://support.demo.invalid'),
   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - n * 300, 'unixepoch'),
   CASE WHEN n IN (0, 1, 8) THEN 0 ELSE 1 END,
   0,
@@ -119,17 +119,17 @@ INSERT INTO monitor_state
   (monitor_id, state, consecutive_failures, consecutive_successes, failing_since, last_checked_at, changed_at)
 VALUES
   -- ERP: n=3 단발 실패 뒤 3회 연속 성공. 마지막 상태 변경은 6일 전 장애 복구(아래 알림과 같음)
-  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'),
    'up', 0, 3, NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:30:00', '-9 hours')),
   -- 그룹웨어: n=4에서 복구된 뒤 4회 연속 성공
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'),
    'up', 0, 4, NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'),
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 4 * 300, 'unixepoch')),
   -- 고객센터: n=1부터 연속 실패, n=0에서 장애 판정
-  ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://support.demo.invalid'),
    'down', 2, 0,
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 1 * 300, 'unixepoch'),
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'),
@@ -150,7 +150,7 @@ INSERT INTO daily_stats
   (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at, maintenance_checks)
 WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 29)
 SELECT
-  (SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+  (SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'),
   date('now', '+9 hours', '-' || n || ' days'),
   288 - CASE n WHEN 20 THEN 24 ELSE 0 END,
   288 - CASE n WHEN 20 THEN 24 ELSE 0 END - CASE n WHEN 6 THEN 4 WHEN 17 THEN 13 ELSE 0 END,
@@ -166,7 +166,7 @@ INSERT INTO daily_stats
   (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at)
 WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 29)
 SELECT
-  (SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+  (SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'),
   date('now', '+9 hours', '-' || n || ' days'),
   288,
   288 - CASE n WHEN 3 THEN 2 WHEN 12 THEN 30 WHEN 25 THEN 1 ELSE 0 END,
@@ -181,7 +181,7 @@ INSERT INTO daily_stats
   (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at)
 WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 29)
 SELECT
-  (SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'),
+  (SELECT id FROM monitors WHERE url = 'https://support.demo.invalid'),
   date('now', '+9 hours', '-' || n || ' days'),
   288,
   288 - CASE n WHEN 9 THEN 6 ELSE 0 END,
@@ -197,7 +197,7 @@ INSERT INTO check_results
   (monitor_id, checked_at, is_success, is_slow, status_code, response_ms, failure_reason, value, source)
 WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < 23)
 SELECT
-  (SELECT id FROM monitors WHERE url = 'domain://ooindustry.invalid'),
+  (SELECT id FROM monitors WHERE url = 'domain://demo.invalid'),
   strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - n * 300, 'unixepoch'),
   1, 0, NULL, NULL, NULL, 41, 'sample'
 FROM seq;
@@ -205,7 +205,7 @@ FROM seq;
 INSERT INTO monitor_state
   (monitor_id, state, consecutive_failures, consecutive_successes, failing_since, last_checked_at, changed_at)
 VALUES
-  ((SELECT id FROM monitors WHERE url = 'domain://ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'domain://demo.invalid'),
    'up', 0, 24, NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-29 days') || ' 00:00:00', '-9 hours'));
@@ -214,7 +214,7 @@ INSERT INTO daily_stats
   (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at)
 WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 29)
 SELECT
-  (SELECT id FROM monitors WHERE url = 'domain://ooindustry.invalid'),
+  (SELECT id FROM monitors WHERE url = 'domain://demo.invalid'),
   date('now', '+9 hours', '-' || n || ' days'),
   288, 288, 0, NULL, 'sample',
   strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -242,56 +242,56 @@ GROUP BY monitor_id, date(checked_at, '+9 hours');
 -- ─────────────────────────────────────────────
 INSERT INTO notifications (monitor_id, event, channel, message, failure_reason, created_at, source) VALUES
   -- ERP 17일 전: 14:00부터 13회 실패 → 14:05 장애 판정 → 15:05 복구 (65분)
-  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'), 'down', 'log',
-   '[장애] ○○산업 ERP: 연속 실패로 장애 판정 (응답 시간 초과)', 'timeout',
+  ((SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'), 'down', 'log',
+   '[장애] 사내 ERP: 연속 실패로 장애 판정 (응답 시간 초과)', 'timeout',
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-17 days') || ' 14:05:00', '-9 hours'), 'sample'),
-  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'), 'recovered', 'log',
-   '[복구] ○○산업 ERP: 정상 응답 확인 (장애 약 65분)', NULL,
+  ((SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'), 'recovered', 'log',
+   '[복구] 사내 ERP: 정상 응답 확인 (장애 약 65분)', NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-17 days') || ' 15:05:00', '-9 hours'), 'sample'),
 
   -- 그룹웨어 12일 전: 02:00부터 30회 실패 → 02:05 장애 판정 → 04:30 복구 (150분)
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'), 'down', 'log',
-   '[장애] ○○산업 그룹웨어: 연속 실패로 장애 판정 (상태 코드 불일치)', 'status_mismatch',
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'), 'down', 'log',
+   '[장애] 그룹웨어: 연속 실패로 장애 판정 (상태 코드 불일치)', 'status_mismatch',
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-12 days') || ' 02:05:00', '-9 hours'), 'sample'),
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'), 'recovered', 'log',
-   '[복구] ○○산업 그룹웨어: 정상 응답 확인 (장애 약 150분)', NULL,
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'), 'recovered', 'log',
+   '[복구] 그룹웨어: 정상 응답 확인 (장애 약 150분)', NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-12 days') || ' 04:30:00', '-9 hours'), 'sample'),
 
   -- 고객센터 9일 전: 09:00부터 6회 실패 → 09:05 장애 판정 → 09:30 복구 (30분)
-  ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'), 'down', 'log',
-   '[장애] ○○산업 고객센터: 연속 실패로 장애 판정 (키워드 없음)', 'keyword_missing',
+  ((SELECT id FROM monitors WHERE url = 'https://support.demo.invalid'), 'down', 'log',
+   '[장애] 고객센터: 연속 실패로 장애 판정 (키워드 없음)', 'keyword_missing',
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-9 days') || ' 09:05:00', '-9 hours'), 'sample'),
-  ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'), 'recovered', 'log',
-   '[복구] ○○산업 고객센터: 정상 응답 확인 (장애 약 30분)', NULL,
+  ((SELECT id FROM monitors WHERE url = 'https://support.demo.invalid'), 'recovered', 'log',
+   '[복구] 고객센터: 정상 응답 확인 (장애 약 30분)', NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-9 days') || ' 09:30:00', '-9 hours'), 'sample'),
 
   -- ERP 6일 전: 21:10부터 4회 실패 → 21:15 장애 판정 → 21:30 복구 (20분)
-  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'), 'down', 'log',
-   '[장애] ○○산업 ERP: 연속 실패로 장애 판정 (응답 시간 초과)', 'timeout',
+  ((SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'), 'down', 'log',
+   '[장애] 사내 ERP: 연속 실패로 장애 판정 (응답 시간 초과)', 'timeout',
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:15:00', '-9 hours'), 'sample'),
-  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'), 'recovered', 'log',
-   '[복구] ○○산업 ERP: 정상 응답 확인 (장애 약 20분)', NULL,
+  ((SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'), 'recovered', 'log',
+   '[복구] 사내 ERP: 정상 응답 확인 (장애 약 20분)', NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:30:00', '-9 hours'), 'sample'),
 
   -- 그룹웨어 3일 전: 11:40부터 2회 실패 → 11:45 장애 판정 → 11:50 복구 (10분)
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'), 'down', 'log',
-   '[장애] ○○산업 그룹웨어: 연속 실패로 장애 판정 (네트워크 오류)', 'network_error',
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'), 'down', 'log',
+   '[장애] 그룹웨어: 연속 실패로 장애 판정 (네트워크 오류)', 'network_error',
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-3 days') || ' 11:45:00', '-9 hours'), 'sample'),
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'), 'recovered', 'log',
-   '[복구] ○○산업 그룹웨어: 정상 응답 확인 (장애 약 10분)', NULL,
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'), 'recovered', 'log',
+   '[복구] 그룹웨어: 정상 응답 확인 (장애 약 10분)', NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-3 days') || ' 11:50:00', '-9 hours'), 'sample'),
 
   -- 그룹웨어 오늘: 원본 n=6(네트워크 오류)·n=5(503) → n=5에서 장애 판정 → n=4에서 복구 (10분)
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'), 'down', 'log',
-   '[장애] ○○산업 그룹웨어: 연속 실패로 장애 판정 (상태 코드 불일치)', 'status_mismatch',
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'), 'down', 'log',
+   '[장애] 그룹웨어: 연속 실패로 장애 판정 (상태 코드 불일치)', 'status_mismatch',
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 5 * 300, 'unixepoch'), 'sample'),
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'), 'recovered', 'log',
-   '[복구] ○○산업 그룹웨어: 정상 응답 확인 (장애 약 10분)', NULL,
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'), 'recovered', 'log',
+   '[복구] 그룹웨어: 정상 응답 확인 (장애 약 10분)', NULL,
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 4 * 300, 'unixepoch'), 'sample'),
 
   -- 고객센터 지금: 원본 n=1·n=0 연속 실패 → n=0에서 장애 판정 (아직 복구 안 됨)
-  ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'), 'down', 'log',
-   '[장애] ○○산업 고객센터: 연속 실패로 장애 판정 (키워드 없음)', 'keyword_missing',
+  ((SELECT id FROM monitors WHERE url = 'https://support.demo.invalid'), 'down', 'log',
+   '[장애] 고객센터: 연속 실패로 장애 판정 (키워드 없음)', 'keyword_missing',
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'), 'sample');
 
 -- ─────────────────────────────────────────────
@@ -304,7 +304,7 @@ INSERT INTO incidents
    report_summary, report_impact, report_root_cause, report_action, report_prevention, report_updated_at, source)
 VALUES
   -- ERP 17일 전 14:00~15:05 (65분), 보고서 있음
-  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-17 days') || ' 14:00:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-17 days') || ' 14:05:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-17 days') || ' 15:05:00', '-9 hours'),
@@ -317,7 +317,7 @@ VALUES
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-16 days') || ' 10:00:00', '-9 hours'),
    'sample'),
   -- 그룹웨어 12일 전 02:00~04:30 (150분), 보고서 있음
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-12 days') || ' 02:00:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-12 days') || ' 02:05:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-12 days') || ' 04:30:00', '-9 hours'),
@@ -330,13 +330,13 @@ VALUES
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-11 days') || ' 09:30:00', '-9 hours'),
    'sample'),
   -- 고객센터 9일 전 09:00~09:30 (30분), 보고서 없음
-  ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://support.demo.invalid'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-9 days') || ' 09:00:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-9 days') || ' 09:05:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-9 days') || ' 09:30:00', '-9 hours'),
    'keyword_missing', NULL, NULL, NULL, NULL, NULL, NULL, 'sample'),
   -- ERP 6일 전 21:10~21:30 (20분), 보고서 있음
-  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:10:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:15:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-6 days') || ' 21:30:00', '-9 hours'),
@@ -349,19 +349,19 @@ VALUES
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-5 days') || ' 11:00:00', '-9 hours'),
    'sample'),
   -- 그룹웨어 3일 전 11:40~11:50 (10분), 보고서 없음
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-3 days') || ' 11:40:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-3 days') || ' 11:45:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-3 days') || ' 11:50:00', '-9 hours'),
    'network_error', NULL, NULL, NULL, NULL, NULL, NULL, 'sample'),
   -- 그룹웨어 오늘: 원본 n=6(첫 실패) → n=5(판정) → n=4(복구), 보고서 없음
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'),
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 6 * 300, 'unixepoch'),
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 5 * 300, 'unixepoch'),
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 4 * 300, 'unixepoch'),
    'status_mismatch', NULL, NULL, NULL, NULL, NULL, NULL, 'sample'),
   -- 고객센터 지금: 원본 n=1(첫 실패) → n=0(판정), 진행 중 (resolved_at NULL)
-  ((SELECT id FROM monitors WHERE url = 'https://support.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://support.demo.invalid'),
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - 1 * 300, 'unixepoch'),
    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300, 'unixepoch'),
    NULL,
@@ -372,14 +372,14 @@ VALUES
 -- ─────────────────────────────────────────────
 INSERT INTO maintenance_windows (monitor_id, title, starts_at, ends_at, source, created_at) VALUES
   -- 지난 작업: ERP 20일 전 02:00~04:00 (4)의 일별 집계에서 그날 24회를 가동률에서 제외한 것과 같은 시간)
-  ((SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'),
    'ERP DB 정기 점검 (데모)',
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-20 days') || ' 02:00:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-20 days') || ' 04:00:00', '-9 hours'),
    'sample',
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '-27 days') || ' 10:00:00', '-9 hours')),
   -- 예정 작업: 그룹웨어 2일 뒤 22:00~23:30
-  ((SELECT id FROM monitors WHERE url = 'https://gw.ooindustry.invalid'),
+  ((SELECT id FROM monitors WHERE url = 'https://gw.demo.invalid'),
    '그룹웨어 보안 패치 (데모)',
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '+2 days') || ' 22:00:00', '-9 hours'),
    strftime('%Y-%m-%dT%H:%M:%SZ', date('now', '+9 hours', '+2 days') || ' 23:30:00', '-9 hours'),

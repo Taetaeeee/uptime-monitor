@@ -18,7 +18,7 @@ function renderHeader(inc) {
   title.append(pill);
   const badge = sourceBadge(inc.source);
   if (badge) title.append(badge);
-  document.title = `${inc.monitorName} 장애 · ○○산업 서비스 상태`;
+  document.title = `${inc.monitorName} 장애 · Uptime Monitor`;
 
   document.getElementById('subtitle').textContent = inc.ongoing
     ? `진행 중 · ${formatKst(inc.startedAt)} 시작`

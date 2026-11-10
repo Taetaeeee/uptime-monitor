@@ -44,8 +44,8 @@ test('보고서 숫자가 원본(daily_stats·incidents)과 일치', async () =>
   const month = kstMonthOf(now);
   const range = monthRange(month);
   const r = await buildMonthlyReport(db, month, now);
-  const erp = r.groups.find((g) => g.source === 'sample').services.find((s) => s.name === '○○산업 ERP');
-  const erpId = db.sqlite.prepare("SELECT id FROM monitors WHERE url = 'https://erp.ooindustry.invalid'").get().id;
+  const erp = r.groups.find((g) => g.source === 'sample').services.find((s) => s.name === '사내 ERP');
+  const erpId = db.sqlite.prepare("SELECT id FROM monitors WHERE url = 'https://erp.demo.invalid'").get().id;
 
   const sums = db.sqlite
     .prepare('SELECT SUM(total_checks) AS t, SUM(success_checks) AS s FROM daily_stats WHERE monitor_id = ? AND day BETWEEN ? AND ?')

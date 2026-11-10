@@ -25,8 +25,8 @@ DELETE FROM monitors      WHERE source = 'simulator';
 
 -- max_response_ms: ping·tcp의 '느림' 기준 / threshold: disk = 사용률 상한(%), ssl = 남은 일수 하한(일)
 INSERT INTO monitors (name, kind, url, check_key, max_response_ms, threshold, is_active, source) VALUES
-  ('○○산업 코어 스위치 (ping)',      'ping',    'ping://core-switch.ooindustry.invalid',     'sim-core-switch-ping', 100,  NULL, 1, 'simulator'),
-  ('○○산업 사내 DB 서버 (5432 포트)', 'tcp',     'tcp://db.ooindustry.invalid:5432',          'sim-db-tcp',           500,  NULL, 1, 'simulator'),
-  ('○○산업 파일 서버 디스크 (D:)',   'disk',    'disk://fileserver.ooindustry.invalid/D:',   'sim-fileserver-disk',  3000, 90,   1, 'simulator'),
-  ('○○산업 그룹웨어 인증서',         'ssl',     'ssl://gw.ooindustry.invalid:443',           'sim-gw-ssl',           3000, 14,   1, 'simulator'),
-  ('○○산업 ERP 배치 서비스',         'service', 'service://erp-app.ooindustry.invalid/ERP-Batch', 'sim-erp-batch-svc', 3000, NULL, 1, 'simulator');
+  ('코어 스위치 (ping)',      'ping',    'ping://core-switch.demo.invalid',     'sim-core-switch-ping', 100,  NULL, 1, 'simulator'),
+  ('사내 DB 서버 (5432 포트)', 'tcp',     'tcp://db.demo.invalid:5432',          'sim-db-tcp',           500,  NULL, 1, 'simulator'),
+  ('파일 서버 디스크 (D:)',   'disk',    'disk://fileserver.demo.invalid/D:',   'sim-fileserver-disk',  3000, 90,   1, 'simulator'),
+  ('그룹웨어 인증서',         'ssl',     'ssl://gw.demo.invalid:443',           'sim-gw-ssl',           3000, 14,   1, 'simulator'),
+  ('ERP 배치 서비스',         'service', 'service://erp-app.demo.invalid/ERP-Batch', 'sim-erp-batch-svc', 3000, NULL, 1, 'simulator');

@@ -2,7 +2,7 @@
   "name": "status-monitor",
   "version": "0.1.0",
   "private": true,
-  "description": "○○산업 서비스 모니터링 & 상태 페이지 (포트폴리오용 가상 프로젝트)",
+  "description": "Uptime Monitor · 서비스 상태 진단 (포트폴리오용 가상 프로젝트)",
   "type": "module",
   "scripts": {
     "test": "node --test",

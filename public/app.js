@@ -33,6 +33,7 @@ const view = {
   filter: 'all',
   query: '',
   selectedId: null,
+  open: {}, // 접기 상자(<details>)를 펼쳐 두었는지 — 자동 갱신 후에도 유지
 };
 
 // ─────────────────────────────────────────────
@@ -228,17 +229,21 @@ function select(id) {
   view.selectedId = id;
   renderServices(view.data);
   renderDetail(view.data);
-  // 좁은 화면에서는 상세 패널이 카드 아래에 있으므로 그쪽으로 스크롤
-  if (window.matchMedia('(max-width: 1099px)').matches) {
-    document.getElementById('detail-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  // 상세는 '한눈에 보기' 아래에 있으므로, 고른 결과가 보이게 그쪽으로 스크롤하고 잠깐 강조합니다
+  const panel = document.getElementById('detail-panel');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // 상단 고정 헤더(64px)에 가리지 않게 조금 위에서 멈춤
+  window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - 84, behavior: reduce ? 'auto' : 'smooth' });
+  panel.classList.remove('is-flash');
+  void panel.offsetWidth; // 애니메이션을 처음부터 다시 시작시키는 요령 (스타일을 한 번 다시 계산하게 함)
+  panel.classList.add('is-flash');
 }
 
 function renderDetail(data) {
   const root = document.getElementById('detail');
   const s = data.services.find((x) => x.id === view.selectedId);
   if (!s) {
-    root.replaceChildren(el('p', 'detail__empty', '왼쪽에서 서비스를 선택하세요.'));
+    root.replaceChildren(el('p', 'detail__empty', '위의 서비스 현황에서 서비스를 선택하세요.'));
     return;
   }
   const kind = kindMeta(s.kind);
@@ -274,7 +279,9 @@ function renderDetail(data) {
     facts.append(f);
   }
 
-  const nodes = [card, facts];
+  // 넓은 화면에서는 왼쪽(이름·사실 칸)과 오른쪽(안내·최근 장애)으로 나눠 보여 줍니다 (.detail-grid)
+  const left = [card, facts];
+  const nodes = []; // 오른쪽 칸
 
   // 안내 상자: 점검 대기 / 데모 / 시뮬레이터
   const notice = {
@@ -319,67 +326,98 @@ function renderDetail(data) {
   btn.append(icon('arrowRight', 'ico ico--sm'));
   nodes.push(btn);
 
-  root.replaceChildren(...nodes);
+  const grid = el('div', 'detail-grid');
+  const leftCol = el('div');
+  const rightCol = el('div');
+  leftCol.append(...left);
+  rightCol.append(...nodes);
+  grid.append(leftCol, rightCol);
+  root.replaceChildren(grid);
 }
 
 // ─────────────────────────────────────────────
 // 장애 이력·최근 알림
 // ─────────────────────────────────────────────
 
-function renderIncidents(list) {
-  const root = document.getElementById('incidents');
-  if (list.length === 0) {
-    root.replaceChildren(el('li', 'notes__empty', '기록된 장애가 없습니다.'));
+const SHOW_FIRST = 5; // 알림·장애 이력은 최근 5건만 먼저 보여 줌
+
+/**
+ * 목록을 "앞 5건 + 나머지는 접기(<details>)"로 그린다.
+ * <details>는 HTML 기본 기능이라 자바스크립트 없이 열고 닫히고, 키보드·화면 낭독기에서도 동작합니다.
+ * 60초마다 다시 그려도 사용자가 펼쳐 둔 상태는 유지합니다(view.open).
+ */
+function renderCollapsible(rootId, items, makeItem, { listClass, emptyText, moreLabel }) {
+  const root = document.getElementById(rootId);
+  if (items.length === 0) {
+    root.replaceChildren(el('p', 'notes__empty', emptyText));
     return;
   }
-  root.replaceChildren(
-    ...list.map((i) => {
-      const li = el('li', 'incident');
-      const a = el('a');
-      a.href = `/incident.html?id=${encodeURIComponent(i.id)}`;
+  const first = el('ol', listClass);
+  first.append(...items.slice(0, SHOW_FIRST).map(makeItem));
+  const nodes = [first];
 
-      const top = el('div', 'incident__top');
-      const left = el('div');
-      left.style.minWidth = '0';
-      const tags = el('div', 'incident__tags');
-      const pill = el('span', `pill ${i.ongoing ? 'pill--bad' : 'pill--good'}`);
-      pill.append(icon(i.ongoing ? 'x' : 'check', 'ico ico--xs'), document.createTextNode(i.ongoing ? '진행 중' : '복구됨'));
-      tags.append(pill);
-      const badge = sourceBadge(i.source);
-      if (badge) tags.append(badge);
-      left.append(tags, el('h3', 'incident__title', i.causeText ?? '원인 미상'), el('div', 'incident__service', i.monitorName));
+  const rest = items.slice(SHOW_FIRST);
+  if (rest.length > 0) {
+    const details = el('details', 'more');
+    details.open = Boolean(view.open[rootId]);
+    details.addEventListener('toggle', () => { view.open[rootId] = details.open; });
+    details.append(el('summary', '', `${moreLabel} ${rest.length}건 더 보기`));
+    const more = el('ol', listClass);
+    more.append(...rest.map(makeItem));
+    details.append(more);
+    nodes.push(details);
+  }
+  root.replaceChildren(...nodes);
+}
 
-      const time = el('div', 'incident__time');
-      time.append(
-        el('div', '', `시작 ${formatKst(i.startedAt)}`),
-        el('div', '', i.ongoing ? `${formatMinutes(i.durationMinutes)} 경과` : `복구 ${formatKst(i.resolvedAt)} · ${formatMinutes(i.durationMinutes)}`)
-      );
-      top.append(left, time);
+function incidentItem(i) {
+  const li = el('li', 'incident');
+  const a = el('a');
+  a.href = `/incident.html?id=${encodeURIComponent(i.id)}`;
 
-      const summary = el('p', `incident__summary${i.hasReport ? '' : ' is-empty'}`, i.hasReport ? i.summary : '사후 보고서 작성 전');
-      a.append(top, summary);
-      li.append(a);
-      return li;
-    })
+  const top = el('div', 'incident__top');
+  const left = el('div');
+  left.style.minWidth = '0';
+  const tags = el('div', 'incident__tags');
+  const pill = el('span', `pill ${i.ongoing ? 'pill--bad' : 'pill--good'}`);
+  pill.append(icon(i.ongoing ? 'x' : 'check', 'ico ico--xs'), document.createTextNode(i.ongoing ? '진행 중' : '복구됨'));
+  tags.append(pill);
+  const badge = sourceBadge(i.source);
+  if (badge) tags.append(badge);
+  left.append(tags, el('h3', 'incident__title', i.causeText ?? '원인 미상'), el('div', 'incident__service', i.monitorName));
+
+  const time = el('div', 'incident__time');
+  time.append(
+    el('div', '', `시작 ${formatKst(i.startedAt)}`),
+    el('div', '', i.ongoing ? `${formatMinutes(i.durationMinutes)} 경과` : `복구 ${formatKst(i.resolvedAt)} · ${formatMinutes(i.durationMinutes)}`)
   );
+  top.append(left, time);
+
+  const summary = el('p', `incident__summary${i.hasReport ? '' : ' is-empty'}`, i.hasReport ? i.summary : '사후 보고서 작성 전');
+  a.append(top, summary);
+  li.append(a);
+  return li;
+}
+
+function notificationItem(n) {
+  const li = el('li', `note note--${n.event}`);
+  const msg = el('div', 'note__msg', n.message);
+  const badge = sourceBadge(n.source);
+  if (badge) msg.append(' ', badge);
+  li.append(el('span', 'note__icon'), msg, el('div', 'note__time', formatKst(n.createdAt)));
+  return li;
+}
+
+function renderIncidents(list) {
+  renderCollapsible('incidents', list, incidentItem, {
+    listClass: 'incidents', emptyText: '기록된 장애가 없습니다.', moreLabel: '이전 장애',
+  });
 }
 
 function renderNotifications(notes) {
-  const root = document.getElementById('notifications');
-  if (notes.length === 0) {
-    root.replaceChildren(el('li', 'notes__empty', '아직 알림이 없습니다.'));
-    return;
-  }
-  root.replaceChildren(
-    ...notes.map((n) => {
-      const li = el('li', `note note--${n.event}`);
-      const msg = el('div', 'note__msg', n.message);
-      const badge = sourceBadge(n.source);
-      if (badge) msg.append(' ', badge);
-      li.append(el('span', 'note__icon'), msg, el('div', 'note__time', formatKst(n.createdAt)));
-      return li;
-    })
-  );
+  renderCollapsible('notifications', notes, notificationItem, {
+    listClass: 'notes', emptyText: '아직 알림이 없습니다.', moreLabel: '이전 알림',
+  });
 }
 
 // ─────────────────────────────────────────────
