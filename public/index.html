@@ -31,26 +31,33 @@
   </header>
 
   <main class="wrap">
-    <!-- 전체 상태 + 요약 카드 -->
-    <section id="hero" class="hero hero--loading" aria-live="polite">
-      <div class="hero__grid">
-        <div>
-          <div class="tag"><span data-icon="shield" data-icon-class="ico ico--xs"></span>Portfolio Monitoring Demo</div>
-          <div class="hero__status">
-            <div class="beacon"><div class="beacon__core" id="hero-icon"></div></div>
-            <div>
-              <h1 class="hero__title" id="hero-title">상태를 불러오는 중…</h1>
-              <p class="hero__sub"><span data-icon="clock" data-icon-class="ico ico--sm"></span><span id="hero-updated">-</span></p>
-            </div>
-          </div>
-          <p class="hero__desc">
-            가상 회사의 웹 서비스(HTTP·DNS)와 사내 시스템(ping·포트·디스크·인증서·서비스)을 5분마다 점검하고,
-            2회 연속 실패를 장애로 판정해 기록합니다. 서비스 카드를 누르면 '서비스 상세'에서 자세한 정보를 볼 수 있어요.
-          </p>
-        </div>
-        <div class="stats" id="stats"></div>
+    <!-- 상태 띠: 한 줄로 전체 상태 + LIVE 표시(다음 점검까지 카운트다운) -->
+    <section id="hero" class="statusbar statusbar--loading" aria-live="polite">
+      <span class="statusbar__icon" id="hero-icon"></span>
+      <div class="statusbar__text">
+        <h1 class="statusbar__title" id="hero-title">상태를 불러오는 중…</h1>
+        <p class="statusbar__sub" id="hero-updated">-</p>
+      </div>
+      <div class="live" id="live" title="5분마다 점검하고, 화면은 자동으로 새로 불러옵니다">
+        <span class="live__dot" aria-hidden="true"></span>
+        <span class="live__label">LIVE</span>
+        <span class="live__next" id="live-next">-</span>
       </div>
     </section>
+
+    <!-- 한눈에 보기: 왼쪽 요약 카드, 오른쪽 최근 알림 -->
+    <div class="overview">
+      <div class="stats" id="stats"></div>
+      <section class="panel panel--compact" aria-labelledby="notes-title">
+        <div class="panel__head">
+          <div>
+            <h2 class="panel__title" id="notes-title"><span data-icon="bell" data-icon-class="ico ico--sm"></span>최근 알림</h2>
+            <p class="panel__desc">상태가 바뀔 때(장애·복구)만 기록됩니다.</p>
+          </div>
+        </div>
+        <div id="notifications"></div>
+      </section>
+    </div>
 
     <!-- 계획 작업 안내 (진행 중·예정). 없으면 숨김 -->
     <section id="maintenance" class="maint-list" aria-label="계획 작업"></section>
@@ -60,7 +67,7 @@
       <div class="panel__head">
         <div>
           <h2 class="panel__title" id="services-title">서비스 현황</h2>
-          <p class="panel__desc">카드를 누르면 아래 '서비스 상세'에서 자세한 정보를 볼 수 있습니다.</p>
+          <p class="panel__desc">카드를 누르면 자세한 정보가 팝업으로 열립니다.</p>
         </div>
         <div class="toolbar">
           <label class="search">
@@ -79,29 +86,6 @@
       </div>
     </section>
 
-    <!-- ② 상세: 왼쪽 선택한 서비스, 오른쪽 최근 알림 -->
-    <div class="split">
-      <section class="panel" id="detail-panel" aria-labelledby="detail-title">
-        <div class="panel__head">
-          <div>
-            <h2 class="panel__title" id="detail-title">서비스 상세</h2>
-            <p class="panel__desc">선택한 서비스의 점검 정보입니다.</p>
-          </div>
-        </div>
-        <div id="detail"><p class="detail__empty">불러오는 중…</p></div>
-      </section>
-
-      <section class="panel" aria-labelledby="notes-title">
-        <div class="panel__head">
-          <div>
-            <h2 class="panel__title" id="notes-title">최근 알림</h2>
-            <p class="panel__desc">상태가 바뀔 때(장애·복구)만 기록됩니다. 최근 5건을 먼저 보여 줍니다.</p>
-          </div>
-        </div>
-        <div id="notifications"></div>
-      </section>
-    </div>
-
     <!-- ③ 장애 이력 -->
     <section class="panel" aria-labelledby="incidents-title">
       <div class="panel__head">
@@ -114,8 +98,24 @@
     </section>
   </main>
 
+  <!-- 서비스 상세 팝업: 카드를 누르면 열림. ✕ 버튼·바깥(어두운 곳) 클릭·Esc로 닫힘.
+       <dialog>는 브라우저 기본 기능이라 포커스 가두기·Esc 닫기·화면 낭독기 안내가 자동으로 됩니다. -->
+  <dialog id="detail-dialog" class="modal" aria-labelledby="detail-title">
+    <div class="modal__box">
+      <div class="modal__head">
+        <h2 class="panel__title" id="detail-title">서비스 상세</h2>
+        <button type="button" class="modal__close" id="detail-close" aria-label="닫기"><span data-icon="x-mark" data-icon-class="ico ico--sm"></span></button>
+      </div>
+      <div id="detail"></div>
+    </div>
+  </dialog>
+
   <footer class="site-footer">
     <div class="wrap">
+      <p>
+        가상 회사의 웹 서비스(HTTP·DNS)는 Worker가, 사내 시스템(ping·포트·디스크·인증서·서비스)은 Python 에이전트가 5분마다 점검하고,
+        2회 연속 실패를 장애로 판정해 기록합니다.
+      </p>
       <p>
         <span class="badge badge--demo">데모 데이터</span>
         <span class="badge badge--sim">시뮬레이터</span>

@@ -34,7 +34,55 @@ const view = {
   query: '',
   selectedId: null,
   open: {}, // 접기 상자(<details>)를 펼쳐 두었는지 — 자동 갱신 후에도 유지
+  prevStates: null, // 직전에 불러온 서비스별 상태 (상태가 바뀐 카드를 찾기 위해)
+  changed: new Set(), // 이번에 상태가 바뀐 서비스 id
+  lastLoadedAt: 0, // 마지막으로 불러오기에 성공한 시각(ms)
+  nextReloadAt: 0, // 다음 점검 회차 직후 다시 불러올 시각(ms)
 };
+
+// ─────────────────────────────────────────────
+// LIVE 표시: 다음 점검까지 카운트다운, 상대 시간
+// ─────────────────────────────────────────────
+const SLOT_MS = 5 * 60 * 1000;   // 점검 간격 5분 (서버 Cron과 같음)
+const CRON_DELAY_MS = 15 * 1000; // Cron은 정각보다 몇 초 늦게 돎 (실측 12초) → 15초로 잡음
+const FETCH_AFTER_MS = 25 * 1000; // 점검이 끝나 저장될 여유를 두고 다시 불러옴
+
+/** 다음 점검 예정 시각(ms): 다음 5분 회차 + 15초 */
+function nextRunAt(nowMs) {
+  return Math.floor((nowMs - CRON_DELAY_MS) / SLOT_MS) * SLOT_MS + SLOT_MS + CRON_DELAY_MS;
+}
+
+/** 경과 시간 → "방금" / "3분 전" / "2시간 전" */
+function agoText(iso, nowMs) {
+  const sec = Math.max(0, Math.round((nowMs - Date.parse(iso)) / 1000));
+  if (sec < 60) return '방금 점검';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전 점검`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return `${h}시간 전 점검`;
+  return `${Math.floor(h / 24)}일 전 점검`;
+}
+
+/** 1초마다: 카운트다운·상대 시간 글자 갱신, 점검 회차 직후 자동으로 다시 불러오기 */
+function tickClock() {
+  const now = Date.now();
+  const next = nextRunAt(now);
+  const left = Math.max(0, Math.round((next - now) / 1000));
+  const live = document.getElementById('live');
+  // 3분 넘게 새 데이터를 못 받았으면 LIVE를 노란색 '연결 지연'으로
+  const stale = view.lastLoadedAt && now - view.lastLoadedAt > 3 * 60 * 1000;
+  live.classList.toggle('is-stale', Boolean(stale));
+  document.getElementById('live-next').textContent = stale
+    ? '연결 지연 · 다시 시도 중'
+    : `다음 점검까지 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+
+  for (const node of document.querySelectorAll('[data-ago]')) node.textContent = agoText(node.dataset.ago, now);
+
+  if (view.nextReloadAt && now >= view.nextReloadAt) {
+    view.nextReloadAt = 0;
+    load();
+  }
+}
 
 // ─────────────────────────────────────────────
 // 작은 계산
@@ -68,24 +116,22 @@ const uptimeText = (v) => (v === null || v === undefined ? '-' : `${v}%`);
 // ─────────────────────────────────────────────
 
 function renderHero(data) {
-  const hero = document.getElementById('hero');
+  const bar = document.getElementById('hero');
   const down = data.services.filter((s) => s.state === 'down');
   const working = data.services.filter((s) => s.state === 'maintenance');
 
   let tone = 'good', ico = 'check', title = '모든 서비스 정상';
   if (down.length) {
     tone = 'bad'; ico = 'x';
-    title = `${down.length}개 서비스 장애`;
+    title = `${down.length}개 서비스 장애: ${down.map((s) => s.name).join(', ')}`;
   } else if (working.length) {
     tone = 'info'; ico = 'wrench';
-    title = '계획 작업 진행 중';
+    title = `계획 작업 진행 중: ${working.map((s) => s.name).join(', ')}`;
   }
-  hero.className = `hero${tone === 'good' ? '' : ` hero--${tone}`}`;
-  document.getElementById('hero-title').textContent = down.length
-    ? `${title}: ${down.map((s) => s.name).join(', ')}`
-    : title;
-  document.getElementById('hero-icon').replaceChildren(icon(ico, 'ico ico--lg'));
-  document.getElementById('hero-updated').textContent = `마지막 갱신 ${formatKst(data.generatedAt)} (60초마다 자동 갱신)`;
+  bar.className = `statusbar${tone === 'good' ? '' : ` statusbar--${tone}`}`;
+  document.getElementById('hero-title').textContent = title;
+  document.getElementById('hero-icon').replaceChildren(icon(ico, 'ico ico--sm'));
+  document.getElementById('hero-updated').textContent = `마지막 갱신 ${formatKst(data.generatedAt)} · 화면은 자동으로 새로 불러옵니다`;
 }
 
 // 요약 카드 — 여러 서비스를 합친 '평균 가동률'은 만들지 않습니다.
@@ -177,6 +223,7 @@ function renderServices(data) {
       const card = el('button', `card${s.id === view.selectedId ? ' is-selected' : ''}`);
       card.type = 'button';
       card.setAttribute('aria-pressed', String(s.id === view.selectedId));
+      card.dataset.id = String(s.id);
       card.addEventListener('click', () => select(s.id));
 
       // 위: 종류 아이콘 + 이름 + 상태·출처
@@ -215,7 +262,17 @@ function renderServices(data) {
         bars.append(bar);
       }
 
-      card.append(top, minis, head, bars);
+      // 마지막 점검 상대 시간 ("2분 전 점검") — tickClock()이 1초마다 글자만 고칩니다
+      const ago = el('div', 'card__ago');
+      ago.append(icon('clock', 'ico ico--xs'));
+      const agoLabel = el('span', '', s.lastCheckedAt ? agoText(s.lastCheckedAt, Date.now()) : '아직 점검 기록 없음');
+      if (s.lastCheckedAt) agoLabel.dataset.ago = s.lastCheckedAt;
+      ago.append(agoLabel);
+
+      // 새로 불러온 데이터에서 상태가 바뀐 카드는 잠깐 노랗게 강조
+      if (view.changed.has(s.id)) card.classList.add('is-changed');
+
+      card.append(top, minis, head, bars, ago);
       return card;
     })
   );
@@ -225,25 +282,37 @@ function renderServices(data) {
 // 상세 패널
 // ─────────────────────────────────────────────
 
+// 상세 팝업(<dialog>) 열기·닫기
+const dialog = () => document.getElementById('detail-dialog');
+
 function select(id) {
   view.selectedId = id;
-  renderServices(view.data);
+  renderServices(view.data); // 선택한 카드 테두리 표시
   renderDetail(view.data);
-  // 상세는 '한눈에 보기' 아래에 있으므로, 고른 결과가 보이게 그쪽으로 스크롤하고 잠깐 강조합니다
-  const panel = document.getElementById('detail-panel');
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // 상단 고정 헤더(64px)에 가리지 않게 조금 위에서 멈춤
-  window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - 84, behavior: reduce ? 'auto' : 'smooth' });
-  panel.classList.remove('is-flash');
-  void panel.offsetWidth; // 애니메이션을 처음부터 다시 시작시키는 요령 (스타일을 한 번 다시 계산하게 함)
-  panel.classList.add('is-flash');
+  const d = dialog();
+  if (!d.open) d.showModal(); // showModal: 뒤 화면을 막고 가운데 띄움 (Esc로 닫힘)
+  d.querySelector('.modal__box').scrollTop = 0;
+}
+
+function closeDetail() {
+  const d = dialog();
+  if (d.open) d.close();
+}
+
+// 닫힐 때(✕·바깥 클릭·Esc 모두) 선택 표시를 지우고, 눌렀던 카드로 키보드 포커스를 돌려줌
+function onDetailClosed() {
+  const id = view.selectedId;
+  view.selectedId = null;
+  if (view.data) renderServices(view.data);
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (card) card.focus({ preventScroll: true });
 }
 
 function renderDetail(data) {
   const root = document.getElementById('detail');
   const s = data.services.find((x) => x.id === view.selectedId);
   if (!s) {
-    root.replaceChildren(el('p', 'detail__empty', '위의 서비스 현황에서 서비스를 선택하세요.'));
+    root.replaceChildren();
     return;
   }
   const kind = kindMeta(s.kind);
@@ -426,27 +495,36 @@ function renderNotifications(notes) {
 
 async function load() {
   try {
-    const data = await fetchJson('/api/status');
+    // cache: 'no-store' — 브라우저가 60초 캐시를 쓰지 않고 항상 최신을 받아 오게 (실시간 표시를 위해)
+    const data = await fetchJson('/api/status', { cache: 'no-store' });
     view.data = data;
-    // 처음이거나 선택했던 서비스가 사라졌으면: 장애 중인 서비스 → 첫 서비스 순으로 고름
-    if (!data.services.some((s) => s.id === view.selectedId)) {
-      view.selectedId = (data.services.find((s) => s.state === 'down') ?? data.services[0])?.id ?? null;
-    }
+    view.lastLoadedAt = Date.now();
+    // 다음 점검 회차가 끝난 직후(+25초)에 다시 불러오도록 예약 → 새 점검 결과가 바로 보임
+    view.nextReloadAt = nextRunAt(Date.now()) + FETCH_AFTER_MS;
+
+    // 직전 데이터와 비교해서 상태가 바뀐 서비스 찾기 (처음 불러올 때는 비교 대상이 없으므로 강조 안 함)
+    const now = new Map(data.services.map((x) => [x.id, x.state]));
+    view.changed = new Set(
+      view.prevStates ? [...now].filter(([id, st]) => view.prevStates.has(id) && view.prevStates.get(id) !== st).map(([id]) => id) : []
+    );
+    view.prevStates = now;
+    // 팝업으로 보고 있던 서비스가 사라졌으면 팝업을 닫음
+    if (view.selectedId !== null && !data.services.some((s) => s.id === view.selectedId)) closeDetail();
     renderHero(data);
     renderStats(data);
     renderMaintenance(data.maintenance ?? []);
     renderFilters(data);
     renderServices(data);
-    renderDetail(data);
+    if (dialog().open) renderDetail(data); // 팝업이 열려 있으면 내용만 최신으로 (닫지 않음)
     renderIncidents(data.incidents ?? []);
     renderNotifications(data.notifications);
     document.getElementById('updated').textContent = `데이터 생성 시각: ${formatKst(data.generatedAt)}`;
   } catch (err) {
     // 불러오기에 실패해도 이전 화면은 그대로 두고 안내만 바꿉니다
     console.error(err);
-    document.getElementById('hero').className = 'hero hero--error';
+    document.getElementById('hero').className = 'statusbar statusbar--error';
     document.getElementById('hero-title').textContent = '상태를 불러오지 못했습니다';
-    document.getElementById('hero-icon').replaceChildren(icon('alert', 'ico ico--lg'));
+    document.getElementById('hero-icon').replaceChildren(icon('alert', 'ico ico--sm'));
     document.getElementById('hero-updated').textContent = '잠시 후 자동으로 다시 시도합니다.';
   }
 }
@@ -456,5 +534,15 @@ document.getElementById('search').addEventListener('input', (e) => {
   if (view.data) renderServices(view.data);
 });
 
+// 팝업 닫기: ✕ 버튼, 바깥(어두운 배경) 클릭, Esc(브라우저 기본)
+document.getElementById('detail-close').addEventListener('click', closeDetail);
+dialog().addEventListener('click', (e) => {
+  // 배경을 누르면 클릭 대상이 <dialog> 자신이 됨 (안쪽 상자를 누르면 그 안의 요소가 대상)
+  if (e.target === e.currentTarget) closeDetail();
+});
+dialog().addEventListener('close', onDetailClosed);
+
 load();
-setInterval(load, REFRESH_MS);
+setInterval(load, REFRESH_MS); // 점검 회차와 별개로 60초마다도 새로 불러옴 (계획 작업·알림 변화 반영)
+setInterval(tickClock, 1000);
+tickClock();

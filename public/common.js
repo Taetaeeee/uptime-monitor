@@ -50,8 +50,9 @@ function sourceBadge(source) {
   return null;
 }
 
-async function fetchJson(url) {
-  const res = await fetch(url, { headers: { accept: 'application/json' } });
+// options: fetch에 그대로 넘길 추가 설정 (예: { cache: 'no-store' }로 브라우저 캐시를 건너뜀)
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, { ...options, headers: { accept: 'application/json' } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -69,6 +70,7 @@ const ICONS = {
     ['path', { d: 'M12 17h.01' }],
   ],
   x: [['circle', { cx: 12, cy: 12, r: 10 }], ['path', { d: 'm15 9-6 6' }], ['path', { d: 'm9 9 6 6' }]],
+  'x-mark': [['path', { d: 'M18 6 6 18' }], ['path', { d: 'm6 6 12 12' }]], // 닫기 버튼용 ✕
   pause: [['circle', { cx: 12, cy: 12, r: 10 }], ['path', { d: 'M10 15V9' }], ['path', { d: 'M14 15V9' }]],
   help: [
     ['circle', { cx: 12, cy: 12, r: 10 }],
