@@ -1,0 +1,54 @@
+# 테스트 자동 실행 (GitHub Actions)
+#
+# 왜 필요한가?
+#   "내 PC에서는 통과한다"를 깨끗한 환경에서 다시 확인하기 위해서입니다.
+#   푸시나 PR이 있을 때마다 새 가상 머신에서 설치부터 테스트까지 처음부터 돌려서,
+#   숨은 의존성이나 Windows 전용 가정이 있으면 여기서 빨간색으로 드러납니다.
+#
+# 하지 않는 것: 배포. 비밀 값(시크릿)도 쓰지 않습니다.
+#   테스트는 가짜 D1(Node 내장 SQLite)을 쓰기 때문에 Cloudflare에 접속할 필요가 없어요.
+
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 이 워크플로가 저장소에서 할 수 있는 일을 '읽기'로 제한 (최소 권한)
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 한쪽이 실패해도 다른 쪽 결과를 끝까지 봅니다 (원인 비교에 도움)
+      fail-fast: false
+      matrix:
+        # 에이전트의 측정 명령(ping, sc 출력 파싱)은 Windows 기준이라 두 환경 모두에서 확인
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 테스트의 가짜 D1이 node:sqlite를 써서 Node 24로 고정 (내 PC도 24)
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # npm ci: package-lock.json에 적힌 버전 그대로 설치 (npm install은 버전이 달라질 수 있음)
+      - run: npm ci
+
+      - name: JS 테스트
+        run: npm test
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+
+      # 에이전트는 표준 라이브러리만 써서 설치 단계가 없습니다
+      - name: Python 테스트 (에이전트)
+        run: python -m unittest discover -s agent/tests -v
