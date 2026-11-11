@@ -38,6 +38,7 @@ const view = {
   changed: new Set(), // 이번에 상태가 바뀐 서비스 id
   lastLoadedAt: 0, // 마지막으로 불러오기에 성공한 시각(ms)
   nextReloadAt: 0, // 다음 점검 회차 직후 다시 불러올 시각(ms)
+  history: new Map(), // 서비스 id → { at, data } 상세 팝업 그래프용 기록 (60초 동안 재사용)
 };
 
 // ─────────────────────────────────────────────
@@ -292,6 +293,128 @@ function select(id) {
   const d = dialog();
   if (!d.open) d.showModal(); // showModal: 뒤 화면을 막고 가운데 띄움 (Esc로 닫힘)
   d.querySelector('.modal__box').scrollTop = 0;
+  loadHistory(id);
+}
+
+// ─────────────────────────────────────────────
+// 상세 팝업 그래프 (최근 24시간 기록은 팝업을 열 때만 불러옴 — /api/status를 가볍게 유지)
+// ─────────────────────────────────────────────
+const HISTORY_HOURS = 24;
+const RESPONSE_KINDS = ['http', 'dns', 'ping', 'tcp']; // 응답 시간이 있는 종류
+// 측정값 종류: 단위, y축 최댓값, 기준선 기본값 (서버 판정의 기본값과 같음)
+const VALUE_KINDS = {
+  disk: { unit: '%', yMax: 100, threshold: 90, label: (v) => `기준 ${v}%`, name: '디스크 사용률' },
+  ssl: { unit: '일', threshold: 14, label: (v) => `기준 ${v}일`, name: '인증서 남은 날' },
+  domain: { unit: '일', threshold: 30, label: (v) => `기준 ${v}일`, name: '도메인 만료까지' },
+};
+
+async function loadHistory(id, force = false) {
+  const cached = view.history.get(id);
+  if (!force && cached && !cached.error && Date.now() - cached.at < 60_000) {
+    renderCharts();
+    return;
+  }
+  try {
+    const data = await fetchJson(`/api/monitors/${id}/history?hours=${HISTORY_HOURS}`, { cache: 'no-store' });
+    view.history.set(id, { at: Date.now(), data });
+  } catch (err) {
+    console.error(err);
+    view.history.set(id, { at: Date.now(), error: true });
+  }
+  if (view.selectedId === id) renderCharts(); // 그사이 다른 카드를 열었으면 그리지 않음
+}
+
+// 회차 1개를 그래프 점으로 (마우스를 올리면 보일 설명 포함)
+function toPoint(p, kind) {
+  const t = Date.parse(p.checkedAt);
+  const time = formatKst(p.checkedAt);
+  const k = VALUE_KINDS[kind];
+  const unit = k?.unit ?? 'ms';
+  // 응답 시간 종류는 실패하면 값이 없음(null) → 선을 끊고 빨간 막대, 측정값 종류는 실패해도 값이 있음
+  const v = k ? p.value : p.isSuccess ? p.responseMs : null;
+  const valueText = v === null || v === undefined ? '' : ` · ${v}${unit}`;
+  let tip;
+  if (p.inMaintenance) tip = `${time} · 계획 작업 중${valueText}`;
+  else if (!p.isSuccess) tip = `${time} · 실패: ${p.failureText ?? p.failureReason}${valueText}`;
+  else tip = `${time} · ${p.isSlow ? '느림' : '정상'}${valueText}`;
+  return { t, v, fail: !p.isSuccess && !p.inMaintenance, slow: p.isSlow, maint: p.inMaintenance, tip };
+}
+
+function chartSection(title, sub, node) {
+  const box = el('section', 'chart-box');
+  const head = el('div', 'chart-box__head');
+  head.append(el('h4', 'chart-box__title', title), el('span', 'chart-box__sub', sub));
+  box.append(head, node);
+  return box;
+}
+
+function renderCharts() {
+  const root = document.getElementById('detail-charts');
+  const s = view.data?.services.find((x) => x.id === view.selectedId);
+  if (!root || !s) return;
+  const cached = view.history.get(s.id);
+  const nodes = [];
+  const k = VALUE_KINDS[s.kind];
+  const title24 = s.kind === 'service' ? '최근 24시간 실행 여부' : k ? `최근 24시간 ${k.name}` : '최근 24시간 응답 시간';
+
+  // ① 최근 24시간 (응답 시간 / 측정값 / 실행 여부)
+  if (!cached) {
+    nodes.push(chartSection(title24, '불러오는 중…', el('div', 'chart-empty', '기록을 불러오는 중입니다…')));
+  } else if (cached.error) {
+    nodes.push(chartSection(title24, '', el('div', 'chart-empty', '기록을 불러오지 못했습니다. 잠시 후 다시 시도합니다.')));
+  } else {
+    const h = cached.data;
+    const points = h.points.map((p) => toPoint(p, s.kind));
+    const range = { xMin: Date.parse(h.from), xMax: Date.parse(h.to) };
+    const gapMs = 12 * 60_000; // 5분 간격이므로 12분 넘게 비면 기록이 빠진 것 → 선을 끊음
+    let node;
+    if (points.length === 0) {
+      node = el('div', 'chart-empty', s.state === 'paused' ? '아직 점검을 켜지 않아 기록이 없습니다.' : '최근 24시간 기록이 없습니다.');
+    } else if (s.kind === 'service') {
+      node = statusStrip({ points, ...range, label: title24 });
+    } else if (k) {
+      const th = h.monitor.threshold ?? k.threshold;
+      node = lineChart({ points, ...range, gapMs, unit: k.unit, yMax: k.yMax, threshold: { v: th, label: k.label(th) }, label: title24 });
+    } else {
+      const th = h.monitor.maxResponseMs;
+      node = lineChart({ points, ...range, gapMs, unit: 'ms', threshold: { v: th, label: `느림 기준 ${th}ms` }, label: title24 });
+    }
+    nodes.push(chartSection(title24, `기록 ${points.length}개 · 5분 간격`, node));
+  }
+
+  // ② 최근 30일 가동률 (카드의 막대를 크게, 마우스를 올리면 평균 응답까지)
+  const bars = el('div', 'bars bars--lg');
+  bars.setAttribute('role', 'img');
+  bars.setAttribute('aria-label', `최근 30일 가동률 ${uptimeText(s.uptime30d)}`);
+  for (const d of s.daily) {
+    const bar = el('span', `bar ${barClass(d.uptime)}`);
+    bar.title = d.uptime === null
+      ? `${d.day} · 기록 없음`
+      : `${d.day} · 가동률 ${d.uptime}% · ${d.total}회 점검${d.avgResponseMs !== null ? ` · 평균 ${d.avgResponseMs}ms` : ''}`;
+    bars.append(bar);
+  }
+  const barsBox = el('div');
+  const barsHead = el('div', 'bars-head');
+  barsHead.style.marginTop = '6px';
+  barsHead.append(el('span', '', `${s.daily.length - 1}일 전`), el('span', '', '오늘'));
+  barsBox.append(bars, barsHead);
+  nodes.push(chartSection('최근 30일 가동률', `30일 ${uptimeText(s.uptime30d)}`, barsBox));
+
+  // ③ 최근 30일 일평균 응답 시간 (응답 시간이 있는 종류만) — "요즘 느려지고 있나?"
+  if (RESPONSE_KINDS.includes(s.kind)) {
+    const daily = s.daily.map((d) => ({
+      t: Date.parse(`${d.day}T03:00:00Z`), // 한국 시간 정오 위치에 점을 찍음
+      v: d.avgResponseMs,
+      tip: `${d.day} · ${d.avgResponseMs === null ? '기록 없음' : `평균 ${d.avgResponseMs}ms`}`,
+    }));
+    const withValue = daily.filter((d) => d.v !== null).length;
+    const node = withValue === 0
+      ? el('div', 'chart-empty', '일별 평균 응답 시간 기록이 없습니다.')
+      : lineChart({ points: daily, xMin: daily[0].t, xMax: daily[daily.length - 1].t, gapMs: 36 * 3600_000, unit: 'ms', xFormat: 'date', label: '최근 30일 일평균 응답 시간' });
+    nodes.push(chartSection('최근 30일 일평균 응답 시간', `기록 있는 날 ${withValue}일`, node));
+  }
+
+  root.replaceChildren(...nodes);
 }
 
 function closeDetail() {
@@ -401,7 +524,10 @@ function renderDetail(data) {
   leftCol.append(...left);
   rightCol.append(...nodes);
   grid.append(leftCol, rightCol);
-  root.replaceChildren(grid);
+  const charts = el('div', 'detail-charts');
+  charts.id = 'detail-charts';
+  root.replaceChildren(grid, charts);
+  renderCharts();
 }
 
 // ─────────────────────────────────────────────
@@ -484,9 +610,20 @@ function renderIncidents(list) {
 }
 
 function renderNotifications(notes) {
-  renderCollapsible('notifications', notes, notificationItem, {
-    listClass: 'notes', emptyText: '아직 알림이 없습니다.', moreLabel: '이전 알림',
-  });
+  // 최근 알림은 화면 위쪽에 있으므로 '더 보기'로 길어지지 않게, 높이를 고정하고 패널 안에서만 스크롤합니다
+  // (펼치면 아래 서비스 현황이 밀려 내려가 화면이 흔들리기 때문)
+  const root = document.getElementById('notifications');
+  if (notes.length === 0) {
+    root.replaceChildren(el('p', 'notes__empty', '아직 알림이 없습니다.'));
+    return;
+  }
+  const prev = root.querySelector('.scroll-list')?.scrollTop ?? 0; // 자동 갱신 때 보던 위치 유지
+  const list = el('ol', 'notes scroll-list');
+  list.tabIndex = 0; // 키보드(화살표)로도 스크롤할 수 있게
+  list.setAttribute('aria-label', `최근 알림 ${notes.length}건`);
+  list.append(...notes.map(notificationItem));
+  root.replaceChildren(list);
+  list.scrollTop = prev;
 }
 
 // ─────────────────────────────────────────────
@@ -515,7 +652,10 @@ async function load() {
     renderMaintenance(data.maintenance ?? []);
     renderFilters(data);
     renderServices(data);
-    if (dialog().open) renderDetail(data); // 팝업이 열려 있으면 내용만 최신으로 (닫지 않음)
+    if (dialog().open) {
+      renderDetail(data); // 팝업이 열려 있으면 내용만 최신으로 (닫지 않음)
+      loadHistory(view.selectedId, true); // 그래프 기록도 새로
+    }
     renderIncidents(data.incidents ?? []);
     renderNotifications(data.notifications);
     document.getElementById('updated').textContent = `데이터 생성 시각: ${formatKst(data.generatedAt)}`;

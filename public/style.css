@@ -513,3 +513,47 @@ body:has(.modal[open]) { overflow: hidden; }
   .modal[open] .modal__box { animation: sheet-in .2s ease-out; }
   @keyframes sheet-in { from { transform: translateY(40px); opacity: .6; } to { transform: none; opacity: 1; } }
 }
+
+/* ─────────────────────────────────────────────
+   최근 알림: 높이를 고정하고 패널 안에서만 스크롤
+   ───────────────────────────────────────────── */
+.scroll-list {
+  max-height: 232px; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px;
+  scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  /* 아래쪽이 잘려 있다는 걸 알 수 있게 끝을 흐리게 */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+}
+.scroll-list:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+@media (max-width: 999px) { .scroll-list { max-height: 300px; } }
+
+/* ─────────────────────────────────────────────
+   상세 팝업 그래프
+   ───────────────────────────────────────────── */
+.detail-charts { display: grid; gap: 14px; margin-top: 16px; }
+.chart-box { border: 1px solid var(--border); background: rgba(16, 24, 39, 0.8); border-radius: var(--radius); padding: 14px 14px 10px; }
+.chart-box__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }
+.chart-box__title { margin: 0; font-size: .9rem; color: var(--heading); }
+.chart-box__sub { font-size: .75rem; color: var(--faint); }
+.chart-empty { padding: 24px 8px; text-align: center; color: var(--faint); font-size: .85rem; }
+.chart { display: block; width: 100%; height: auto; overflow: visible; }
+.chart__grid { stroke: rgba(148, 163, 184, 0.12); stroke-width: 1; }
+.chart__axis { fill: var(--faint); font-size: 10px; }
+.chart__line { fill: none; stroke: #818cf8; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart__area { fill: rgba(99, 102, 241, 0.16); stroke: none; }
+.chart__dot { fill: #818cf8; }
+.chart__hit { fill: transparent; cursor: help; }
+.chart__hit:hover { fill: rgba(129, 140, 248, 0.35); }
+.chart__fail { fill: var(--bad); }
+.chart__slow { fill: var(--warn); }
+.chart__maint { fill: rgba(59, 130, 246, 0.16); }
+.chart__ok { fill: rgba(16, 185, 129, 0.85); }
+.chart__strip-bg { fill: rgba(148, 163, 184, 0.10); }
+.chart__threshold { stroke: rgba(251, 191, 36, 0.6); stroke-width: 1; stroke-dasharray: 5 4; }
+.chart__threshold-label { fill: #fcd34d; font-size: 10px; }
+.bars--lg { height: 56px; gap: 3px; }
+/* 좁은 화면: 그래프(640 기준 viewBox)가 절반쯤으로 줄어들어 글자가 너무 작아지므로 그래프 안 글자를 키움 */
+@media (max-width: 640px) {
+  .chart__axis, .chart__threshold-label { font-size: 18px; }
+  .chart__line { stroke-width: 3; }
+}

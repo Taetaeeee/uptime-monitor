@@ -52,7 +52,7 @@
         <div class="panel__head">
           <div>
             <h2 class="panel__title" id="notes-title"><span data-icon="bell" data-icon-class="ico ico--sm"></span>최근 알림</h2>
-            <p class="panel__desc">상태가 바뀔 때(장애·복구)만 기록됩니다.</p>
+            <p class="panel__desc">상태가 바뀔 때(장애·복구)만 기록됩니다. 최근 20건 · 스크롤해서 보기</p>
           </div>
         </div>
         <div id="notifications"></div>
@@ -128,6 +128,7 @@
 
   <!-- common.js(공용 도우미)를 먼저, 그다음 이 페이지 스크립트 (defer는 적힌 순서대로 실행) -->
   <script src="/common.js" defer></script>
+  <script src="/chart.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

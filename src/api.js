@@ -14,6 +14,8 @@ import {
   getDailyStatsBetween,
   getIncidentsOverlapping,
   getReportMonths,
+  getMonitorPublic,
+  getResultsSince,
 } from './db.js';
 import { SLA_TARGET, monthRange, kstMonthOf, summarizeMonth } from './report.js';
 import { toKstDay, addDays, buildDailyBars, overallUptime } from './aggregate.js';
@@ -169,5 +171,28 @@ export async function buildMonthlyReport(db, month, now) {
       source,
       services: services.filter((s) => s.source === source),
     })).filter((g) => g.services.length > 0),
+  };
+}
+
+// 상세 팝업 그래프용 기록 기간 (시간). 원본은 5분 간격이라 48시간이면 최대 576개
+export const HISTORY_DEFAULT_HOURS = 24;
+export const HISTORY_MAX_HOURS = 48;
+
+/**
+ * /api/monitors/:id/history 응답 본문. 대상이 없으면 null.
+ * 팝업을 열 때만 부르므로 /api/status는 가볍게 유지됩니다.
+ * 점검 주소(url)는 내려주지 않습니다.
+ */
+export async function buildMonitorHistory(db, id, hours, now) {
+  const monitor = await getMonitorPublic(db, id);
+  if (!monitor) return null;
+  const from = toIsoSeconds(new Date(now.getTime() - hours * 3600_000));
+  const points = await getResultsSince(db, id, from);
+  return {
+    monitor,
+    hours,
+    from,
+    to: toIsoSeconds(now),
+    points: points.map((p) => ({ ...p, failureText: causeText(p.failureReason) })),
   };
 }

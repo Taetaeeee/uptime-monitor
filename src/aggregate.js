@@ -77,6 +77,8 @@ export function buildDailyBars(stats, today, days = 30) {
       day,
       total: s ? s.totalChecks : 0,
       uptime: s ? uptimePercent(s.successChecks, s.totalChecks) : null,
+      // 그날 성공한 점검의 평균 응답 시간 (상세 팝업의 '30일 일평균 응답' 그래프용)
+      avgResponseMs: s?.avgResponseMs ?? null,
     });
   }
   return bars;

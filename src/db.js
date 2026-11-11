@@ -539,3 +539,40 @@ export async function getReportMonths(db) {
     .all();
   return results.map((r) => r.month);
 }
+
+// ─────────────────────────────────────────────
+// 서비스 상세 팝업 그래프 (최근 N시간 기록)
+// ─────────────────────────────────────────────
+
+/** 공개해도 되는 대상 정보 1건 (점검 주소는 조회하지 않음). 없으면 null */
+export async function getMonitorPublic(db, id) {
+  const r = await db
+    .prepare(`SELECT id, name, kind, source, max_response_ms, threshold FROM monitors WHERE id = ?1`)
+    .bind(id)
+    .first();
+  if (!r) return null;
+  return { id: r.id, name: r.name, kind: r.kind, source: r.source, maxResponseMs: r.max_response_ms, threshold: r.threshold };
+}
+
+/** 한 대상의 sinceIso 이후 점검 결과 (오래된 → 최근). (monitor_id, checked_at) 인덱스로 해당 구간만 읽음 */
+export async function getResultsSince(db, monitorId, sinceIso) {
+  const { results } = await db
+    .prepare(
+      `SELECT checked_at, is_success, is_slow, response_ms, value, failure_reason, in_maintenance, source
+         FROM check_results
+        WHERE monitor_id = ?1 AND checked_at >= ?2
+        ORDER BY checked_at`
+    )
+    .bind(monitorId, sinceIso)
+    .all();
+  return results.map((r) => ({
+    checkedAt: r.checked_at,
+    isSuccess: r.is_success === 1,
+    isSlow: r.is_slow === 1,
+    responseMs: r.response_ms,
+    value: r.value,
+    failureReason: r.failure_reason,
+    inMaintenance: r.in_maintenance === 1,
+    source: r.source,
+  }));
+}

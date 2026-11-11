@@ -5,6 +5,7 @@
 //          POST /api/agent/report  → 내부 점검 에이전트 보고 수집 (ingest.js)
 //          GET  /api/incidents/:id → 장애 상세·보고서 (api.js)
 //          GET  /api/reports/monthly?month=YYYY-MM → 월간 가용성 보고서 (api.js + report.js)
+//          GET  /api/monitors/:id/history?hours=24 → 상세 팝업 그래프용 최근 기록 (api.js)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
 // ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
@@ -15,7 +16,14 @@ import { judgeCheck, judgeDns, FAILURE_REASON } from './judge.js';
 import { getActiveMonitors } from './db.js';
 import { toCheckSlot, toIsoSeconds } from './time.js';
 import { recordResults } from './record.js';
-import { buildStatus, buildIncidentDetail, buildMonthlyReport } from './api.js';
+import {
+  buildStatus,
+  buildIncidentDetail,
+  buildMonthlyReport,
+  buildMonitorHistory,
+  HISTORY_DEFAULT_HOURS,
+  HISTORY_MAX_HOURS,
+} from './api.js';
 import { isValidMonth, kstMonthOf } from './report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
@@ -157,6 +165,23 @@ export default {
         return json(body, 200, { 'cache-control': 'public, max-age=60' });
       } catch (err) {
         console.error('[API 오류] /api/incidents:', err);
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    // 서비스 상세 팝업 그래프 (공개): 최근 N시간 점검 기록 — ?hours=1~48, 기본 24
+    const historyMatch = url.pathname.match(/^\/api\/monitors\/([1-9]\d{0,9})\/history$/);
+    if (historyMatch) {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+      const raw = url.searchParams.get('hours') ?? String(HISTORY_DEFAULT_HOURS);
+      const hours = /^\d{1,2}$/.test(raw) ? Number(raw) : NaN;
+      if (!(hours >= 1 && hours <= HISTORY_MAX_HOURS)) return json({ error: 'invalid_hours' }, 400);
+      try {
+        const body = await buildMonitorHistory(env.DB, Number(historyMatch[1]), hours, new Date());
+        if (!body) return json({ error: 'not_found' }, 404);
+        return json(body, 200, { 'cache-control': 'public, max-age=60' });
+      } catch (err) {
+        console.error('[API 오류] /api/monitors/:id/history:', err);
         return json({ error: 'internal_error' }, 500);
       }
     }

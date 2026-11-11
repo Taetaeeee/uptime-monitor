@@ -17,7 +17,7 @@
 | 장애 판정 | 2회 연속 실패 → 장애, 1회 성공 → 복구. 상태가 바뀔 때만 알림 기록 |
 | 장애 이력·보고서 | 장애 1건마다 첫 실패·판정·복구 시각, 감지 시간(MTTD)·복구 시간(MTTR), 사후 보고서 5항목 |
 | 계획 작업 | 미리 등록한 작업 시간의 점검은 장애로 보지 않고 가동률에서 제외 |
-| 상태 페이지 | 한 줄 상태 띠와 LIVE 표시(다음 점검까지 카운트다운), 요약 카드·최근 알림, 서비스 현황(30일 막대·"N분 전 점검"·상태가 바뀐 카드 강조), 카드를 누르면 상세 팝업, 장애 이력. 점검 회차 직후 자동으로 새로 불러옴 |
+| 상태 페이지 | 한 줄 상태 띠와 LIVE 표시(다음 점검까지 카운트다운), 요약 카드·최근 알림, 서비스 현황(30일 막대·"N분 전 점검"·상태가 바뀐 카드 강조), 카드를 누르면 상세 팝업(최근 24시간 응답 시간·측정값 그래프, 30일 가동률, 30일 일평균 응답), 장애 이력. 점검 회차 직후 자동으로 새로 불러옴 |
 | 월간 보고서 | 대상별 가동률·SLA(99.9%) 달성·에러 버짓·장애 지표, 인쇄/PDF 저장 |
 
 ## 구성
@@ -50,7 +50,7 @@ flowchart LR
 - 화면: 빌드 도구 없는 HTML/CSS/JS
 - 판정·계산 로직은 순수 함수로 분리해 `node --test`로 테스트
 - 에이전트: Python 3 표준 라이브러리만 사용
-- 테스트: JS 102개, Python 22개
+- 테스트: JS 106개, Python 22개
 
 ## 주요 설계 판단
 
@@ -110,7 +110,7 @@ test/           node --test (가짜 D1: Node 내장 SQLite에 실제 마이그�
 ### 테스트
 ```powershell
 npm.cmd install
-npm.cmd test                                     # JS 102개
+npm.cmd test                                     # JS 106개
 python -m unittest discover -s agent\tests       # Python 22개
 ```
 
@@ -168,6 +168,7 @@ Invoke-RestMethod -Method Delete -Uri "$b/api/admin/maintenance/<작업 번호>"
 | `GET /api/status` | 없음 | 상태 페이지 전체 (서비스·30일 막대·장애 이력·알림·계획 작업), 60초 캐시 |
 | `GET /api/incidents/:id` | 없음 | 장애 상세·보고서·타임라인 |
 | `GET /api/reports/monthly?month=YYYY-MM` | 없음 | 월간 가용성 보고서 (없으면 이번 달) |
+| `GET /api/monitors/:id/history?hours=24` | 없음 | 상세 팝업 그래프용 최근 기록 (1~48시간), 60초 캐시 |
 | `POST /api/agent/report` | 에이전트 키 | 에이전트 측정값 보고 (중복 회차는 건너뜀) |
 | `PUT /api/admin/incidents/:id/report` | 관리자 토큰 | 보고서 작성·수정 |
 | `POST /api/admin/maintenance` · `DELETE /api/admin/maintenance/:id` | 관리자 토큰 | 계획 작업 등록·취소 |
