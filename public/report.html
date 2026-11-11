@@ -3,7 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
+  <!-- 테마를 화면을 그리기 전에 정함 (깜빡임 방지). ?theme=light|dark가 있으면 그것을, 없으면 이 브라우저에 저장된 값을 씀. 기본은 어두운 화면 -->
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search).get('theme');
+        var t = q === 'light' || q === 'dark' ? q : localStorage.getItem('um-theme');
+        if (t === 'light') document.documentElement.dataset.theme = 'light';
+      } catch (e) {}
+    })();
+  </script>
   <title>월간 가용성 보고서 · Uptime Monitor</title>
   <meta name="description" content="가상 회사 서비스의 월간 가용성·SLA·장애 지표 보고서 (포트폴리오 프로젝트)">
   <link rel="stylesheet" href="/style.css">
@@ -25,6 +35,14 @@
       <nav class="topnav" aria-label="주요 링크">
         <a href="/" class="is-primary"><span data-icon="activity" data-icon-class="ico ico--sm"></span><span class="label">서비스 상태</span></a>
         <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span><span class="label">GitHub</span></a>
+        <!-- 화면 테마 토글 (어두운 ↔ 밝은). 동작은 common.js -->
+        <button type="button" class="theme-switch" id="theme-switch" role="switch" aria-checked="false" aria-label="밝은 화면">
+          <span class="theme-switch__track" aria-hidden="true">
+            <span class="theme-switch__icon theme-switch__icon--moon" data-icon="moon" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__icon theme-switch__icon--sun" data-icon="sun" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__thumb"></span>
+          </span>
+        </button>
       </nav>
     </div>
   </header>

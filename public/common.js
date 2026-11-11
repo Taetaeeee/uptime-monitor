@@ -142,6 +142,8 @@ const ICONS = {
     ['path', { d: 'M9 18c-4.51 2-5-2-7-2' }],
   ],
   arrowRight: [['path', { d: 'M5 12h14' }], ['path', { d: 'm12 5 7 7-7 7' }]],
+  sun: [['circle', { cx: 12, cy: 12, r: 4 }], ['path', { d: 'M12 2v2M12 20v2m-7.07-2.93 1.41-1.41M17.66 6.34l1.41-1.41M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41' }]],
+  moon: [['path', { d: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z' }]],
   arrowUpRight: [['path', { d: 'M7 7h10v10' }], ['path', { d: 'M7 17 17 7' }]],
   arrowLeft: [['path', { d: 'm12 19-7-7 7-7' }], ['path', { d: 'M19 12H5' }]],
   printer: [
@@ -214,4 +216,48 @@ function kindMeta(kind) {
   return KIND_META[kind] ?? { icon: 'server', text: kind };
 }
 
-document.addEventListener('DOMContentLoaded', () => hydrateIcons());
+// ─────────────────────────────────────────────
+// 화면 테마: 어두운(기본, 업무용) ↔ 밝은(다른 부서에 보여 줄 때)
+//   - 헤더 오른쪽 GitHub 링크 옆의 토글 스위치로 바꾸고, 고른 값은 이 브라우저에 저장합니다.
+//   - 주소 끝에 ?theme=light 를 붙여 열면 처음부터 밝은 화면 (이때는 저장하지 않아서 내 업무용 설정이 바뀌지 않음)
+//   - 화면을 그리기 전에 테마를 정하는 부분은 각 HTML <head>의 짧은 스크립트가 맡습니다 (깜빡임 방지).
+// ─────────────────────────────────────────────
+const THEME_KEY = 'um-theme';
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
+
+function applyTheme(theme, save) {
+  const root = document.documentElement;
+  if (theme === 'light') root.dataset.theme = 'light';
+  else delete root.dataset.theme;
+  if (save) {
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // 사생활 보호 모드 등에서 저장이 막혀도 화면 전환은 그대로 동작
+    }
+  }
+  syncThemeSwitch();
+}
+
+function syncThemeSwitch() {
+  const sw = document.getElementById('theme-switch');
+  if (!sw) return;
+  const light = currentTheme() === 'light';
+  sw.setAttribute('aria-checked', String(light));
+  sw.title = light ? '어두운 화면으로 보기' : '밝은 화면으로 보기';
+}
+
+function initThemeSwitch() {
+  const sw = document.getElementById('theme-switch');
+  if (!sw) return;
+  sw.addEventListener('click', () => applyTheme(currentTheme() === 'light' ? 'dark' : 'light', true));
+  syncThemeSwitch();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  hydrateIcons();
+  initThemeSwitch();
+});
