@@ -27,6 +27,7 @@ import {
 import { isValidMonth, kstMonthOf } from './report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
+import { shouldReseed, reseedDemo } from './demo.js';
 
 /**
  * 예약 실행 1회분: 활성 HTTP 대상을 모두 점검하고 기록한다.
@@ -133,7 +134,21 @@ export default {
   async scheduled(controller, env, ctx) {
     // controller.scheduledTime: 이번 실행 시각(ms).
     // 정각(:00초)이 아닐 수 있어서(실제로 02:50:12가 들어옴) runChecks 안에서 회차로 내림합니다.
-    await runChecks(env, new Date(controller.scheduledTime));
+    const runTime = new Date(controller.scheduledTime);
+    await runChecks(env, runTime);
+
+    // 하루 1회(KST 04:00 회차) 데모 시드를 다시 넣어 "오늘 기준"으로 맞춤 (src/demo.js 설명 참고)
+    // 실제 점검이 끝난 뒤에 하고, 실패해도 이번 회차의 점검 기록에는 영향이 없도록 따로 잡습니다.
+    const slot = toCheckSlot(runTime);
+    if (shouldReseed(slot)) {
+      try {
+        const { default: sql } = await import('./demo-sql.js'); // 이때만 시드 SQL을 불러옴
+        const n = await reseedDemo(env.DB, sql);
+        console.log(`[데모] ${slot} 시드 다시 넣기 완료 (${n}개 문장)`);
+      } catch (err) {
+        console.error(`[데모] ${slot} 시드 다시 넣기 실패:`, err);
+      }
+    }
   },
 
   // HTTP 요청 처리.

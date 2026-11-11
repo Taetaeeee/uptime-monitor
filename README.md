@@ -77,10 +77,11 @@ flowchart LR
 |---|---|---|---|
 | `real` | **고쳐라! 웹게임**(`gochyeora.pages.dev`, 내가 운영하는 사이트)의 HTTP 점검과 DNS 점검 | Worker Cron, **5분마다 실제 점검** (2026-11-11부터) | 표시 없음 |
 | `real` | 관리자가 등록한 '모든 대상' 계획 작업 | 관리자 API | 표시 없음 |
-| `sample` | 가상 서비스 3개(ERP·그룹웨어·고객센터)의 점검 결과·30일 집계·장애 7건·보고서·알림·계획 작업, 도메인 만료 데모 1개(만료까지 41일) | `seed/sample.sql` (다시 실행하면 지우고 새로 넣음) | **데모 데이터** |
+| `sample` | 가상 서비스 3개(ERP·그룹웨어·고객센터)의 점검 결과·30일 집계·장애 7건·보고서·알림·계획 작업, 도메인 만료 데모 1개(만료까지 41일) | `seed/sample.sql` (다시 실행하면 지우고 새로 넣음). 배포본은 **Worker가 매일 KST 04:00 회차에 자동으로 다시 넣어** 날짜를 오늘 기준으로 맞춤 | **데모 데이터**, 카드에 "매일 04:00 갱신" |
 | `simulator` | 가상 내부 장비 5개(코어 스위치·DB 서버·파일 서버 디스크·인증서·ERP 배치)의 측정값과 그로 인한 장애·알림 | `seed/simulator-monitors.sql`로 대상 등록 → `agent/agent.py --simulate`로 시나리오 전송 | **시뮬레이터** |
 
 - 가상 서비스의 주소는 모두 `.invalid`(RFC 2606 예약 도메인)라 실제로 접속될 수 없고, 비활성이라 점검되지도 않습니다.
+- 데모 자동 갱신을 매시간이 아니라 **하루 1회**로 둔 이유: 1회에 약 750행을 쓰는데, D1 무료 쓰기 한도는 같은 계정의 다른 프로젝트와 함께 쓰는 것으로 알고 있어서(공식 문서에서 확인할 부분) 부담을 최소로 했습니다. 다시 넣을 때마다 데모 서비스·장애 번호가 바뀌어, 전날 복사해 둔 데모 장애 링크는 열리지 않을 수 있습니다.
 - 에이전트의 실제 모드는 이 PC에서 `--dry-run`으로만 확인했고, 실제 측정값은 아직 보내지 않습니다.
 
 ## 폴더 구조
@@ -97,6 +98,7 @@ src/            Worker 코드
   incident.js     장애·계획 작업 계산  time.js   회차 시각
   ingest.js       에이전트 보고 API  admin.js  관리자 API
   api.js          공개 조회 API     auth.js   토큰 확인   db.js  SQL 모음
+  demo.js         데모 시드 매일 자동 갱신 (demo-sql.js가 seed/sample.sql을 글자로 불러옴)
 public/         상태 페이지, 장애 상세, 월간 보고서 (HTML/CSS/JS)
 migrations/     D1 스키마 (0001 ~ 0007)
 seed/           가짜 데이터 (sample.sql, simulator-monitors.sql)
@@ -111,7 +113,7 @@ test/           node --test (가짜 D1: Node 내장 SQLite에 실제 마이그�
 ### 테스트
 ```powershell
 npm.cmd install
-npm.cmd test                                     # JS 106개
+npm.cmd test                                     # JS 110개
 python -m unittest discover -s agent\tests       # Python 22개
 ```
 

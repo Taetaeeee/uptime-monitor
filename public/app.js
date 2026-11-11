@@ -26,7 +26,10 @@ const KIND_DESC = {
   service: '사내 PC의 에이전트가 Windows 서비스가 실행 중인지 확인합니다.',
 };
 
-const SOURCE_TEXT = { real: '실제 점검', sample: '데모 데이터 (시드)', simulator: '시뮬레이터 (가짜 측정값)' };
+// 데모 카드에 "N분 전 점검" 대신 보여 줄 글자. Worker가 매일 KST 04:00 회차에 시드를 다시 넣습니다 (src/demo.js)
+const DEMO_REFRESH_TEXT = '데모 데이터 · 매일 04:00 갱신';
+
+const SOURCE_TEXT = { real:'실제 점검', sample: '데모 데이터 (시드)', simulator: '시뮬레이터 (가짜 측정값)' };
 
 const view = {
   data: null,
@@ -266,8 +269,12 @@ function renderServices(data) {
       // 마지막 점검 상대 시간 ("2분 전 점검") — tickClock()이 1초마다 글자만 고칩니다
       const ago = el('div', 'card__ago');
       ago.append(icon('clock', 'ico ico--xs'));
-      const agoLabel = el('span', '', s.lastCheckedAt ? agoText(s.lastCheckedAt, Date.now()) : '아직 점검 기록 없음');
-      if (s.lastCheckedAt) agoLabel.dataset.ago = s.lastCheckedAt;
+      // 데모(sample) 카드는 실제로 점검하지 않으므로 "N분 전 점검" 대신 데모라는 사실과 갱신 주기를 보여 줍니다.
+      // (시드 시각 기준 "20시간 전 점검"처럼 보이면 장애로 오해할 수 있어서)
+      const isDemo = s.source === 'sample';
+      const agoLabel = el('span', '', isDemo ? DEMO_REFRESH_TEXT
+        : s.lastCheckedAt ? agoText(s.lastCheckedAt, Date.now()) : '아직 점검 기록 없음');
+      if (s.lastCheckedAt && !isDemo) agoLabel.dataset.ago = s.lastCheckedAt;
       ago.append(agoLabel);
 
       // 새로 불러온 데이터에서 상태가 바뀐 카드는 잠깐 노랗게 강조
@@ -379,7 +386,7 @@ function renderDetailLive() {
   const days = s.daily.filter((d) => d.total > 0).length;
 
   const kpis = [
-    { label: '현재 상태', value: (STATE_META[s.state] ?? STATE_META.unknown).text, tone, sub: s.lastCheckedAt ? null : '아직 점검 기록 없음', ago: s.lastCheckedAt },
+    { label: '현재 상태', value: (STATE_META[s.state] ?? STATE_META.unknown).text, tone, sub: s.source === 'sample' ? DEMO_REFRESH_TEXT : s.lastCheckedAt ? null : '아직 점검 기록 없음', ago: s.source === 'sample' ? null : s.lastCheckedAt },
     { label: lv.label, value: lv.value, sub: secondSub },
     { label: '24시간 가동률', value: up24 === undefined ? '…' : uptimeText(up24), sub: h ? `기록 ${h.points.length}회` : '불러오는 중' },
     { label: '30일 가동률', value: uptimeText(s.uptime30d), sub: `기록 ${days}/${s.daily.length}일` },
@@ -553,7 +560,7 @@ function renderDetail(data) {
   for (const [k, v] of [
     ['점검 종류', kind.text],
     ['데이터 출처', SOURCE_TEXT[s.source] ?? s.source],
-    ['마지막 점검', s.lastCheckedAt ? formatKst(s.lastCheckedAt) : '-'],
+    ['마지막 점검', s.source === 'sample' ? DEMO_REFRESH_TEXT : s.lastCheckedAt ? formatKst(s.lastCheckedAt) : '-'],
   ]) {
     const item = el('div');
     item.append(el('dt', '', k), el('dd', '', v));
