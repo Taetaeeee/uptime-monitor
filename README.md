@@ -1,5 +1,7 @@
 # Uptime Monitor · 서비스 상태 진단
 
+[![test](https://github.com/Taetaeeee/uptime-monitor/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/Taetaeeee/uptime-monitor/actions/workflows/test.yml)
+
 가상 회사의 웹 서비스와 사내 시스템을 5분마다 점검하고, 장애를 감지·기록하고,
 가동률과 장애 이력을 **공개 상태 페이지**와 **월간 가용성 보고서**로 보여 주는 포트폴리오 프로젝트입니다.
 
