@@ -42,13 +42,19 @@ const kstDate = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month
  * @param {number} [o.yMax]         고정 최댓값 (디스크 % = 100)
  * @param {'time'|'date'} [o.xFormat]
  * @param {string} o.label          화면 낭독기용 설명
+ * @param {{w?:number,h?:number,l?:number}} [o.box]  그림 크기 (기본 640×190)
  */
 function lineChart(o) {
-  const { w, h, l, r, t, b } = BOX;
+  // o.box로 그림 크기를 바꿀 수 있음: 작은 칸에서는 작은 viewBox로 그려야 글자가 너무 작아지지 않음
+  const { w, h, l, r, t, b } = { ...BOX, ...(o.box ?? {}) };
   const iw = w - l - r;
   const ih = h - t - b;
   const values = o.points.map((p) => p.v).filter((v) => v !== null && v !== undefined);
-  const yMax = o.yMax ?? niceMax(Math.max(...values, o.threshold?.v ?? 0, 1) * 1.1);
+  const dataMax = Math.max(...values, 1);
+  // 기준선이 실제 값보다 훨씬 위(2배 초과)면 축에 넣지 않음: 넣으면 축이 커져서 실제 값의 변화가 바닥에 깔려 안 보임
+  // (예: 느림 기준 3000ms인데 실제 300~600ms). 그때는 선 대신 위쪽에 글자로만 알려 줍니다.
+  const thresholdInAxis = Boolean(o.threshold) && (o.yMax !== undefined || o.threshold.v <= dataMax * 2);
+  const yMax = o.yMax ?? niceMax(Math.max(dataMax, thresholdInAxis ? o.threshold.v : 0) * 1.15);
   const x = (ms) => l + ((ms - o.xMin) / Math.max(1, o.xMax - o.xMin)) * iw;
   const y = (v) => t + ih - (Math.min(v, yMax) / yMax) * ih;
 
@@ -76,8 +82,15 @@ function lineChart(o) {
     svg.append(label);
   }
 
+  // 축 밖 기준선 안내
+  if (o.threshold && !thresholdInAxis) {
+    const note = svgEl('text', { x: l + 6, y: t + 12, class: 'chart__threshold-label' });
+    note.textContent = `${o.threshold.label} (현재 값보다 훨씬 높아 그래프 위쪽 밖)`;
+    svg.append(note);
+  }
+
   // 기준선 (점선)
-  if (o.threshold) {
+  if (o.threshold && thresholdInAxis) {
     const ty = y(o.threshold.v);
     svg.append(svgEl('line', { x1: l, x2: w - r, y1: ty, y2: ty, class: 'chart__threshold' }));
     // 이름은 왼쪽 끝에 (최근 값이 모이는 오른쪽 끝에 두면 선과 겹침)

@@ -557,3 +557,46 @@ body:has(.modal[open]) { overflow: hidden; }
   .chart__axis, .chart__threshold-label { font-size: 18px; }
   .chart__line { stroke-width: 3; }
 }
+
+/* ─────────────────────────────────────────────
+   상세 팝업 구성: ① 머리 ② 핵심 지표 ③ 그래프 ④ 최근 장애 ⑤ 바닥 정보
+   ───────────────────────────────────────────── */
+.modal__titlebox { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.modal__title { margin: 0 0 4px; font-size: 1.2rem; font-weight: 800; color: var(--heading); overflow-wrap: anywhere; }
+.modal .detail__desc { margin: 0 0 14px; }
+
+/* ② 핵심 지표 4칸 (큰 숫자) */
+.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+@media (min-width: 720px) { .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.kpi { border: 1px solid var(--border); background: rgba(16, 24, 39, 0.8); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+.kpi__label { font-size: .75rem; color: var(--faint); font-weight: 600; }
+.kpi__value { font-size: 1.45rem; font-weight: 800; color: var(--heading); letter-spacing: -.02em; line-height: 1.25; margin-top: 4px; overflow-wrap: anywhere; }
+.kpi__value--good { color: var(--good); }
+.kpi__value--bad { color: var(--bad); }
+.kpi__value--info { color: var(--info); }
+.kpi__value--muted { color: var(--idle); }
+.kpi__sub { font-size: .72rem; color: var(--faint); margin-top: 2px; min-height: 1em; }
+
+/* ③ 그래프: 큰 그래프 1개 + 아래 작은 그래프 2개 나란히 */
+.detail-charts { display: grid; gap: 12px; margin-top: 0; }
+.chart-pair { display: grid; gap: 12px; }
+@media (min-width: 720px) { .chart-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.chart-pair--single { grid-template-columns: minmax(0, 1fr) !important; }
+.chart-pair .bars--lg { height: 64px; }
+
+/* ④ 최근 장애 */
+.detail-section { margin-top: 16px; }
+.detail-section .subhead { margin-bottom: 8px; }
+.detail-section .mini-list { margin-bottom: 0; }
+
+/* ⑤ 바닥 정보 (작은 글씨) */
+.detail-foot {
+  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; font-size: .78rem; color: var(--faint);
+}
+.detail-foot__facts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; }
+.detail-foot__facts div { display: flex; gap: 6px; }
+.detail-foot__facts dt { color: var(--faint); }
+.detail-foot__facts dd { margin: 0; color: var(--text); }
+.detail-foot__notice { flex-basis: 100%; margin: 0; color: var(--demo-text); }
+.detail-foot__link { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }

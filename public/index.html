@@ -103,7 +103,14 @@
   <dialog id="detail-dialog" class="modal" aria-labelledby="detail-title">
     <div class="modal__box">
       <div class="modal__head">
-        <h2 class="panel__title" id="detail-title">서비스 상세</h2>
+        <!-- ① 머리: 팝업 제목 자리에 서비스 이름·상태·출처 (app.js renderDetail이 채움) -->
+        <div class="modal__titlebox">
+          <span class="kind-ico" id="detail-kind" aria-hidden="true"></span>
+          <div style="min-width:0">
+            <h2 class="modal__title" id="detail-title">서비스 상세</h2>
+            <div class="card__tags" id="detail-tags"></div>
+          </div>
+        </div>
         <button type="button" class="modal__close" id="detail-close" aria-label="닫기"><span data-icon="x-mark" data-icon-class="ico ico--sm"></span></button>
       </div>
       <div id="detail"></div>
