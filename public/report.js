@@ -3,13 +3,14 @@
 
 const GROUP_TITLE = {
   real: '실제 점검',
+  replay: '공개 데이터셋 재생 (다른 조직의 실제 기록)',
   simulator: '시뮬레이터 (가짜 측정값)',
   sample: '데모 데이터 (시드)',
 };
 
 const KIND_TEXT = {
   http: 'HTTP', dns: 'DNS', domain: '도메인 만료',
-  ping: 'ping', tcp: 'TCP', ssl: 'SSL 인증서', disk: '디스크', service: '서비스',
+  ping: 'ping', tcp: 'TCP', ssl: 'SSL 인증서', disk: '디스크', service: '서비스', replay: '데이터 재생',
 };
 
 const pct = (v) => (v === null || v === undefined ? '-' : `${v}%`);

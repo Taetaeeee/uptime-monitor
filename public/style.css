@@ -30,6 +30,8 @@
 
   --demo-bg: rgba(245, 158, 11, 0.12);  --demo-text: var(--threshold-text);  --demo-line: rgba(245, 158, 11, 0.30);
   --sim-bg: rgba(139, 92, 246, 0.14);   --sim-text: #c4b5fd;   --sim-line: rgba(139, 92, 246, 0.35);
+  /* 공개 데이터셋 재생 (가짜가 아니라 다른 조직의 실제 기록이라 데모·시뮬레이터와 다른 청록색) */
+  --replay-bg: rgba(20, 184, 166, 0.14); --replay-text: #5eead4; --replay-line: rgba(20, 184, 166, 0.35);
 
   --accent: #3b82f6;
   --accent-2: #8b5cf6;
@@ -166,6 +168,7 @@ main.wrap { padding-top: 32px; padding-bottom: 24px; }
 }
 .badge--demo { background: var(--demo-bg); color: var(--demo-text); border-color: var(--demo-line); }
 .badge--sim { background: var(--sim-bg); color: var(--sim-text); border-color: var(--sim-line); }
+.badge--replay { background: var(--replay-bg); color: var(--replay-text); border-color: var(--replay-line); }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -631,6 +634,14 @@ body:has(.modal[open]) { overflow: hidden; }
 .detail-foot__notice { flex-basis: 100%; margin: 0; color: var(--demo-text); }
 .detail-foot__link { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
 
+/* 데이터 출처 상세 (공개 데이터셋 재생 대상만): 데이터셋 이름·지표·라이선스·가공 방법·인용 */
+.detail-source { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.detail-source__list { margin: 0; display: grid; gap: 8px; font-size: 12.5px; }
+.detail-source__list > div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; }
+.detail-source__list dt { color: var(--faint); }
+.detail-source__list dd { margin: 0; color: var(--text); overflow-wrap: anywhere; line-height: 1.5; }
+@media (max-width: 480px) { .detail-source__list > div { grid-template-columns: 1fr; gap: 2px; } }
+
 /* ─────────────────────────────────────────────
    밝은 테마 (다른 부서에 보여 줄 때) — <html data-theme="light">
    기본은 어두운 테마(업무용). 헤더의 토글 스위치나 주소 끝 ?theme=light 로 바뀝니다.
@@ -663,6 +674,7 @@ body:has(.modal[open]) { overflow: hidden; }
 
   --demo-bg: #fef3c7;  --demo-text: #92400e;  --demo-line: #fcd34d;
   --sim-bg: #ede9fe;   --sim-text: #5b21b6;   --sim-line: #c4b5fd;
+  --replay-bg: #ccfbf1; --replay-text: #115e59; --replay-line: #5eead4;
 
   --ov-10: rgba(15, 23, 42, 0.12);
   --ov-08: rgba(15, 23, 42, 0.07);

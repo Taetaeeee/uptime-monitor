@@ -39,7 +39,7 @@ export const DATASETS = [
     processing:
       '장비 3대(machine-1-1, 2-1, 3-1)의 test 구간에서 이상 구간이 많이 든 1주(10,080분)를 골라 1분 값을 5분 최댓값으로 줄임. ' +
       '지표는 이상 구간을 잘 잡는 것을 골랐고(지표 이름은 공개되지 않음), 값은 0~1 정규화 상대값을 %로 환산한 것이라 실제 사용률이 아님. ' +
-      '지표를 라벨을 보고 골랐으므로 판정 성능 측정(B-9)은 선택에 쓰지 않은 구간으로 해야 함.',
+      '지표를 이상 라벨을 보고 골랐으므로, 이 지표만으로 탐지 성능을 평가하면 결과가 실제보다 좋게 나옴.',
     kind: 'real_replay',
     citation: null,
   },
@@ -92,6 +92,7 @@ function buildSmd() {
         stepMinutes: 5,
         length: series.length,
         metric: `서버 지표 #${best.dim} (익명·정규화, % 환산)`,
+        unit: '%',
         description: `SMD machine-${m}의 ${range[0]}~${range[1]}분 구간, 지표 ${best.dim}, 5분 최댓값`,
         rule,
         baseline: null,
@@ -122,6 +123,7 @@ function buildNab() {
       stepMinutes: 5,
       length: series.length,
       metric: '설비 온도 센서 값 (단위는 원본이 밝히지 않음)',
+      unit: '', // 단위를 알 수 없으므로 숫자만 표시
       description: `NAB machine_temperature_system_failure, ${labelled[a].ts} ~ ${labelled[b].ts}`,
       rule: { type: 'deviation', slowPct: 10, failPct: 20 },
       baseline,
@@ -229,6 +231,7 @@ function buildBackblaze() {
       stepMinutes: 1440,
       length: series.length,
       metric: `드라이브 ${picked.size}대의 불량 섹터(smart_5_raw) 합계`,
+      unit: '개',
       description: `Backblaze 2013, 모델 ${group.model}, ${dates[0]} ~ ${dates[dates.length - 1]}, 고장 ${group.failed.length}대 + 정상 ${group.healthy.length}대 (시리얼 번호는 기록하지 않음)`,
       rule: { type: 'smart', slowAbove: 0 },
       baseline: null,

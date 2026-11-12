@@ -5,6 +5,7 @@
 
 import {
   getStatusMonitors,
+  getDatasets,
   getDailyStatsSince,
   getRecentNotifications,
   getCurrentAndUpcomingMaintenance,
@@ -44,6 +45,28 @@ export function displayState(monitor, inMaintenance = false) {
 }
 
 /**
+ * 재생 대상의 화면용 정보 (순수 함수). 재생 대상이 아니면 null.
+ *   규칙(JSON 글자)은 화면이 기준선·설명 문장을 만들 수 있게 객체로 풀어 줍니다.
+ *   깨진 규칙이 들어 있어도 상태 페이지 전체가 죽지 않게 rule만 null로 둡니다.
+ */
+export function replayInfo(m) {
+  if (m.replayRule === null || m.replayRule === undefined) return null;
+  let rule = null;
+  try {
+    rule = JSON.parse(m.replayRule);
+  } catch {
+    rule = null;
+  }
+  return {
+    metric: m.replayMetric, // 지표 설명. 예: 서버 지표 #14 (익명·정규화, % 환산)
+    unit: m.replayUnit, // '%' | '개' | '' (단위를 알 수 없으면 빈 글자)
+    rule,
+    baseline: m.replayBaseline,
+    datasetKey: m.datasetKey,
+  };
+}
+
+/**
  * /api/status 응답 본문을 만든다.
  * @param {object} db   D1
  * @param {Date}   now  기준 시각 (테스트에서 고정할 수 있게 인자로 받음)
@@ -61,6 +84,12 @@ export async function buildStatus(db, now) {
     getRecentIncidents(db, INCIDENT_LIMIT),
   ]);
 
+  // 데이터셋 메타는 재생 대상이 있을 때만 읽습니다 (없으면 매번 읽을 이유가 없어서)
+  const datasets = {};
+  if (monitors.some((m) => m.replayRule !== null && m.replayRule !== undefined)) {
+    for (const d of await getDatasets(db)) datasets[d.key] = d;
+  }
+
   const services = monitors.map((m) => {
     const mine = stats.filter((s) => s.monitorId === m.id);
     return {
@@ -71,7 +100,8 @@ export async function buildStatus(db, now) {
       state: displayState(m, isInMaintenance(maintenance, m.id, nowIso)),
       lastCheckedAt: m.lastCheckedAt,
       lastResponseMs: m.lastResponseMs,
-      lastValue: m.lastValue, // 디스크 사용률(%)·인증서 남은 일수 (그 밖에는 null)
+      lastValue: m.lastValue, // 디스크 사용률(%)·인증서 남은 일수·재생 값 (그 밖에는 null)
+      replay: replayInfo(m), // 공개 데이터셋 재생 대상만 객체, 나머지는 null (B-7e)
       uptime30d: overallUptime(mine),
       daily: buildDailyBars(mine, today, BAR_DAYS),
     };
@@ -82,6 +112,7 @@ export async function buildStatus(db, now) {
     today,
     barDays: BAR_DAYS,
     services,
+    datasets, // 재생 대상이 쓰는 공개 데이터셋 정보 (key → 이름·링크·라이선스·가공 방법). 재생 대상이 없으면 {}
     // 진행 중(active: true)이거나 예정된 계획 작업
     maintenance: maintenance.map((w) => ({
       ...w,

@@ -43,10 +43,12 @@ function el(tag, className, text) {
   return node;
 }
 
-// 출처 표시: sample(시드) → '데모 데이터', simulator(에이전트 시뮬레이터) → '시뮬레이터', real → 표시 없음
+// 출처 표시: sample(시드) → '데모 데이터', simulator(에이전트 시뮬레이터) → '시뮬레이터',
+//            replay(공개 데이터셋 재생) → '실제 데이터 재생', real → 표시 없음
 function sourceBadge(source) {
   if (source === 'sample') return el('span', 'badge badge--demo', '데모 데이터');
   if (source === 'simulator') return el('span', 'badge badge--sim', '시뮬레이터');
+  if (source === 'replay') return el('span', 'badge badge--replay', '실제 데이터 재생');
   return null;
 }
 
@@ -211,6 +213,7 @@ const KIND_META = {
   ssl: { icon: 'lock', text: 'SSL 인증서' },
   disk: { icon: 'disk', text: '디스크' },
   service: { icon: 'cpu', text: 'Windows 서비스' },
+  replay: { icon: 'activity', text: '데이터 재생' },
 };
 function kindMeta(kind) {
   return KIND_META[kind] ?? { icon: 'server', text: kind };

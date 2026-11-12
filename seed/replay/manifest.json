@@ -12,6 +12,7 @@
       "stepMinutes": 5,
       "length": 2016,
       "metric": "서버 지표 #14 (익명·정규화, % 환산)",
+      "unit": "%",
       "description": "SMD machine-1-1의 14640~24720분 구간, 지표 14, 5분 최댓값",
       "rule": {
         "type": "high",
@@ -30,6 +31,7 @@
       "stepMinutes": 5,
       "length": 2016,
       "metric": "서버 지표 #4 (익명·정규화, % 환산)",
+      "unit": "%",
       "description": "SMD machine-2-1의 10860~20940분 구간, 지표 4, 5분 최댓값",
       "rule": {
         "type": "high",
@@ -48,6 +50,7 @@
       "stepMinutes": 5,
       "length": 2016,
       "metric": "서버 지표 #1 (익명·정규화, % 환산)",
+      "unit": "%",
       "description": "SMD machine-3-1의 660~10740분 구간, 지표 1, 5분 최댓값",
       "rule": {
         "type": "high",
@@ -66,6 +69,7 @@
       "stepMinutes": 5,
       "length": 2432,
       "metric": "설비 온도 센서 값 (단위는 원본이 밝히지 않음)",
+      "unit": "",
       "description": "NAB machine_temperature_system_failure, 2013-12-09 18:25:00 ~ 2013-12-18 05:00:00",
       "rule": {
         "type": "deviation",
@@ -84,6 +88,7 @@
       "stepMinutes": 1440,
       "length": 60,
       "metric": "드라이브 8대의 불량 섹터(smart_5_raw) 합계",
+      "unit": "개",
       "description": "Backblaze 2013, 모델 Hitachi HDS5C3030ALA630, 2013-04-10 ~ 2013-06-08, 고장 2대 + 정상 6대 (시리얼 번호는 기록하지 않음)",
       "rule": {
         "type": "smart",

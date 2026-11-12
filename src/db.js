@@ -284,9 +284,17 @@ export async function getStatusMonitors(db) {
               s.state,
               r.checked_at  AS last_checked_at,
               r.response_ms AS last_response_ms,
-              r.value       AS last_value
+              r.value       AS last_value,
+              -- 공개 데이터셋 재생 대상만 값이 있고, 나머지는 NULL (B-7e)
+              c.rule        AS replay_rule,
+              c.baseline    AS replay_baseline,
+              c.metric_label AS replay_metric,
+              c.unit        AS replay_unit,
+              d.key         AS dataset_key
          FROM monitors m
          LEFT JOIN monitor_state s ON s.monitor_id = m.id
+         LEFT JOIN replay_config c ON c.monitor_id = m.id
+         LEFT JOIN datasets d ON d.id = m.dataset_id
          -- 대상별 "가장 최근 결과 1건": 복합 인덱스로 대상마다 맨 끝 1행만 읽습니다
          LEFT JOIN check_results r ON r.id = (
                 SELECT id FROM check_results
@@ -306,7 +314,23 @@ export async function getStatusMonitors(db) {
     lastCheckedAt: r.last_checked_at,
     lastResponseMs: r.last_response_ms,
     lastValue: r.last_value, // 디스크 %·인증서 남은 일수 (B-4)
+    replayRule: r.replay_rule,
+    replayBaseline: r.replay_baseline,
+    replayMetric: r.replay_metric,
+    replayUnit: r.replay_unit,
+    datasetKey: r.dataset_key,
   }));
+}
+
+/**
+ * 공개 데이터셋 메타 전체 (3행 안팎). 화면의 "데이터 출처" 상세에 쓰입니다.
+ * 상태 페이지가 한 번 불릴 때마다 읽으므로, 재생 대상이 있을 때만 호출합니다. (api.js)
+ */
+export async function getDatasets(db) {
+  const { results } = await db
+    .prepare('SELECT key, name, url, license, processing, kind, citation FROM datasets ORDER BY key')
+    .all();
+  return results;
 }
 
 /** fromDay(KST, 포함) 이후의 모든 대상 일별 집계 */

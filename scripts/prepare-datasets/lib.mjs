@@ -339,13 +339,13 @@ export function buildMonitorsSql(entries, { leadSteps = 12 } = {}) {
       `VALUES (${sqlString(e.name)}, 'replay', ${sqlString(`replay://${e.checkKey}`)}, 200, NULL, 3000, 1, 'replay', ${key}, (SELECT id FROM datasets WHERE key = ${sqlString(e.datasetKey)}))`,
       'ON CONFLICT(check_key) DO UPDATE SET name = excluded.name, kind = excluded.kind, url = excluded.url,',
       '  source = excluded.source, dataset_id = excluded.dataset_id;',
-      'INSERT INTO replay_config (monitor_id, length, step_minutes, anchor_at, rule, baseline, metric_label)',
+      'INSERT INTO replay_config (monitor_id, length, step_minutes, anchor_at, rule, baseline, metric_label, unit)',
       `SELECT id, ${sqlNumber(e.length)}, ${sqlNumber(e.stepMinutes)},`,
       `  strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - ${offsetSeconds}, 'unixepoch'),`,
-      `  ${sqlString(JSON.stringify(e.rule))}, ${e.baseline === null || e.baseline === undefined ? 'NULL' : sqlNumber(e.baseline)}, ${sqlString(e.metric)}`,
+      `  ${sqlString(JSON.stringify(e.rule))}, ${e.baseline === null || e.baseline === undefined ? 'NULL' : sqlNumber(e.baseline)}, ${sqlString(e.metric)}, ${sqlString(e.unit ?? '')}`,
       `FROM monitors WHERE check_key = ${key}`,
       'ON CONFLICT(monitor_id) DO UPDATE SET length = excluded.length, step_minutes = excluded.step_minutes,',
-      '  rule = excluded.rule, baseline = excluded.baseline, metric_label = excluded.metric_label;',
+      '  rule = excluded.rule, baseline = excluded.baseline, metric_label = excluded.metric_label, unit = excluded.unit;',
       ''
     );
   }
