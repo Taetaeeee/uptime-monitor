@@ -24,6 +24,7 @@ export const REASON_TEXT = {
   disk_full: '디스크 사용률 기준 초과',
   service_stopped: '서비스 중지',
   measure_error: '측정 실패',
+  agent_silent: '에이전트 보고 없음',
   // DNS·도메인 만료
   dns_nxdomain: 'DNS 이름 없음',
   dns_error: 'DNS 조회 오류',

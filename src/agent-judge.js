@@ -26,6 +26,7 @@ export const AGENT_FAILURE = Object.freeze({
   DISK_FULL: 'disk_full',           // 디스크 사용률 기준 이상
   SERVICE_STOPPED: 'service_stopped', // 서비스가 실행 중이 아님
   MEASURE_ERROR: 'measure_error',   // 값을 읽지 못함 (디스크 경로 오류 등)
+  SILENT: 'agent_silent',           // 에이전트 보고가 끊김 (측정 실패가 아니라 "측정 결과가 안 옴", B-11)
 });
 
 export const AGENT_KINDS = Object.freeze(['ping', 'tcp', 'ssl', 'disk', 'service']);

@@ -119,6 +119,34 @@ export async function getMonitorsByKeys(db, keys) {
 }
 
 /**
+ * 무응답 감시를 켠 에이전트 대상과 "마지막 실제 보고 회차"를 가져온다. (B-11)
+ *
+ * 마지막 보고를 monitor_state.last_checked_at으로 보지 않는 이유:
+ *   무응답 기록(agent_silent)도 그 값을 갱신하기 때문에, 그걸 쓰면 한 번 기록한 뒤부터
+ *   "방금 점검됨"으로 보여 무응답이 풀려 버립니다. 그래서 agent_silent가 아닌 가장 최근 결과를 봅니다.
+ *   (monitor_id, checked_at) 인덱스를 거꾸로 훑다가 첫 행에서 멈추므로 비용이 작습니다.
+ */
+export async function getStaleWatchMonitors(db) {
+  const { results } = await db
+    .prepare(
+      `SELECT m.id, m.name, m.source, m.stale_after_min,
+              (SELECT MAX(r.checked_at) FROM check_results r
+                WHERE r.monitor_id = m.id AND COALESCE(r.failure_reason, '') <> 'agent_silent') AS last_report_at
+         FROM monitors m
+        WHERE m.is_active = 1 AND m.stale_after_min IS NOT NULL AND m.check_key IS NOT NULL
+          AND m.kind IN ('ping', 'tcp', 'ssl', 'disk', 'service')`
+    )
+    .all();
+  return results.map((r) => ({
+    id: r.id,
+    name: r.name,
+    source: r.source,
+    staleAfterMin: r.stale_after_min,
+    lastReportAt: r.last_report_at,
+  }));
+}
+
+/**
  * 점검 결과와 대상별 새 상태를 한 번에 저장한다.
  *
  * 왜 상태도 같은 batch에 넣나?

@@ -1,0 +1,12 @@
+-- 0013: 에이전트 무응답 감지 (B-11)
+--
+-- 에이전트는 바깥으로만 연결(push)하므로, 에이전트가 멈추면 서버에는 "아무 일도 없는" 것처럼 보입니다.
+-- stale_after_min은 "마지막 보고로부터 몇 분이 지나면 무응답으로 볼까"입니다.
+--   - NULL(기본): 감시하지 않음 → 이 마이그레이션만 적용해서는 화면과 판정이 하나도 바뀌지 않습니다.
+--   - 숫자: Cron이 5분마다 확인해, 그 시간을 넘기면 실패 점검(agent_silent)으로 기록합니다.
+--
+-- 왜 모든 에이전트 대상에 일괄 적용하지 않고 대상마다 켜게 했나?
+--   시뮬레이터 대상은 내 PC에서 수동으로 보낼 때만 갱신됩니다. 일괄 적용하면
+--   공개 화면에 "보고 없음 장애"가 계속 생겨요. 켜는 것은 대상별 UPDATE로 따로 합니다.
+--   (예: UPDATE monitors SET stale_after_min = 15 WHERE check_key = '...';)
+ALTER TABLE monitors ADD COLUMN stale_after_min INTEGER CHECK (stale_after_min IS NULL OR stale_after_min >= 5);

@@ -29,6 +29,7 @@ import { isValidMonth, kstMonthOf } from './report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
 import { runReplay } from './replay-run.js';
+import { runStaleCheck } from './stale-run.js';
 
 /**
  * 예약 실행 1회분: 활성 HTTP 대상을 모두 점검하고 기록한다.
@@ -144,6 +145,13 @@ export default {
       await runReplay(env.DB, runTime);
     } catch (err) {
       console.error(`[재생] ${toCheckSlot(runTime)} 실패:`, err);
+    }
+
+    // 에이전트 무응답 감지 (B-11): 감시를 켠 대상이 없으면 쿼리 1번으로 끝납니다. 실패해도 위 기록에는 영향 없음.
+    try {
+      await runStaleCheck(env.DB, runTime);
+    } catch (err) {
+      console.error(`[무응답] ${toCheckSlot(runTime)} 실패:`, err);
     }
   },
 

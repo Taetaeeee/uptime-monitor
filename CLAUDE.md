@@ -93,3 +93,4 @@
      훈련 대상(drill-local-tcp)은 비활성(점검 대기)으로 두고 기록은 남김
 9. 판정 규칙 성능 측정 (라벨 있는 데이터로 탐지율·오탐·지연)  ← 완료 (2026-11-12, 코드·결과는 scripts/evaluate-rules, docs/evaluation. 운영 코드·DB 변경 없음)
 10. 포트폴리오 마무리: README 30초 요약 + docs/portfolio(이력서 문장·면접 Q&A)  ← 완료 (2026-11-12, 코드·DB 변경 없음)
+11. 에이전트 무응답 감지 (0013 stale_after_min, src/stale.js·stale-run.js)  ← 코드·테스트 완료 (2026-11-12). 원격 적용(0013)과 대상 켜기는 아직 안 함 — 켜기 전에는 화면·판정 변화 없음
