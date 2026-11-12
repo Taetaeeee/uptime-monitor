@@ -8,7 +8,7 @@
 - **상태 페이지 (라이브):** https://status-monitor.nalzzoaleph26.workers.dev
 - **월간 보고서:** https://status-monitor.nalzzoaleph26.workers.dev/report.html
 
-> 서비스와 회사 이름은 모두 가상입니다. 화면에는 **내가 운영하는 사이트의 실제 점검**, **공개 데이터셋(다른 조직의 실제 운영 기록, 과거)을 재생한 값**, **에이전트 시뮬레이터의 가짜 측정값**이 함께 있고, 카드마다 출처 배지가 붙습니다. 무엇이 실제이고 무엇이 가짜인지는 [아래 표](#실제-데이터와-가짜-데이터)에 정리했습니다.
+> 서비스와 회사 이름은 모두 가상입니다. 화면에는 **내가 운영하는 사이트(고쳐라!)와 팀이 만든 채팅(Keychats)의 실제 점검**, **공개 데이터셋(다른 조직의 실제 운영 기록, 과거)을 재생한 값**, **에이전트 시뮬레이터의 가짜 측정값**이 함께 있고, 카드마다 출처 배지가 붙습니다. 무엇이 실제이고 무엇이 가짜인지는 [아래 표](#실제-데이터와-가짜-데이터)에 정리했습니다.
 
 ## 무엇을 하나
 
@@ -58,7 +58,7 @@ flowchart LR
 - 화면: 빌드 도구 없는 HTML/CSS/JS
 - 판정·계산 로직은 순수 함수로 분리해 `node --test`로 테스트
 - 에이전트: Python 3 표준 라이브러리만 사용
-- 테스트: JS 183개, Python 22개 (원본 데이터 없이 CI에서도 돌아감)
+- 테스트: JS 191개, Python 22개 (원본 데이터 없이 CI에서도 돌아감)
 
 ## 주요 설계 판단
 
@@ -87,6 +87,7 @@ flowchart LR
 | 출처 | 무엇 | 어떻게 들어가나 | 화면 표시 |
 |---|---|---|---|
 | `real` | **고쳐라! 웹게임**(`gochyeora.pages.dev`, 내가 운영하는 사이트)의 HTTP 점검과 DNS 점검 | Worker Cron, **5분마다 실제 점검** (2026-11-11부터) | 표시 없음 |
+| `real` | **사내 메신저**(= [Keychats](https://github.com/Nalzzo-ALEPH26/SKT_ALEPH_KEYCHATS), 학원에서 쓰려고 팀이 만든 채팅 사이트)의 점검 3종: HTTP(첫 화면), DNS, DB 상태(`/chats/api/health`) | Worker Cron, **5분마다 실제 점검** (2026-11-12부터). 상태 확인 주소는 Keychats 쪽에서 DB를 1번 조회해 `ok`/`error`만 돌려주며 사용자·채널·메시지는 건드리지 않음 | 표시 없음 |
 | `real` | 관리자가 등록한 '모든 대상' 계획 작업 | 관리자 API | 표시 없음 |
 | `replay` | 공개 데이터셋을 재생한 서비스 5개: 그룹웨어·메일, 사내 ERP, DB 서버(SMD 장비 3대), MES(NAB 설비 온도), 파일서버·NAS 디스크(Backblaze). **다른 조직의 실제 운영 기록(과거)**이며 이 회사의 실시간 데이터가 아님 | `scripts/prepare-datasets`로 가공한 `seed/replay/*.sql`을 한 번 적재, Worker Cron이 5분마다 한 칸씩 재생 | **실제 데이터 재생** 배지, 서비스를 누르면 데이터셋·라이선스·가공 방법 |
 | `simulator` | 가상 내부 장비 4개(코어 스위치·DB 서버 5432 포트·인증서·ERP 배치)의 측정값과 그로 인한 장애·알림 | `seed/simulator-monitors.sql`로 대상 등록 → `agent/agent.py --simulate`로 시나리오 전송(PC에서 실행할 때만 갱신) | **시뮬레이터**, 시간 표시 앞에 "시뮬레이터(수동 전송)" |
@@ -125,7 +126,7 @@ src/            Worker 코드
   replay.js       재생 계산(순수 함수): 순번·5분 변환·집계·판정
   replay-run.js   Cron 재생 실행: 대상·값 읽기 → 판정 → record.js
 public/         상태 페이지, 장애 상세, 월간 보고서 (HTML/CSS/JS)
-migrations/     D1 스키마 (0001 ~ 0010; 0008 replay 출처, 0009 재생 설정, 0010 단위)
+migrations/     D1 스키마 (0001 ~ 0011; 0008 replay 출처, 0009 재생 설정, 0010 단위, 0011 사내 메신저 점검 등록)
 seed/           sample.sql(로컬·테스트용), simulator-monitors.sql, retire-*.sql(정리), replay/(공개 데이터셋 재생용 SQL·manifest·unload.sql)
 scripts/        prepare-datasets/ (원본 내려받기·분석·가공)
 agent/          Python 에이전트 + 시뮬레이터 시나리오 + 테스트
@@ -139,7 +140,7 @@ test/           node --test (가짜 D1: Node 내장 SQLite에 실제 마이그�
 ### 테스트
 ```powershell
 npm.cmd install
-npm.cmd test                                     # JS 183개
+npm.cmd test                                     # JS 191개
 python -m unittest discover -s agent\tests       # Python 22개
 ```
 
@@ -147,7 +148,7 @@ python -m unittest discover -s agent\tests       # Python 22개
 ```powershell
 npx.cmd wrangler login                           # 계정 인증 (직접)
 npx.cmd wrangler d1 create status-monitor-db     # 나온 database_id를 wrangler.jsonc에
-npm.cmd run db:migrate:remote                    # 마이그레이션 0001 ~ 0010
+npm.cmd run db:migrate:remote                    # 마이그레이션 0001 ~ 0011
 npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/simulator-monitors.sql
 npx.cmd wrangler secret put AGENT_API_KEY        # 에이전트 키 (직접 생성)
 npx.cmd wrangler secret put ADMIN_TOKEN          # 관리자 토큰 (에이전트 키와 다른 값)
@@ -164,6 +165,13 @@ $bytes = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Cr
 ### 실제 사이트 점검 켜기
 ```powershell
 npx.cmd wrangler d1 execute status-monitor-db --remote --command "UPDATE monitors SET is_active = 1 WHERE url IN ('https://gochyeora.pages.dev', 'dns://gochyeora.pages.dev')"
+```
+
+### Keychats 점검 켜기
+점검 대상은 마이그레이션 0011이 **비활성**으로 등록해 둡니다. 켜기 전에 Keychats의 상태 확인 주소가 정상인지 먼저 확인합니다(없으면 DB 상태 점검이 계속 실패).
+```powershell
+curl.exe -s https://keychats.vercel.app/chats/api/health        # {"status":"ok"} 가 나와야 함
+npx.cmd wrangler d1 execute status-monitor-db --remote --command "UPDATE monitors SET is_active = 1 WHERE name LIKE '사내 메신저%' AND source = 'real'"
 ```
 
 ### 공개 데이터셋 재생 올리기 · 되돌리기
@@ -225,6 +233,7 @@ Invoke-RestMethod -Method Delete -Uri "$b/api/admin/maintenance/<작업 번호>"
 - **SLA 목표는 하나(99.9%):** 대상별 목표, CSV 내보내기, 보고서 자동 발송은 없습니다.
 - **알림 채널은 log 하나:** 채널 구조(`{ name, send() }`)는 교체 가능하게 나눠 두었습니다. 외부 메신저는 쓰지 않습니다.
 - **실제 데이터는 아직 짧음:** 고쳐라! 웹게임(HTTP·DNS) 실제 점검은 2026-11-11부터 시작해서, 30일 막대·월간 보고서의 실제 구간은 아직 며칠뿐입니다.
+- **Keychats 점검의 범위:** 3종이 확인하는 것은 "첫 화면이 뜨는가(HTTP)", "이름이 풀리는가(DNS)", "Vercel 함수 → Supabase(PostgREST·Postgres)가 응답하는가(DB 상태)"입니다. 채팅 전송, 실시간 연결, 로그인, 파일 저장소가 정상인지는 확인하지 않으며, 실제 채팅에 가짜 메시지를 쌓거나 점검용 계정을 두어야 하는 종합 점검은 일부러 만들지 않았습니다. `keychats.vercel.app`은 내 도메인이 아니라서 DNS 점검은 Vercel의 이름 해석을 보는 것입니다(고쳐라!의 `pages.dev`와 같은 한계).
 - **재생 데이터의 한계:**
   - SMD는 지표 이름이 공개되지 않아 "CPU"라고 부를 수 없고, 값도 정규화 상대값입니다. 지표는 **이상 라벨을 보고 골랐기 때문에**, 이 지표로 판정 성능을 재면 결과가 실제보다 좋게 나옵니다(선택 편향). 그래서 판정 기준값은 라벨 없이 시리즈의 95·99% 지점으로 정했고, 성능 측정은 선택에 쓰지 않은 구간으로 해야 합니다. DB 서버(`machine-3-1`)는 이상 구간 3개 중 1개만 장애로 잡힙니다.
   - NAB 설비 온도에는 약 17시간 지속되는 실제 고장 구간이 들어 있어, 재생이 시작된 첫날 MES의 가동률이 낮게 나옵니다(데이터가 그렇습니다).
