@@ -5,6 +5,7 @@
 //
 // 만드는 것 (seed/replay/ — 가공한 작은 조각이라 저장소에 올립니다. 원본은 올리지 않습니다)
 //   datasets.sql              데이터셋 메타(이름·링크·라이선스·가공 방법)
+//   monitors.sql              재생 대상 등록 + 설정(replay_config). B-7f 컷오버 때 실행
 //   series-<대상 키>.sql       대상별 5분(또는 하루) 간격 시계열
 //   manifest.json             대상 정의 (서비스 이름, 간격, 길이, 판정 규칙 제안) — B-7d가 읽어 대상을 등록
 //
@@ -18,7 +19,7 @@ import { RAW_DIR } from './fetch.mjs';
 import { loadSmd, pickSmdWindow, SMD_MACHINES } from './analyze.mjs';
 import {
   pickBestDimension, quantile, parseNabCsv, parseNabWindows, labelByWindows, windowAround,
-  addDays, chooseDiskGroup, dailyDiskSeries, parseCsvLine, buildDatasetsSql, buildSeriesSql, round,
+  addDays, chooseDiskGroup, dailyDiskSeries, parseCsvLine, buildDatasetsSql, buildSeriesSql, buildMonitorsSql, round,
 } from './lib.mjs';
 import { downsample, baselineOf, toPercent } from '../../src/replay.js';
 
@@ -250,9 +251,13 @@ function main() {
   for (const { entry, series } of built) {
     writeFileSync(join(OUT, `series-${entry.checkKey}.sql`), buildSeriesSql(entry.checkKey, series));
     entry.file = `series-${entry.checkKey}.sql`;
+    // 첫 이상이 나오는 순번: 대상 등록 SQL이 "적재 직후 얼마 안 돼 이상이 나오도록" 시작 기준 시각을 맞추는 데 씁니다
+    const first = series.findIndex((p) => p.anomaly === 1);
+    entry.firstAnomalySeq = first < 0 ? null : first;
   }
+  writeFileSync(join(OUT, 'monitors.sql'), buildMonitorsSql(built.map((b) => b.entry)));
   writeFileSync(join(OUT, 'manifest.json'), JSON.stringify({ datasets: DATASETS.map((d) => d.key), monitors: built.map((b) => b.entry) }, null, 2) + '\n');
-  console.log(`\n만든 곳: ${OUT}  (파일 ${built.length + 2}개)`);
+  console.log(`\n만든 곳: ${OUT}  (파일 ${built.length + 3}개)`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

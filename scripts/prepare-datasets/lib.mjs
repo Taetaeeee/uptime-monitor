@@ -314,6 +314,45 @@ export function buildDatasetsSql(datasets) {
 }
 
 /**
+ * 재생 대상 등록 SQL (monitors + replay_config) — B-7f 컷오버 때 실행합니다
+ *   monitors: check_key로 "있으면 갱신, 없으면 추가"(여러 번 실행해도 같은 결과)
+ *   replay_config: 시작 기준 시각(anchor_at)은 실행 시각에서 계산하고, 이미 있으면 바꾸지 않습니다.
+ *     (다시 실행했다고 재생이 처음으로 되돌아가면 안 되니까요)
+ *
+ * 시작 기준 시각 = (지금을 5분으로 내림) − (첫 이상 순번 − leadSteps) × 간격
+ *   → 적재하고 약 leadSteps칸(5분 간격이면 1시간) 뒤에 첫 이상 구간이 나오도록 맞춥니다.
+ *   그렇지 않으면 DB 서버처럼 첫 이상이 며칠 뒤인 대상은 한동안 아무 일도 안 일어나는 화면이 돼요.
+ *   파일 안에는 "얼마를 빼는지"라는 고정 숫자만 있고, 실행 시각은 SQL이 실행될 때 정해지므로 파일 내용은 항상 같습니다.
+ *
+ * @param {Array} entries  manifest.monitors (checkKey, name, datasetKey, length, stepMinutes, rule, baseline, metric, firstAnomalySeq)
+ */
+export function buildMonitorsSql(entries, { leadSteps = 12 } = {}) {
+  const out = [];
+  for (const e of entries) {
+    const lead = e.stepMinutes >= 1440 ? 1 : leadSteps; // 하루 단위 데이터는 하루 전부터
+    const offsetSteps = Number.isInteger(e.firstAnomalySeq) ? Math.max(0, e.firstAnomalySeq - lead) : 0;
+    const offsetSeconds = offsetSteps * e.stepMinutes * 60;
+    const key = sqlString(e.checkKey);
+    out.push(
+      '-- ' + e.checkKey,
+      'INSERT INTO monitors (name, kind, url, expected_status, keyword, max_response_ms, is_active, source, check_key, dataset_id)',
+      `VALUES (${sqlString(e.name)}, 'replay', ${sqlString(`replay://${e.checkKey}`)}, 200, NULL, 3000, 1, 'replay', ${key}, (SELECT id FROM datasets WHERE key = ${sqlString(e.datasetKey)}))`,
+      'ON CONFLICT(check_key) DO UPDATE SET name = excluded.name, kind = excluded.kind, url = excluded.url,',
+      '  source = excluded.source, dataset_id = excluded.dataset_id;',
+      'INSERT INTO replay_config (monitor_id, length, step_minutes, anchor_at, rule, baseline, metric_label)',
+      `SELECT id, ${sqlNumber(e.length)}, ${sqlNumber(e.stepMinutes)},`,
+      `  strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', 'now') AS INTEGER) / 300) * 300 - ${offsetSeconds}, 'unixepoch'),`,
+      `  ${sqlString(JSON.stringify(e.rule))}, ${e.baseline === null || e.baseline === undefined ? 'NULL' : sqlNumber(e.baseline)}, ${sqlString(e.metric)}`,
+      `FROM monitors WHERE check_key = ${key}`,
+      'ON CONFLICT(monitor_id) DO UPDATE SET length = excluded.length, step_minutes = excluded.step_minutes,',
+      '  rule = excluded.rule, baseline = excluded.baseline, metric_label = excluded.metric_label;',
+      ''
+    );
+  }
+  return out.join('\n');
+}
+
+/**
  * 재생 시계열 SQL
  *   대상(monitors)은 check_key로 찾습니다. 기존 줄을 지우고 다시 넣으므로 여러 번 실행해도 같은 결과입니다.
  *   한 문장이 너무 길어지지 않게 chunk행씩 나눕니다 (D1의 문장 길이 제한은 공식 문서에서 확인할 부분).

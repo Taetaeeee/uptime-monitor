@@ -119,8 +119,9 @@ export async function buildIncidentDetail(db, id, now) {
   };
 }
 
-// 보고서에서 출처를 묶는 순서: 실제 → 시뮬레이터 → 데모
-const SOURCE_ORDER = ['real', 'simulator', 'sample'];
+// 보고서에서 출처를 묶는 순서: 실제 → 공개 데이터 재생 → 시뮬레이터 → 데모
+// (대상이 없는 출처는 아래에서 걸러지므로, 재생 대상이 아직 없는 동안 응답은 바뀌지 않습니다)
+const SOURCE_ORDER = ['real', 'replay', 'simulator', 'sample'];
 
 /**
  * /api/reports/monthly 응답 본문 (B-6)

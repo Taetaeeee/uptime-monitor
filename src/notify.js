@@ -7,9 +7,12 @@
 // (지금은 'log' 채널 하나만 씁니다 → channels/log.js)
 
 import { TRANSITION } from './state.js';
+import { REPLAY_REASON_TEXT } from './replay.js';
 
 // 실패 이유 코드 → 사람이 읽는 문장 (알림 메시지와 장애 이력 화면(api.js)이 함께 사용)
 export const REASON_TEXT = {
+  // 공개 데이터셋 재생 (B-7): 문구는 replay.js가 코드와 함께 관리하고 여기서 합칩니다
+  ...REPLAY_REASON_TEXT,
   timeout: '응답 시간 초과',
   network_error: '네트워크 오류',
   status_mismatch: '상태 코드 불일치',

@@ -20,7 +20,8 @@
       },
       "baseline": null,
       "hasLabels": true,
-      "file": "series-replay-smd-1-1.sql"
+      "file": "series-replay-smd-1-1.sql",
+      "firstAnomalySeq": 241
     },
     {
       "checkKey": "replay-smd-2-1",
@@ -37,7 +38,8 @@
       },
       "baseline": null,
       "hasLabels": true,
-      "file": "series-replay-smd-2-1.sql"
+      "file": "series-replay-smd-2-1.sql",
+      "firstAnomalySeq": 262
     },
     {
       "checkKey": "replay-smd-3-1",
@@ -54,7 +56,8 @@
       },
       "baseline": null,
       "hasLabels": true,
-      "file": "series-replay-smd-3-1.sql"
+      "file": "series-replay-smd-3-1.sql",
+      "firstAnomalySeq": 109
     },
     {
       "checkKey": "replay-nab-machine-temp",
@@ -71,7 +74,8 @@
       },
       "baseline": 94.03,
       "hasLabels": true,
-      "file": "series-replay-nab-machine-temp.sql"
+      "file": "series-replay-nab-machine-temp.sql",
+      "firstAnomalySeq": 144
     },
     {
       "checkKey": "replay-backblaze-disk",
@@ -87,7 +91,8 @@
       },
       "baseline": null,
       "hasLabels": true,
-      "file": "series-replay-backblaze-disk.sql"
+      "file": "series-replay-backblaze-disk.sql",
+      "firstAnomalySeq": 7
     }
   ]
 }

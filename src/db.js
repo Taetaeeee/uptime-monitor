@@ -27,6 +27,42 @@ export async function getActiveMonitors(db) {
 }
 
 /**
+ * 활성 재생 대상과 그 설정을 가져온다. (B-7d)
+ *   replay_config와 조인하므로 설정이 없는 대상은 나오지 않습니다.
+ *   길이(length)는 replay_config에 적어 둔 값을 씁니다: replay_series를 COUNT(*)로 세면 5분마다 수천 행을 읽어요.
+ */
+export async function getReplayMonitors(db) {
+  const { results } = await db
+    .prepare(
+      `SELECT m.id, m.name, c.length, c.step_minutes, c.anchor_at, c.rule, c.baseline
+         FROM monitors m
+         JOIN replay_config c ON c.monitor_id = m.id
+        WHERE m.is_active = 1 AND m.kind = 'replay'
+        ORDER BY m.id`
+    )
+    .all();
+
+  return results.map((r) => ({
+    monitorId: r.id,
+    name: r.name,
+    length: r.length,
+    stepMinutes: r.step_minutes,
+    anchorAt: r.anchor_at,
+    rule: r.rule,
+    baseline: r.baseline,
+  }));
+}
+
+/** 재생 시계열에서 값 1개 (기본 키로 1행만 읽음). 없으면 null */
+export async function getReplayValue(db, monitorId, seq) {
+  const row = await db
+    .prepare('SELECT value, is_anomaly FROM replay_series WHERE monitor_id = ?1 AND seq = ?2')
+    .bind(monitorId, seq)
+    .first();
+  return row ? { value: row.value, isAnomaly: row.is_anomaly } : null;
+}
+
+/**
  * 대상별 현재 상태를 모두 가져온다. (대상 수가 적어서 전체 조회로 충분)
  * @returns {Promise<Map<number, object>>}  monitorId → 상태 (state.js의 initialState()와 같은 모양)
  */
