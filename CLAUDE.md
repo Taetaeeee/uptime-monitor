@@ -84,5 +84,8 @@
    - 7e 화면 출처 배지·재생 대상 값 표시·데이터 출처 상세·시뮬레이터 카드 표시, 0010(unit)  ← 완료
    - 7f 컷오버: 백업 → 코드 배포(매일 갱신 훅 제거) → 데이터셋·대상·시계열 적재 → 데모(sample)·시뮬레이터 디스크 정리 → 확인 → README  ← 완료
      (화면 배지(7e)보다 먼저 올리면 출처 표시 없이 replay 카드가 섞이므로 적재는 7e 뒤에 했다. 되돌리기: seed/replay/unload.sql)
-8. Keychats 상태 확인 주소(/api/health, Keychats 저장소에서) + B에 Keychats 점검 3종(HTTP·DNS·DB 상태) 등록
+8. Keychats 상태 확인 주소(/chats/api/health, Keychats 저장소에서) + B에 Keychats 점검 3종(HTTP·DNS·DB 상태) 등록  ← 진행 중
+   - B 쪽 0011(점검 3종 비활성 등록)·테스트: 코드 완료. 원격 적용·켜기는 Keychats 배포와 학원 사전 고지 뒤
+     (비활성이어도 상태 페이지에 '점검 대기'로 보이므로 적용 시점도 그때)
+   - Keychats는 basePath '/chats'를 쓰므로 모든 경로가 /chats 아래. 저장소 AGENTS.md: main만 사용, 브랜치 금지, 범위 최소
 9. 판정 규칙 성능 측정 (라벨 있는 데이터로 탐지율·오탐·지연)

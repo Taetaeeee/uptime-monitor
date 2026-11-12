@@ -147,5 +147,6 @@ test('전체 컷오버 순서(데모 정리 → 디스크 정리)를 거친 뒤�
   const before = db.sqlite.prepare("SELECT COUNT(*) AS n FROM check_results WHERE source = 'replay'").get().n;
   await runReplay(db, new Date(T0 + 400 * STEP));
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM check_results WHERE source = 'replay'").get().n, before + manifest.monitors.length);
-  assert.deepEqual(snapshot(db).monitors, { real: 2, simulator: 4, replay: 5 });
+  // 실제 5 = 고쳐라! 2 + 사내 메신저 3(0011, 비활성)
+  assert.deepEqual(snapshot(db).monitors, { real: 5, simulator: 4, replay: 5 });
 });

@@ -22,10 +22,13 @@ test('displayState: 비활성 실제 대상은 점검 대기, 상태가 없으�
   assert.equal(displayState({ isActive: false, source: 'sample', state: 'up' }), 'up');
 });
 
-test('시드 + API: 서비스 6개(실제 HTTP·DNS + 데모 4), 출처·상태·30일 막대', async () => {
+// 서비스 수 = 실제 5(고쳐라! HTTP·DNS + 사내 메신저 3, 모두 비활성) + 데모 4. 대상이 늘면 이 숫자도 함께 고칩니다.
+const SEEDED_SERVICE_COUNT = 9;
+
+test('시드 + API: 서비스 9개(실제 5 + 데모 4), 출처·상태·30일 막대', async () => {
   const body = await buildStatus(seeded(), new Date());
 
-  assert.equal(body.services.length, 6);
+  assert.equal(body.services.length, SEEDED_SERVICE_COUNT);
   const byName = Object.fromEntries(body.services.map((s) => [s.name, s]));
 
   // 실제 대상(gochyeora)은 비활성 → 점검 대기, 기록 없음
@@ -79,7 +82,7 @@ test('HTTP: /api/status는 JSON + 60초 캐시, 그 밖의 경로는 404', async
   assert.equal(ok.status, 200);
   assert.match(ok.headers.get('content-type'), /application\/json/);
   assert.equal(ok.headers.get('cache-control'), 'public, max-age=60');
-  assert.equal((await ok.json()).services.length, 6);
+  assert.equal((await ok.json()).services.length, SEEDED_SERVICE_COUNT);
 
   const post = await worker.fetch(new Request('https://example.invalid/api/status', { method: 'POST' }), env);
   assert.equal(post.status, 405);
