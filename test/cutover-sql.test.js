@@ -142,11 +142,11 @@ test('unload.sql: 재생 대상과 기록·설정·시계열·데이터셋만 �
 
 test('전체 컷오버 순서(데모 정리 → 디스크 정리)를 거친 뒤에도 재생은 계속 기록된다', async () => {
   const { db, T0 } = await productionLikeDb();
+  const realBefore = snapshot(db).monitors.real; // 실제 대상은 마이그레이션이 등록해서 개수를 박아 두지 않음 (정리가 건드리지 않아야 함)
   db.sqlite.exec(read('seed/retire-demo.sql'));
   db.sqlite.exec(read('seed/retire-simulator-disk.sql'));
   const before = db.sqlite.prepare("SELECT COUNT(*) AS n FROM check_results WHERE source = 'replay'").get().n;
   await runReplay(db, new Date(T0 + 400 * STEP));
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM check_results WHERE source = 'replay'").get().n, before + manifest.monitors.length);
-  // 실제 5 = 고쳐라! 2 + 사내 메신저 3(0011, 비활성)
-  assert.deepEqual(snapshot(db).monitors, { real: 5, simulator: 4, replay: 5 });
+  assert.deepEqual(snapshot(db).monitors, { real: realBefore, simulator: 4, replay: 5 });
 });

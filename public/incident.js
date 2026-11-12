@@ -91,6 +91,8 @@ async function load() {
     renderMetrics(inc);
     renderTimeline(inc);
     renderReport(inc);
+    // PDF로 저장: 브라우저 인쇄 창에서 "PDF로 저장"을 고르면 됩니다 (인쇄용 흰 바탕은 style.css의 @media print)
+    document.getElementById('print')?.addEventListener('click', () => window.print());
   } catch (err) {
     console.error(err);
     document.getElementById('subtitle').textContent = String(err.message).includes('404')

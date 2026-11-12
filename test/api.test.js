@@ -22,13 +22,16 @@ test('displayState: 비활성 실제 대상은 점검 대기, 상태가 없으�
   assert.equal(displayState({ isActive: false, source: 'sample', state: 'up' }), 'up');
 });
 
-// 서비스 수 = 실제 5(고쳐라! HTTP·DNS + 사내 메신저 3, 모두 비활성) + 데모 4. 대상이 늘면 이 숫자도 함께 고칩니다.
-const SEEDED_SERVICE_COUNT = 9;
+// 서비스 수는 숫자를 박아 두지 않고 DB의 대상 수와 비교합니다.
+// (실제 대상은 마이그레이션이 등록해서, 새 점검 대상을 추가할 때마다 이 테스트가 깨지던 문제를 없애려고)
+const monitorCount = (db) => db.sqlite.prepare('SELECT COUNT(*) AS n FROM monitors').get().n;
 
-test('시드 + API: 서비스 9개(실제 5 + 데모 4), 출처·상태·30일 막대', async () => {
-  const body = await buildStatus(seeded(), new Date());
+test('시드 + API: 서비스 수는 DB의 대상 수와 같고(데모 4 포함), 출처·상태·30일 막대', async () => {
+  const db = seeded();
+  const body = await buildStatus(db, new Date());
 
-  assert.equal(body.services.length, SEEDED_SERVICE_COUNT);
+  assert.equal(body.services.length, monitorCount(db));
+  assert.equal(body.services.filter((s) => s.source === 'sample').length, 4);
   const byName = Object.fromEntries(body.services.map((s) => [s.name, s]));
 
   // 실제 대상(gochyeora)은 비활성 → 점검 대기, 기록 없음
@@ -76,13 +79,14 @@ test('시드를 두 번 넣어도 결과가 같다 (멱등)', () => {
 });
 
 test('HTTP: /api/status는 JSON + 60초 캐시, 그 밖의 경로는 404', async () => {
-  const env = { DB: seeded() };
+  const db = seeded();
+  const env = { DB: db };
 
   const ok = await worker.fetch(new Request('https://example.invalid/api/status'), env);
   assert.equal(ok.status, 200);
   assert.match(ok.headers.get('content-type'), /application\/json/);
   assert.equal(ok.headers.get('cache-control'), 'public, max-age=60');
-  assert.equal((await ok.json()).services.length, SEEDED_SERVICE_COUNT);
+  assert.equal((await ok.json()).services.length, monitorCount(db));
 
   const post = await worker.fetch(new Request('https://example.invalid/api/status', { method: 'POST' }), env);
   assert.equal(post.status, 405);
