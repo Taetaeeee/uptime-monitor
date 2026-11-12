@@ -38,6 +38,9 @@ const SOURCE_TEXT = {
   simulator: '시뮬레이터 (가짜 측정값)',
 };
 
+// 상단 배너처럼 좁은 곳에서 이름 뒤에 붙이는 짧은 출처 표시 (실제 점검은 표시 없음)
+const SOURCE_SHORT = { replay: '재생', simulator: '시뮬레이터', sample: '데모' };
+
 // "N분 전 점검" 앞에 붙이는 말: 실제 점검이 아닌 기록은 시간 표시 옆에서도 그 사실을 알립니다
 const AGO_PREFIX = { simulator: '시뮬레이터(수동 전송) · ', replay: '데이터 재생 · ' };
 
@@ -173,13 +176,17 @@ function renderHero(data) {
   const down = data.services.filter((s) => s.state === 'down');
   const working = data.services.filter((s) => s.state === 'maintenance');
 
+  // 배너는 방문자가 가장 먼저 보는 곳이라, 실제 점검이 아닌 서비스는 이름 뒤에 출처를 붙입니다.
+  // (카드에는 배지가 있지만 배너 문구에 표시가 없으면 재생·시뮬레이터 장애가 "실제 장애"처럼 읽힘)
+  const withSource = (s) => `${s.name}${SOURCE_SHORT[s.source] ? ` (${SOURCE_SHORT[s.source]})` : ''}`;
+
   let tone = 'good', ico = 'check', title = '모든 서비스 정상';
   if (down.length) {
     tone = 'bad'; ico = 'x';
-    title = `${down.length}개 서비스 장애: ${down.map((s) => s.name).join(', ')}`;
+    title = `${down.length}개 서비스 장애: ${down.map(withSource).join(', ')}`;
   } else if (working.length) {
     tone = 'info'; ico = 'wrench';
-    title = `계획 작업 진행 중: ${working.map((s) => s.name).join(', ')}`;
+    title = `계획 작업 진행 중: ${working.map(withSource).join(', ')}`;
   }
   bar.className = `statusbar${tone === 'good' ? '' : ` statusbar--${tone}`}`;
   document.getElementById('hero-title').textContent = title;
