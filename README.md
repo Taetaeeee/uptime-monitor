@@ -8,7 +8,7 @@
 - **상태 페이지 (라이브):** https://status-monitor.nalzzoaleph26.workers.dev
 - **월간 보고서:** https://status-monitor.nalzzoaleph26.workers.dev/report.html
 
-> 점검 대상 서비스와 회사는 모두 가상입니다(실제 점검 대상은 내가 운영하는 사이트 하나). 화면의 대부분은 **데모 데이터**이며, 무엇이 실제이고 무엇이 가짜인지는 [아래 표](#실제-데이터와-가짜-데이터)에 정리했습니다.
+> 서비스와 회사 이름은 모두 가상입니다. 화면에는 **내가 운영하는 사이트의 실제 점검**, **공개 데이터셋(다른 조직의 실제 운영 기록, 과거)을 재생한 값**, **에이전트 시뮬레이터의 가짜 측정값**이 함께 있고, 카드마다 출처 배지가 붙습니다. 무엇이 실제이고 무엇이 가짜인지는 [아래 표](#실제-데이터와-가짜-데이터)에 정리했습니다.
 
 ## 무엇을 하나
 
@@ -16,6 +16,7 @@
 |---|---|
 | 외부 점검 | Cloudflare Worker 예약 실행(Cron, 5분)으로 HTTP 상태 코드·응답 시간·키워드, DNS(DNS-over-HTTPS로 이름 풀림·기대값) 점검. 도메인 만료는 판정 로직만 ([한계](#알려진-한계와-다음-과제) 참고) |
 | 내부 점검 | Windows PC의 Python 에이전트가 ping·TCP 포트·SSL 만료·디스크·서비스 상태를 측정해 API로 보고 (바깥으로만 연결) |
+| 공개 데이터셋 재생 | SMD(서버 지표)·NAB(설비 온도)·Backblaze(디스크) 공개 데이터의 과거 기록을 5분마다 한 칸씩 재생해 서버 지표·설비·디스크 서비스를 보여 줌. 실제 점검과 **같은 판정·알림·집계 경로**를 타고, 출처는 `replay` |
 | 장애 판정 | 2회 연속 실패 → 장애, 1회 성공 → 복구. 상태가 바뀔 때만 알림 기록 |
 | 장애 이력·보고서 | 장애 1건마다 첫 실패·판정·복구 시각, 감지 시간(MTTD)·복구 시간(MTTR), 사후 보고서 5항목 |
 | 계획 작업 | 미리 등록한 작업 시간의 점검은 장애로 보지 않고 가동률에서 제외 |
@@ -34,18 +35,22 @@ flowchart LR
   end
   W -- "HTTP 점검" --> SITE["내가 운영하는 사이트"]
   W -- "DNS 질의 (DoH)" --> DOH["1.1.1.1<br/>DNS-over-HTTPS"]
+  DS["공개 데이터셋<br/>SMD · NAB · Backblaze"] -. "준비 스크립트로 가공 후<br/>한 번 적재 (seed/replay)" .-> D1
   AG["Python 에이전트<br/>(Windows PC)"] -- "POST /api/agent/report<br/>Bearer 키" --> W
   ADMIN["관리자 (PowerShell)"] -- "/api/admin/…<br/>관리자 토큰" --> W
   USER["방문자"] -- "상태 페이지·보고서" --> ST
   USER -- "GET /api/status 등" --> W
 ```
 
-점검 1회의 흐름 (Cron과 에이전트 보고가 같은 경로 `src/record.js`를 사용):
+점검 1회의 흐름 (Cron·에이전트 보고·데이터셋 재생이 모두 같은 경로 `src/record.js`를 사용):
 
 ```
 측정 → 판정(순수 함수) → 계획 작업 확인 → 상태 전이(장애/복구)
     → [결과 + 상태 + 장애 이력] 한 batch 저장 → 알림(log 채널) → 일별 집계(KST)
 ```
+
+재생은 "측정" 자리에서 네트워크 대신 D1의 `replay_series`에서 값을 읽습니다.
+`지금 순번 = (지금 − 기준 시각) ÷ 간격`을 시계열 길이로 나눈 나머지이고, 끝까지 가면 처음부터 반복합니다(SMD·NAB는 약 1주 주기).
 
 ## 기술
 
@@ -53,7 +58,7 @@ flowchart LR
 - 화면: 빌드 도구 없는 HTML/CSS/JS
 - 판정·계산 로직은 순수 함수로 분리해 `node --test`로 테스트
 - 에이전트: Python 3 표준 라이브러리만 사용
-- 테스트: JS 106개, Python 22개
+- 테스트: JS 183개, Python 22개 (원본 데이터 없이 CI에서도 돌아감)
 
 ## 주요 설계 판단
 
@@ -66,6 +71,10 @@ flowchart LR
 | 에이전트는 **바깥으로만 연결(push)** | PC에 들어오는 포트를 열지 않음. 대신 에이전트가 멈추면 보고가 끊김(아래 한계 참고) |
 | 결과·상태·장애 이력을 **한 batch**, 알림은 **저장 후** | 기록끼리 어긋나지 않게 하고, 알림 실패가 점검 기록을 막지 않게 |
 | 모든 기록에 **출처(source)** + DB CHECK 제약 | 실제·가짜 데이터가 섞여 보이지 않게. 시뮬레이터 보고는 시뮬레이터 대상에만 기록 |
+| 공개 데이터셋은 `simulator`·`real`을 재사용하지 않고 **새 출처 `replay`** | 다른 조직의 실제 기록은 "내 서비스의 실측"도 "가짜 측정값"도 아니라서, 어느 쪽으로 써도 화면이 거짓말을 하게 됨. SQLite는 CHECK를 못 바꿔 마이그레이션 0008에서 테이블을 다시 만들었고(자식→부모 순서로 지우고 부모→자식 순서로 복원, 적용 전 백업), 데이터가 든 DB에 적용하는 테스트로 검증 |
+| 재생 값도 **같은 판정·알림 경로** | 실측과 재생이 다른 규칙을 타면 비교가 의미 없음. "연속 2회"는 `state.js` 한 곳에서만 세고, 재생은 값 하나가 실패인지만 판정. DB 경로의 알림·장애 건수가 순수 계산과 정확히 같은지 테스트로 비교 |
+| 판정 기준값은 **라벨 없이 값의 분포로** | 이상 라벨을 판정에 쓰면 정답을 보고 푸는 것이라 이후 성능 측정이 무의미해짐. 기준값은 시계열의 95·99% 지점과 중앙값으로 정함 |
+| 재생 설정은 `monitors`가 아니라 **`replay_config` 표** | 모든 종류가 쓰는 넓은 표에 재생 전용 값(시작 기준 시각·규칙·평소 값 …)을 붙이면 대부분의 행이 비게 됨. 단위는 코드가 짐작하지 않고 데이터(`unit`)에 기록 |
 | 가동률은 **내림** 표시, 기간 가동률은 **점검 수 합계**로 | 99.99…%가 100%로 보이지 않게, 날짜별 % 평균의 왜곡 방지 |
 | 계획 작업 중 점검은 **기록하되 가동률·판정에서 제외** | SLA의 일반 규칙. 남용 방지를 위해 최대 24시간·소급 등록 금지 |
 | 에이전트 키와 관리자 토큰 **분리**, 타이밍 안전 비교 | 최소 권한, 키 추측 공격 방지 |
@@ -79,12 +88,25 @@ flowchart LR
 |---|---|---|---|
 | `real` | **고쳐라! 웹게임**(`gochyeora.pages.dev`, 내가 운영하는 사이트)의 HTTP 점검과 DNS 점검 | Worker Cron, **5분마다 실제 점검** (2026-11-11부터) | 표시 없음 |
 | `real` | 관리자가 등록한 '모든 대상' 계획 작업 | 관리자 API | 표시 없음 |
-| `sample` | 가상 서비스 3개(ERP·그룹웨어·고객센터)의 점검 결과·30일 집계·장애 7건·보고서·알림·계획 작업, 도메인 만료 데모 1개(만료까지 41일) | `seed/sample.sql` (다시 실행하면 지우고 새로 넣음). 배포본은 **Worker가 매일 KST 04:00 회차에 자동으로 다시 넣어** 날짜를 오늘 기준으로 맞춤 | **데모 데이터**, 카드에 "매일 04:00 갱신" |
-| `simulator` | 가상 내부 장비 5개(코어 스위치·DB 서버·파일 서버 디스크·인증서·ERP 배치)의 측정값과 그로 인한 장애·알림 | `seed/simulator-monitors.sql`로 대상 등록 → `agent/agent.py --simulate`로 시나리오 전송 | **시뮬레이터** |
+| `replay` | 공개 데이터셋을 재생한 서비스 5개: 그룹웨어·메일, 사내 ERP, DB 서버(SMD 장비 3대), MES(NAB 설비 온도), 파일서버·NAS 디스크(Backblaze). **다른 조직의 실제 운영 기록(과거)**이며 이 회사의 실시간 데이터가 아님 | `scripts/prepare-datasets`로 가공한 `seed/replay/*.sql`을 한 번 적재, Worker Cron이 5분마다 한 칸씩 재생 | **실제 데이터 재생** 배지, 서비스를 누르면 데이터셋·라이선스·가공 방법 |
+| `simulator` | 가상 내부 장비 4개(코어 스위치·DB 서버 5432 포트·인증서·ERP 배치)의 측정값과 그로 인한 장애·알림 | `seed/simulator-monitors.sql`로 대상 등록 → `agent/agent.py --simulate`로 시나리오 전송(PC에서 실행할 때만 갱신) | **시뮬레이터**, 시간 표시 앞에 "시뮬레이터(수동 전송)" |
+| `sample` | 로컬 개발·테스트용 시드(`seed/sample.sql`). 가상 서비스 3개와 도메인 만료 데모 1개 | **배포본에서는 정리함**(`seed/retire-demo.sql`, 2026-11-12). 가짜 데모를 공개 데이터 재생이 대체 | **데모 데이터** (배포본에는 없음) |
 
-- 가상 서비스의 주소는 모두 `.invalid`(RFC 2606 예약 도메인)라 실제로 접속될 수 없고, 비활성이라 점검되지도 않습니다.
-- 데모 자동 갱신을 매시간이 아니라 **하루 1회**로 둔 이유: 1회에 약 750행을 쓰는데, D1 무료 쓰기 한도는 같은 계정의 다른 프로젝트와 함께 쓰는 것으로 알고 있어서(공식 문서에서 확인할 부분) 부담을 최소로 했습니다. 다시 넣을 때마다 데모 서비스·장애 번호가 바뀌어, 전날 복사해 둔 데모 장애 링크는 열리지 않을 수 있습니다.
+- 시뮬레이터의 주소는 `.invalid`(RFC 2606 예약 도메인)라 실제로 접속될 수 없고, 값은 시나리오 파일의 가짜 측정값입니다.
 - 에이전트의 실제 모드는 이 PC에서 `--dry-run`으로만 확인했고, 실제 측정값은 아직 보내지 않습니다.
+- **재생은 가짜가 아니지만 이 회사의 데이터도 아닙니다.** 그래서 보고서에서 다른 출처와 합산하지 않고, 화면의 장애도 "재생 중 열린 장애"로 읽어야 합니다.
+
+### 공개 데이터셋 (재생)
+
+| 데이터셋 | 사용한 것 | 라이선스·조건 (원본에서 직접 확인) | 가공 |
+|---|---|---|---|
+| [SMD](https://github.com/NetManAIOps/OmniAnomaly) (Server Machine Dataset) | 장비 3대(`machine-1-1`·`2-1`·`3-1`)의 test 구간 중 이상 구간이 많은 1주, 지표 1개씩 | MIT (`ServerMachineDataset/LICENSE`, 2026-11-12 확인) | 1분 값을 5분 **최댓값**으로 줄임(2,016칸). 값은 0~1 정규화 상대값을 %로 환산한 것으로 **실제 사용률이 아님**. 지표 이름은 공개되지 않아 "서버 지표 #N(익명·정규화)"로 표시 |
+| [NAB](https://github.com/numenta/NAB) (Numenta Anomaly Benchmark) | `realKnownCause/machine_temperature_system_failure.csv`의 라벨 창 2개(2013-12-10 ~ 12-17)와 앞뒤 12시간 | MIT 형식 (`LICENSE.txt`, 2026-11-12 확인) | 5분 간격 원본 그대로(2,432칸). 값의 단위는 원본이 밝히지 않아 숫자만 표시 |
+| [Backblaze Drive Stats](https://www.backblaze.com/cloud-storage/resources/hard-drive-test-data) | 2013년 데이터에서 같은 모델 드라이브 8대(고장 2대·정상 6대), 60일 | **MIT가 아님.** 공식 페이지의 자체 조건: 출처를 Backblaze로 표기, 사용 책임은 사용자, 파생물 판매는 가능하나 데이터 자체는 판매 불가 (2026-11-12 확인) | 8대의 불량 섹터(`smart_5_raw`) 합계를 하루 1칸으로 사용. 드라이브 시리얼 번호는 기록하지 않음 |
+
+원본(수십 MB)은 저장소에 올리지 않고, 가공한 작은 조각(약 160KB)만 `seed/replay/`에 둡니다. 가공·재현 방법은 [scripts/prepare-datasets/README.md](scripts/prepare-datasets/README.md).
+인용: Backblaze Drive Stats(backblaze.com), NAB — Ahmad, Lavin, Purdy, Agha, *Unsupervised real-time anomaly detection for streaming data*, Neurocomputing 2017 (arXiv:1510.03336).
+SMD의 논문 인용은 저장소 README에서 찾지 못해 비워 두었습니다.
 
 ## 폴더 구조
 
@@ -100,10 +122,12 @@ src/            Worker 코드
   incident.js     장애·계획 작업 계산  time.js   회차 시각
   ingest.js       에이전트 보고 API  admin.js  관리자 API
   api.js          공개 조회 API     auth.js   토큰 확인   db.js  SQL 모음
-  demo.js         데모 시드 매일 자동 갱신 (demo-sql.js가 seed/sample.sql을 글자로 불러옴)
+  replay.js       재생 계산(순수 함수): 순번·5분 변환·집계·판정
+  replay-run.js   Cron 재생 실행: 대상·값 읽기 → 판정 → record.js
 public/         상태 페이지, 장애 상세, 월간 보고서 (HTML/CSS/JS)
-migrations/     D1 스키마 (0001 ~ 0007)
-seed/           가짜 데이터 (sample.sql, simulator-monitors.sql)
+migrations/     D1 스키마 (0001 ~ 0010; 0008 replay 출처, 0009 재생 설정, 0010 단위)
+seed/           sample.sql(로컬·테스트용), simulator-monitors.sql, retire-*.sql(정리), replay/(공개 데이터셋 재생용 SQL·manifest·unload.sql)
+scripts/        prepare-datasets/ (원본 내려받기·분석·가공)
 agent/          Python 에이전트 + 시뮬레이터 시나리오 + 테스트
 test/           node --test (가짜 D1: Node 내장 SQLite에 실제 마이그레이션 적용)
 ```
@@ -115,7 +139,7 @@ test/           node --test (가짜 D1: Node 내장 SQLite에 실제 마이그�
 ### 테스트
 ```powershell
 npm.cmd install
-npm.cmd test                                     # JS 110개
+npm.cmd test                                     # JS 183개
 python -m unittest discover -s agent\tests       # Python 22개
 ```
 
@@ -123,8 +147,7 @@ python -m unittest discover -s agent\tests       # Python 22개
 ```powershell
 npx.cmd wrangler login                           # 계정 인증 (직접)
 npx.cmd wrangler d1 create status-monitor-db     # 나온 database_id를 wrangler.jsonc에
-npm.cmd run db:migrate:remote                    # 마이그레이션 0001 ~ 0007
-npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/sample.sql
+npm.cmd run db:migrate:remote                    # 마이그레이션 0001 ~ 0010
 npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/simulator-monitors.sql
 npx.cmd wrangler secret put AGENT_API_KEY        # 에이전트 키 (직접 생성)
 npx.cmd wrangler secret put ADMIN_TOKEN          # 관리자 토큰 (에이전트 키와 다른 값)
@@ -142,6 +165,17 @@ $bytes = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Cr
 ```powershell
 npx.cmd wrangler d1 execute status-monitor-db --remote --command "UPDATE monitors SET is_active = 1 WHERE url IN ('https://gochyeora.pages.dev', 'dns://gochyeora.pages.dev')"
 ```
+
+### 공개 데이터셋 재생 올리기 · 되돌리기
+적재 전에 백업을 받고(`wrangler d1 export status-monitor-db --remote --output=<파일>`), 아래 순서로 실행합니다.
+```powershell
+npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/replay/datasets.sql
+npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/replay/monitors.sql
+npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/replay/series-replay-smd-1-1.sql   # series-*.sql 5개 모두
+```
+`monitors.sql`은 다시 실행해도 시작 기준 시각을 바꾸지 않고(재생이 처음으로 되돌아가지 않음), 첫 이상이 적재 후 약 1시간에 나오도록 기준 시각을 잡습니다.
+**되돌리기(재생 대상만 제거):** `seed/replay/unload.sql`을 같은 방식으로 실행합니다. real·simulator 데이터는 건드리지 않습니다.
+원본 내려받기·가공 방법은 [scripts/prepare-datasets/README.md](scripts/prepare-datasets/README.md).
 
 ### 에이전트 · 시뮬레이터
 ```powershell
@@ -179,6 +213,7 @@ Invoke-RestMethod -Method Delete -Uri "$b/api/admin/maintenance/<작업 번호>"
 | `POST /api/admin/maintenance` · `DELETE /api/admin/maintenance/:id` | 관리자 토큰 | 계획 작업 등록·취소 |
 
 공개 응답에는 점검 대상의 주소(URL)를 넣지 않습니다.
+`/api/status`의 재생 대상에는 `replay`(지표 설명·단위·판정 규칙·평소 값·데이터셋 키)가, 최상위에는 `datasets`(이름·링크·라이선스·가공 방법·인용)가 들어 있고, 재생 대상이 없으면 `datasets`는 `{}`입니다.
 
 ## 알려진 한계와 다음 과제
 
@@ -190,6 +225,13 @@ Invoke-RestMethod -Method Delete -Uri "$b/api/admin/maintenance/<작업 번호>"
 - **SLA 목표는 하나(99.9%):** 대상별 목표, CSV 내보내기, 보고서 자동 발송은 없습니다.
 - **알림 채널은 log 하나:** 채널 구조(`{ name, send() }`)는 교체 가능하게 나눠 두었습니다. 외부 메신저는 쓰지 않습니다.
 - **실제 데이터는 아직 짧음:** 고쳐라! 웹게임(HTTP·DNS) 실제 점검은 2026-11-11부터 시작해서, 30일 막대·월간 보고서의 실제 구간은 아직 며칠뿐입니다.
+- **재생 데이터의 한계:**
+  - SMD는 지표 이름이 공개되지 않아 "CPU"라고 부를 수 없고, 값도 정규화 상대값입니다. 지표는 **이상 라벨을 보고 골랐기 때문에**, 이 지표로 판정 성능을 재면 결과가 실제보다 좋게 나옵니다(선택 편향). 그래서 판정 기준값은 라벨 없이 시리즈의 95·99% 지점으로 정했고, 성능 측정은 선택에 쓰지 않은 구간으로 해야 합니다. DB 서버(`machine-3-1`)는 이상 구간 3개 중 1개만 장애로 잡힙니다.
+  - NAB 설비 온도에는 약 17시간 지속되는 실제 고장 구간이 들어 있어, 재생이 시작된 첫날 MES의 가동률이 낮게 나옵니다(데이터가 그렇습니다).
+  - 재생은 1주(Backblaze는 60일) 주기로 반복하므로 같은 장애가 같은 간격으로 다시 나타납니다. 장애 발생 시각은 원본 시각이 아니라 재생 시계 기준입니다.
+  - 라이선스는 원본에서 직접 확인한 것만 적었습니다. Loghub(연구·학술 목적)와 OTRF Security-Datasets는 용량·형식 조사가 끝나지 않아 아직 쓰지 않았습니다.
+- **데모 장애 보고서 예시가 사라짐:** 사후 보고서가 있는 장애가 전부 가짜(`sample`)였고 배포본에서 정리해서, 지금은 완성된 사후 보고서 예시가 화면에 없습니다. 관리자 API로 쓰는 기능 자체는 테스트로 검증되어 있습니다.
+- **부하:** 재생 대상 5개가 늘어 D1 사용량이 늘었습니다. 컷오버 직후 측정(`wrangler d1 info`, 24시간 합계)으로 정상 상태 쓰기는 회차당 약 40행(하루 약 1.2만 행으로 추정), 읽기는 회차당 약 1.8천 행(하루가 지나면 일별 집계 재계산 때문에 약 90만 행까지 늘 것으로 추정)입니다. 같은 계정의 다른 프로젝트와 한도를 나눠 쓰는지는 공식 문서에서 확인하지 못했습니다.
 - **실제 PC 측정값은 보내지 않음:** 에이전트의 실제 모드는 `--dry-run`으로만 확인했습니다(내 PC 정보를 공개 페이지에 올릴지 정하지 않음).
 
 ## 공식 문서에서 다시 확인할 부분
@@ -198,6 +240,6 @@ Invoke-RestMethod -Method Delete -Uri "$b/api/admin/maintenance/<작업 번호>"
 
 Cloudflare 설정은 버전에 따라 바뀔 수 있어, 확인하지 못한 것은 추측하지 않고 표시해 두었습니다.
 
-- 무료 플랜의 Cron 개수 제한, D1 쓰기 한도 수치
-- D1 `batch`의 트랜잭션 동작
+- 무료 플랜의 Cron 개수 제한, D1 읽기·쓰기 한도 수치와 계정 공유 여부
+- D1 `batch`의 트랜잭션 동작, 마이그레이션 파일이 한 번에(원자적으로) 실행되는지, 한 문장의 최대 길이
 - 정적 파일(`assets`)의 `.html` 리다이렉트 등 기본 동작 (배포본에서 `/incident.html` → `/incident` 307 확인)
