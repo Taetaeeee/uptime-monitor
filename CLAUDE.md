@@ -91,4 +91,4 @@
    - Keychats는 basePath '/chats'를 쓰므로 모든 경로가 /chats 아래. 저장소 AGENTS.md: main만 사용, 브랜치 금지, 범위 최소
    - 체크리스트: 장애 훈련 2건(A 장애→알림→복구→보고서 #41, B 계획 작업)·에이전트 실제 모드 검증 완료 (2026-11-12, 0012, docs/drills·docs/screenshots, README에 기록).
      훈련 대상(drill-local-tcp)은 비활성(점검 대기)으로 두고 기록은 남김
-9. 판정 규칙 성능 측정 (라벨 있는 데이터로 탐지율·오탐·지연)
+9. 판정 규칙 성능 측정 (라벨 있는 데이터로 탐지율·오탐·지연)  ← 완료 (2026-11-12, 코드·결과는 scripts/evaluate-rules, docs/evaluation. 운영 코드·DB 변경 없음)
