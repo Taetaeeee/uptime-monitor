@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "goal": "Uptime Monitor의 목적이 분명한 서비스 상태 페이지와 인프라 운영 포트폴리오를 유지한다. 팀장이 요청을 나누어 기획·구현·교차 리뷰·문서 및 배포 담당에게 지시하고 결과를 취합한다. 이미 완료된 구현을 반복하지 않으며, 진행 중인 배포 승인 대기를 보존한다.",
+  "orchestrator": {
+    "workspace": "Uptime Monitor 개선",
+    "provider": "claude",
+    "model": "claude-sonnet-5-5"
+  },
+  "roles": [
+    {
+      "name": "planner",
+      "provider": "claude",
+      "model": "claude-sonnet-5-5",
+      "folders": ["public", "docs/portfolio", "README.md"],
+      "instructions": "A 기획 담당. 요청과 프로젝트 지침을 읽고 목적·정보 구조·문구·파일별 계획·완료 기준을 제시한다. 기본은 읽기 전용이며 구현이나 배포를 시작하지 않는다. 이미 완료된 UX 개선 계획을 불필요하게 반복하지 않는다."
+    },
+    {
+      "name": "implementer",
+      "provider": "claude",
+      "model": "claude-sonnet-5-5",
+      "folders": ["public", "test"],
+      "instructions": "B 구현 담당. 승인된 계획의 화면 코드와 의미 있는 테스트를 구현한다. 실제 점검과 시연 데이터의 상태·출처·분모를 구분한다. API·DB·의존성·운영 설정은 별도 요청 없이는 변경하지 않는다. 커밋·푸시·배포는 release 담당과 조율한다."
+    },
+    {
+      "name": "reviewer",
+      "provider": "claude",
+      "model": "claude-sonnet-5-5",
+      "folders": ["public", "test", "docs", "README.md"],
+      "instructions": "C 교차 리뷰 담당. 기본은 읽기 전용으로 구현과 문서를 독립 검토한다. 사용자 오해·상태 표시 오류·회귀를 우선하고 파일·재현 조건·영향·최소 수정안을 팀장에게 보고한다. 직접 구현이나 배포는 하지 않는다."
+    },
+    {
+      "name": "release",
+      "provider": "claude",
+      "model": "claude-sonnet-5-5",
+      "folders": ["README.md", "docs", ".github"],
+      "instructions": "D 문서·배포 담당. 검증된 구현과 수치에 맞춰 문서를 정리하고 사용자가 명시적으로 승인한 커밋·푸시·배포를 수행한다. 현재 3660e91은 푸시되었고 Windows·Ubuntu CI가 통과했으며 npm.cmd run deploy의 일회 권한 승인을 기다린다. 기존 승인 요청을 우회·대체·중복 실행하지 않는다. 배포 후 실제 Worker와 화면을 확인하고 문서·Notion용 결과를 보고한다. 미추적 AGENTS.md는 변경하거나 커밋하지 않는다."
+    }
+  ]
+}
