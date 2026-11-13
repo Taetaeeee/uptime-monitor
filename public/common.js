@@ -19,7 +19,9 @@ const kstFormat = new Intl.DateTimeFormat('ko-KR', {
   minute: '2-digit',
 });
 function formatKst(iso) {
-  return iso ? kstFormat.format(new Date(iso)) : '-';
+  // 잘못된 시각이 와도 Intl이 RangeError를 던져 화면 전체가 멈추지 않게 '-'로 표시
+  const d = iso ? new Date(iso) : null;
+  return d && Number.isFinite(d.getTime()) ? kstFormat.format(d) : '-';
 }
 
 // 분 → "1시간 5분" / "15분"
@@ -43,9 +45,19 @@ function el(tag, className, text) {
   return node;
 }
 
-// 출처 표시: sample(시드) → '데모 데이터', simulator(에이전트 시뮬레이터) → '시뮬레이터',
-//            replay(공개 데이터셋 재생) → '실제 데이터 재생', real → 표시 없음
-function sourceBadge(source) {
+// 출처 표시: real → '실제 점검', sample(시드) → '데모 데이터', simulator(에이전트 시뮬레이터) → '시뮬레이터',
+//            replay(공개 데이터셋 재생) → '실제 데이터 재생'
+// '실제 점검'은 "기록의 출처가 실제 점검"이라는 뜻일 뿐, "지금 점검 중"이라는 뜻이 아닙니다.
+// 그래서 색을 초록(정상처럼 보임)이 아닌 중립색으로 하고, 점검 대기 대상은 글자로 그 사실을 덧붙입니다(state === 'paused').
+function sourceBadge(source, state) {
+  if (source === 'real') {
+    const paused = state === 'paused';
+    const badge = el('span', 'badge badge--real', paused ? '실제 점검 · 점검 대기' : '실제 점검');
+    badge.title = paused
+      ? '출처는 실제 점검이지만 지금은 점검을 켜지 않았습니다. 과거 기록만 남아 있습니다.'
+      : '출처가 실제 점검(Worker 또는 에이전트 실제 모드)이라는 뜻입니다. 지금 점검 중이라는 뜻은 아니므로 상태와 점검 시각을 함께 보세요.';
+    return badge;
+  }
   if (source === 'sample') return el('span', 'badge badge--demo', '데모 데이터');
   if (source === 'simulator') return el('span', 'badge badge--sim', '시뮬레이터');
   if (source === 'replay') return el('span', 'badge badge--replay', '실제 데이터 재생');

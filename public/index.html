@@ -15,7 +15,7 @@
     })();
   </script>
   <title>Uptime Monitor</title>
-  <meta name="description" content="가상 회사의 서비스 가동 상태·장애 이력·최근 알림 (포트폴리오 프로젝트)">
+  <meta name="description" content="서비스 장애를 감지하고 복구 기록과 월간 보고서로 남기는 운영 모니터링 도구 — 실제 점검과 시연 데이터를 구분해 보여 주는 포트폴리오 프로젝트">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -49,16 +49,33 @@
   </header>
 
   <main class="wrap">
-    <!-- 상태 띠: 한 줄로 전체 상태 + LIVE 표시(다음 점검까지 카운트다운) -->
-    <section id="hero" class="statusbar statusbar--loading" aria-live="polite">
+    <!-- 소개 띠: 이 페이지가 무엇인지 먼저 알려 줍니다. 정적 HTML이라 /api/status가 실패해도 보입니다. -->
+    <section class="intro" aria-labelledby="intro-title">
+      <h1 class="intro__title" id="intro-title">서비스 장애를 감지하고, 복구 기록과 월간 보고서로 남기는 운영 모니터링 도구</h1>
+      <p class="intro__text">
+        사내 IT·인프라 운영 담당자와 채용 담당자를 위한 개인 포트폴리오입니다.
+        제가 운영하는 사이트 1곳(고쳐라!)과 팀 채팅 1곳(Keychats)은 5분마다 실제로 점검하고,
+        나머지는 시연용 재생·시뮬레이션 데이터입니다. 회사·서비스 이름은 가상입니다.
+      </p>
+      <div class="intro__actions">
+        <a class="btn btn--primary" href="#services-panel" id="goto-real">실제 점검 상태 보기</a>
+        <a class="btn" href="/incident.html?id=41">장애 훈련 사례 보기 <span class="intro__note">(#41 · 일부러 낸 장애)</span></a>
+        <a class="btn" href="/report.html">월간 보고서 보기</a>
+      </div>
+    </section>
+
+    <!-- 실제 점검 상태 띠: 출처가 '실제 점검'인 활성 대상만 반영. 아래 보조 줄은 재생·시뮬레이터·데모 -->
+    <section id="hero" class="statusbar statusbar--loading" aria-live="polite" aria-labelledby="hero-title">
       <span class="statusbar__icon" id="hero-icon"></span>
       <div class="statusbar__text">
-        <h1 class="statusbar__title" id="hero-title">상태를 불러오는 중…</h1>
+        <h2 class="statusbar__title" id="hero-title">상태를 불러오는 중…</h2>
         <p class="statusbar__sub" id="hero-updated">-</p>
+        <p class="statusbar__sub statusbar__demo" id="hero-demo" hidden></p>
       </div>
-      <div class="live" id="live" title="5분마다 점검하고, 화면은 자동으로 새로 불러옵니다">
+      <!-- 5분 점검 표시: 점검은 5분마다(Cron), 화면은 60초마다 새로 불러옴. 실시간 감시가 아님 -->
+      <div class="live" id="live" title="Cron이 5분마다 점검하고, 화면은 60초마다 새로 불러옵니다. 실시간 감시가 아닙니다.">
         <span class="live__dot" aria-hidden="true"></span>
-        <span class="live__label">LIVE</span>
+        <span class="live__label">5분 점검</span>
         <span class="live__next" id="live-next">-</span>
       </div>
     </section>
@@ -81,20 +98,28 @@
     <section id="maintenance" class="maint-list" aria-label="계획 작업"></section>
 
     <!-- ① 한눈에 보기: 서비스 현황 (전체 폭) -->
-    <section class="panel" aria-labelledby="services-title">
+    <section class="panel" id="services-panel" aria-labelledby="services-title">
       <div class="panel__head">
         <div>
           <h2 class="panel__title" id="services-title">서비스 현황</h2>
-          <p class="panel__desc">카드를 누르면 자세한 정보가 팝업으로 열립니다.</p>
+          <p class="panel__desc">카드를 누르면 자세한 정보가 팝업으로 열립니다. 출처 배지로 실제 점검과 시연 데이터를 구분하세요.</p>
         </div>
         <div class="toolbar">
           <label class="search">
             <span data-icon="search" data-icon-class="ico ico--sm"></span>
             <input id="search" type="search" placeholder="서비스 이름 검색" aria-label="서비스 이름 검색" autocomplete="off">
           </label>
+          <div class="filters" id="source-filters" role="group" aria-label="출처 필터"></div>
           <div class="filters" id="filters" role="group" aria-label="상태 필터"></div>
         </div>
       </div>
+      <!-- 출처 범례: 배지가 무엇을 뜻하는지 -->
+      <dl class="source-legend">
+        <div><dt><span class="badge badge--real">실제 점검</span></dt><dd>내가 운영하는 사이트·서비스를 Worker(Cron)가 직접 점검하거나, 내 PC의 Python 에이전트가 실제 모드로 측정해 보낸 기록입니다. 점검 대기 대상은 지금 점검하지 않습니다.</dd></div>
+        <div><dt><span class="badge badge--replay">실제 데이터 재생</span></dt><dd>다른 조직의 과거 운영 기록을 이 프로젝트가 5분마다 한 칸씩 재생한 것입니다. 이 회사의 실시간 데이터가 아니며, 장애·복구 시각은 원본 기록의 과거 시각이 아니라 이 프로젝트가 재생을 실행한 시각(5분 회차)입니다.</dd></div>
+        <div><dt><span class="badge badge--sim">시뮬레이터</span></dt><dd>시나리오 파일의 가짜 측정값입니다. PC에서 에이전트를 실행해 수동으로 보낼 때만 갱신됩니다.</dd></div>
+        <div><dt><span class="badge badge--demo">데모 데이터</span></dt><dd>시드 스크립트로 넣은 가짜 기록입니다(현재 배포에서는 정리되어 보이지 않을 수 있음).</dd></div>
+      </dl>
       <div class="services" id="services"></div>
       <div class="legend" style="margin-top:14px" aria-hidden="true">
         <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-good)"></span>99.9% 이상</span>
@@ -109,10 +134,47 @@
       <div class="panel__head">
         <div>
           <h2 class="panel__title" id="incidents-title">장애 이력</h2>
-          <p class="panel__desc">최근 장애를 시작 시각 순으로 정리했습니다. 누르면 사후 보고서를 볼 수 있어요.</p>
+          <p class="panel__desc">최근 장애를 시작 시각 순으로 정리했습니다. 누르면 사후 보고서를 볼 수 있어요. 목록은 당시 기록이며 지금의 점검 상태와는 별개입니다.</p>
         </div>
       </div>
+      <p class="read-path">읽는 길: 장애를 누르면 사후 보고서(요약·영향·원인·조치·재발 방지)를, <a href="/report.html">월간 보고서</a>에서 가동률·SLA를 볼 수 있습니다.</p>
       <div id="incidents"></div>
+    </section>
+
+    <!-- ④ 운영 근거: 화면 밖(저장소) 자료로 이어지는 길. 수치는 일부러 적지 않고 원문에서 확인하게 합니다. -->
+    <section class="panel" aria-labelledby="evidence-title">
+      <div class="panel__head">
+        <div>
+          <h2 class="panel__title" id="evidence-title">운영 근거</h2>
+          <p class="panel__desc">이 화면이 믿을 만한지 확인할 수 있는 자료입니다. 문서는 GitHub 저장소로 연결됩니다.</p>
+        </div>
+      </div>
+      <div class="evidence">
+        <article class="evidence__item">
+          <h3>장애 훈련</h3>
+          <p>일부러 낸 장애로 감지 → 알림 → 복구 → 사후 보고서까지 확인했습니다. 실제 서비스 장애가 아닌 <strong>훈련</strong>이며, 훈련 대상은 지금 점검 대기입니다.</p>
+          <p class="evidence__links"><a href="/incident.html?id=41">장애 #41 (훈련) 보기</a> · <a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/drills/drill-a-incident-41.pdf" target="_blank" rel="noopener noreferrer">훈련 기록 PDF</a></p>
+        </article>
+        <article class="evidence__item">
+          <h3>판정 규칙 측정</h3>
+          <p>설계에 쓰지 않은 공개 데이터로 탐지율·오탐·지연을 쟀습니다. 이 서비스의 HTTP 점검 성능을 잰 것은 아닙니다.</p>
+          <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/evaluation/results.md" target="_blank" rel="noopener noreferrer">측정 결과 표</a></p>
+        </article>
+        <article class="evidence__item">
+          <h3>자동 테스트</h3>
+          <p>판정·집계 로직을 순수 함수로 분리해 테스트하고, 푸시마다 CI에서 JS·Python 테스트를 다시 실행합니다.</p>
+          <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/tree/main/test" target="_blank" rel="noopener noreferrer">테스트 코드</a> · <a href="https://github.com/Taetaeeee/uptime-monitor/actions/workflows/test.yml" target="_blank" rel="noopener noreferrer">CI 실행 결과</a></p>
+        </article>
+        <article class="evidence__item evidence__item--limits">
+          <h3>알려진 한계 <span class="evidence__asof">(2026-11-13 기준)</span></h3>
+          <ul>
+            <li>도메인 만료는 판정 로직만 있고 실제 조회는 하지 않습니다.</li>
+            <li>에이전트 무응답 감지는 운영에서 켠 대상이 없습니다.</li>
+            <li>실제 점검은 2026-11-11부터라 기간이 짧습니다.</li>
+            <li>점검 정밀도는 5분입니다(그보다 짧은 장애는 놓칠 수 있음).</li>
+          </ul>
+        </article>
+      </div>
     </section>
   </main>
 
@@ -138,8 +200,11 @@
   <footer class="site-footer">
     <div class="wrap">
       <p>
-        가상 회사의 웹 서비스(HTTP·DNS)는 Worker가, 사내 시스템(ping·포트·디스크·인증서·서비스)은 Python 에이전트가 5분마다 점검하고,
-        2회 연속 실패를 장애로 판정해 기록합니다.
+        웹 서비스(HTTP·DNS)는 Worker가, 사내 시스템(ping·포트·디스크·인증서·서비스)은 Python 에이전트가 점검하고, 2회 연속 실패를 장애로 판정해 기록합니다.
+      </p>
+      <p>
+        <span class="badge badge--real">실제 점검</span>
+        기록의 출처가 실제 점검이라는 뜻이며 지금 점검 중이라는 뜻은 아닙니다. 상태와 점검 시각을 함께 보세요.
       </p>
       <p>
         <span class="badge badge--demo">데모 데이터</span>
@@ -158,6 +223,7 @@
 
   <!-- common.js(공용 도우미)를 먼저, 그다음 이 페이지 스크립트 (defer는 적힌 순서대로 실행) -->
   <script src="/common.js" defer></script>
+  <script src="/summary.js" defer></script>
   <script src="/chart.js" defer></script>
   <script src="/app.js" defer></script>
 </body>

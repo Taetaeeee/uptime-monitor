@@ -1,5 +1,6 @@
 // 상태 페이지 스크립트 — /api/status를 받아 화면을 그린다.
-// 공용 도우미(formatKst, el, icon, statePill, kindMeta, sourceBadge, formatMinutes, fetchJson)는 common.js에 있습니다.
+// 공용 도우미(formatKst, el, icon, statePill, kindMeta, sourceBadge, formatMinutes, fetchJson)는 common.js에,
+// 요약 계산(첫 상태 띠·분모·필터)은 summary.js(UptimeSummary)에 있습니다. summary.js를 먼저 불러와야 합니다.
 //
 // 화면 상태(검색어·필터·선택한 서비스)는 이 파일의 변수에 두고,
 // 60초마다 데이터를 새로 받아도 사용자가 고른 것은 그대로 유지합니다.
@@ -31,22 +32,32 @@ const KIND_DESC = {
 // "20시간 전 점검"처럼 보이면 장애로 오해할 수 있어서입니다. (배포본에서는 B-7f에서 데모를 정리해 보이지 않음)
 const DEMO_REFRESH_TEXT = '데모 데이터 · 시드로 넣은 가짜 기록';
 
+// 출처 필터 (상태 필터와 별개로 적용). 데이터에 없는 출처는 숨깁니다.
+const SOURCES = [
+  ['all', '모든 출처'],
+  ['real', '실제 점검'],
+  ['replay', '실제 데이터 재생'],
+  ['simulator', '시뮬레이터'],
+  ['sample', '데모 데이터'],
+];
+
 const SOURCE_TEXT = {
-  real: '실제 점검',
+  real: '실제 점검 (Worker 또는 에이전트 실제 모드)',
   replay: '공개 데이터셋 재생 (다른 조직의 실제 기록)',
   sample: '데모 데이터 (시드)',
   simulator: '시뮬레이터 (가짜 측정값)',
 };
 
-// 상단 배너처럼 좁은 곳에서 이름 뒤에 붙이는 짧은 출처 표시 (실제 점검은 표시 없음)
-const SOURCE_SHORT = { replay: '재생', simulator: '시뮬레이터', sample: '데모' };
+// 상단 배너의 시연 보조 줄처럼 좁은 곳에서 이름 뒤에 붙이는 짧은 출처 표시
+const SOURCE_SHORT = { real: '실제', replay: '재생', simulator: '시뮬레이터', sample: '데모' };
 
 // "N분 전 점검" 앞에 붙이는 말: 실제 점검이 아닌 기록은 시간 표시 옆에서도 그 사실을 알립니다
 const AGO_PREFIX = { simulator: '시뮬레이터(수동 전송) · ', replay: '데이터 재생 · ' };
 
 const view = {
   data: null,
-  filter: 'all',
+  filter: 'all', // 상태 필터
+  source: 'all', // 출처 필터 (상태 필터와 따로 적용)
   query: '',
   selectedId: null,
   open: {}, // 접기 상자(<details>)를 펼쳐 두었는지 — 자동 갱신 후에도 유지
@@ -58,7 +69,7 @@ const view = {
 };
 
 // ─────────────────────────────────────────────
-// LIVE 표시: 다음 점검까지 카운트다운, 상대 시간
+// 점검 주기 표시: 5분 점검 카운트다운(화면 갱신 주기는 별개), 상대 시간
 // ─────────────────────────────────────────────
 const SLOT_MS = 5 * 60 * 1000;   // 점검 간격 5분 (서버 Cron과 같음)
 const CRON_DELAY_MS = 15 * 1000; // Cron은 정각보다 몇 초 늦게 돎 (실측 12초) → 15초로 잡음
@@ -71,6 +82,7 @@ function nextRunAt(nowMs) {
 
 /** 경과 시간 → "방금" / "3분 전" / "2시간 전" */
 function agoText(iso, nowMs) {
+  if (!Number.isFinite(Date.parse(iso))) return '점검 시각 확인 불가';
   const sec = Math.max(0, Math.round((nowMs - Date.parse(iso)) / 1000));
   if (sec < 60) return '방금 점검';
   const min = Math.floor(sec / 60);
@@ -86,12 +98,12 @@ function tickClock() {
   const next = nextRunAt(now);
   const left = Math.max(0, Math.round((next - now) / 1000));
   const live = document.getElementById('live');
-  // 3분 넘게 새 데이터를 못 받았으면 LIVE를 노란색 '연결 지연'으로
+  // 3분 넘게 새 데이터를 못 받았으면 점검 주기 표시를 노란색 '연결 지연'으로
   const stale = view.lastLoadedAt && now - view.lastLoadedAt > 3 * 60 * 1000;
   live.classList.toggle('is-stale', Boolean(stale));
   document.getElementById('live-next').textContent = stale
     ? '연결 지연 · 다시 시도 중'
-    : `다음 점검까지 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    : `다음 점검까지 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · 화면은 ${REFRESH_MS / 1000}초마다 갱신`;
 
   for (const node of document.querySelectorAll('[data-ago]')) node.textContent = (node.dataset.agoPrefix ?? '') + agoText(node.dataset.ago, now);
 
@@ -173,41 +185,58 @@ function valueSpec(s) {
 
 function renderHero(data) {
   const bar = document.getElementById('hero');
-  const down = data.services.filter((s) => s.state === 'down');
-  const working = data.services.filter((s) => s.state === 'maintenance');
+  // 기준 시각은 방문자 PC 시계가 아니라 API가 만든 시각(generatedAt) — PC 시계가 틀려도 오래된 기록이 가려지지 않게
+  const real = UptimeSummary.summarizeReal(data.services, UptimeSummary.statusNow(data));
 
-  // 배너는 방문자가 가장 먼저 보는 곳이라, 실제 점검이 아닌 서비스는 이름 뒤에 출처를 붙입니다.
-  // (카드에는 배지가 있지만 배너 문구에 표시가 없으면 재생·시뮬레이터 장애가 "실제 장애"처럼 읽힘)
-  const withSource = (s) => `${s.name}${SOURCE_SHORT[s.source] ? ` (${SOURCE_SHORT[s.source]})` : ''}`;
+  // 이 띠는 "실제 점검" 대상만 반영합니다. 재생·시뮬레이터·데모의 장애는 아래 보조 줄에만 보여 줘서
+  // 실제 서비스가 멀쩡한데 빨간 띠가 뜨거나, 반대로 시연 데이터 때문에 "정상"으로 보이는 일을 막습니다.
+  const look = { good: ['', 'check'], bad: ['bad', 'x'], info: ['info', 'wrench'], idle: ['idle', 'help'] }[real.tone];
+  bar.className = `statusbar${look[0] ? ` statusbar--${look[0]}` : ''}`;
+  document.getElementById('hero-title').textContent = UptimeSummary.realTitle(real);
+  document.getElementById('hero-icon').replaceChildren(icon(look[1], 'ico ico--sm'));
 
-  let tone = 'good', ico = 'check', title = '모든 서비스 정상';
-  if (down.length) {
-    tone = 'bad'; ico = 'x';
-    title = `${down.length}개 서비스 장애: ${down.map(withSource).join(', ')}`;
-  } else if (working.length) {
-    tone = 'info'; ico = 'wrench';
-    title = `계획 작업 진행 중: ${working.map(withSource).join(', ')}`;
+  // 마지막 점검 시각은 하나만 보여 주면 모든 대상이 그 시각에 점검된 것처럼 읽히므로, 가장 최근·가장 오래된 시각을 함께 보여 줍니다.
+  const parts = [];
+  if (real.newestCheckedAt) {
+    parts.push(real.newestCheckedAt === real.oldestCheckedAt
+      ? `실제 대상 마지막 점검 ${formatKst(real.newestCheckedAt)}`
+      : `실제 대상 마지막 점검: 가장 최근 ${formatKst(real.newestCheckedAt)} · 가장 오래된 ${formatKst(real.oldestCheckedAt)} (대상별 시각은 카드에서)`);
   }
-  bar.className = `statusbar${tone === 'good' ? '' : ` statusbar--${tone}`}`;
-  document.getElementById('hero-title').textContent = title;
-  document.getElementById('hero-icon').replaceChildren(icon(ico, 'ico ico--sm'));
-  document.getElementById('hero-updated').textContent = `마지막 갱신 ${formatKst(data.generatedAt)} · 화면은 자동으로 새로 불러옵니다`;
+  if (real.staleCount > 0) parts.push(`${real.staleCount}건은 30분 넘게 점검 기록이 없음`);
+  if (real.invalidCount > 0) parts.push(`${real.invalidCount}건은 점검 시각을 읽을 수 없음`);
+  if (!real.clockKnown) parts.push('데이터 생성 시각을 읽을 수 없어 최신 여부를 판단하지 않음');
+  else parts.push(`데이터 생성 ${formatKst(data.generatedAt)}`);
+  document.getElementById('hero-updated').textContent = parts.join(' · ');
+
+  const demo = UptimeSummary.summarizeDemo(data.services);
+  const demoEl = document.getElementById('hero-demo');
+  demoEl.hidden = !demo;
+  if (demo) {
+    demoEl.textContent = demo.down.length
+      ? `재생·시뮬레이터·데모(실제 점검 아님): 장애 ${demo.down.length}건 — ${demo.down.map((d) => `${d.name}(${SOURCE_SHORT[d.source] ?? d.source})`).join(', ')}`
+      : '시연 데이터(재생·시뮬레이터·데모): 장애 없음';
+  }
 }
 
 // 요약 카드 — 여러 서비스를 합친 '평균 가동률'은 만들지 않습니다.
 // 실제·데모·시뮬레이터 데이터를 합친 숫자는 의미가 없기 때문이에요(출처 규칙). 대신 개수만 셉니다.
+// 숫자는 전부 /api/status에서 그때그때 계산합니다(코드에 박아 두지 않음). 서비스 이름으로 "서비스 몇 개"를 추정하지도 않아요.
 function renderStats(data) {
-  const watched = data.services.filter((s) => s.state !== 'paused');
-  const up = watched.filter((s) => s.state === 'up').length;
-  const ongoing = data.incidents.filter((i) => i.ongoing).length;
+  const real = UptimeSummary.summarizeReal(data.services, UptimeSummary.statusNow(data));
+  const b = UptimeSummary.breakdown(data.services);
+  const inc = UptimeSummary.ongoingIncidents(data.incidents);
   const activeMaint = data.maintenance.filter((w) => w.active).length;
-  const bySource = (src) => data.services.filter((s) => s.source === src).length;
+
+  const parts = [['실제 활성', b.realActive], ['실제 점검 대기', b.realPaused], ['재생', b.replay], ['시뮬레이터', b.simulator], ['데모', b.sample], ['기타', b.other]]
+    .filter(([, n]) => n > 0)
+    .map(([label, n]) => `${label} ${n}`);
 
   const cards = [
-    ['activity', '정상 운영', `${up}/${watched.length}`, '점검 대기를 뺀 서비스 중 정상'],
-    ['alert', '진행 중 장애', String(ongoing), `최근 장애 ${data.incidents.length}건 중`],
+    // 분모는 "실제 활성 대상"뿐 — 점검 대기·재생·시뮬레이터·데모는 제외
+    ['activity', '실제 점검 정상', real.total ? `${real.counts.up}/${real.total}` : '-', UptimeSummary.realHelper(real)],
+    ['alert', '진행 중 장애', String(inc.total), `실제 ${inc.real} · 재생·시뮬레이터·데모 ${inc.other}`],
     ['wrench', '계획 작업', `${activeMaint}건 진행`, `예정 포함 ${data.maintenance.length}건`],
-    ['layers', '점검 대상', `${data.services.length}개`, `실제 ${bySource('real')} · 재생 ${bySource('replay')} · 시뮬 ${bySource('simulator')} · 데모 ${bySource('sample')}`],
+    ['layers', '점검 대상', `${b.total}건`, `전체 ${b.total} = ${parts.join(' + ') || '없음'}`],
   ];
   document.getElementById('stats').replaceChildren(
     ...cards.map(([ico, label, value, helper]) => {
@@ -245,9 +274,12 @@ function renderMaintenance(list) {
 // 검색·필터·서비스 카드
 // ─────────────────────────────────────────────
 
+// 필터 두 줄: 출처(어디서 온 데이터인가)와 상태(지금 어떤가). 서로 독립으로 적용합니다.
+// 상태 필터의 숫자는 "고른 출처 안에서" 세어서, 누르면 보일 개수와 같게 맞춥니다.
 function renderFilters(data) {
-  const counts = { all: data.services.length };
-  for (const s of data.services) counts[s.state] = (counts[s.state] ?? 0) + 1;
+  const inSource = UptimeSummary.filterServices(data.services, { source: view.source });
+  const counts = { all: inSource.length };
+  for (const s of inSource) counts[s.state] = (counts[s.state] ?? 0) + 1;
   document.getElementById('filters').replaceChildren(
     ...FILTERS.map(([key, label]) => {
       const b = el('button', `filter${view.filter === key ? ' is-active' : ''}`, label);
@@ -262,20 +294,39 @@ function renderFilters(data) {
       return b;
     })
   );
+
+  const srcCounts = { all: data.services.length };
+  for (const s of data.services) srcCounts[s.source] = (srcCounts[s.source] ?? 0) + 1;
+  document.getElementById('source-filters').replaceChildren(
+    ...SOURCES.filter(([key]) => key === 'all' || key === view.source || srcCounts[key]).map(([key, label]) => {
+      const b = el('button', `filter${view.source === key ? ' is-active' : ''}`, label);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(view.source === key));
+      b.append(el('span', 'filter__count', String(srcCounts[key] ?? 0)));
+      b.addEventListener('click', () => setSource(key));
+      return b;
+    })
+  );
+}
+
+// 출처 필터 바꾸기. 검색어·열린 팝업·자동 갱신은 건드리지 않습니다.
+function setSource(key) {
+  view.source = key;
+  if (view.data) {
+    renderFilters(view.data);
+    renderServices(view.data);
+  }
 }
 
 function visibleServices(data) {
-  const q = view.query.trim().toLowerCase();
-  return data.services.filter(
-    (s) => (view.filter === 'all' || s.state === view.filter) && (!q || s.name.toLowerCase().includes(q))
-  );
+  return UptimeSummary.filterServices(data.services, { source: view.source, state: view.filter, query: view.query });
 }
 
 function renderServices(data) {
   const root = document.getElementById('services');
   const list = visibleServices(data);
   if (list.length === 0) {
-    root.replaceChildren(el('div', 'services__empty', '조건에 맞는 서비스가 없습니다.'));
+    root.replaceChildren(el('div', 'services__empty', '조건에 맞는 서비스가 없습니다. 출처·상태 필터와 검색어를 확인해 보세요.'));
     return;
   }
   root.replaceChildren(
@@ -295,7 +346,7 @@ function renderServices(data) {
       title.style.minWidth = '0';
       const tags = el('div', 'card__tags');
       tags.append(statePill(s.state));
-      const badge = sourceBadge(s.source);
+      const badge = sourceBadge(s.source, s.state);
       if (badge) tags.append(badge);
       tags.append(el('span', 'card__kind', kind.text));
       title.append(el('h3', 'card__name', s.name), tags);
@@ -329,9 +380,12 @@ function renderServices(data) {
       // (시드 시각 기준 "20시간 전 점검"처럼 보이면 장애로 오해할 수 있어서)
       const isDemo = s.source === 'sample';
       const agoPrefix = AGO_PREFIX[s.source] ?? ''; // 시뮬레이터·재생은 실제 점검이 아니므로 시간 표시 앞에 그 사실을 붙임
+      // 점검 대기(paused) 대상은 지금 점검하지 않으므로 "N분 전 점검"처럼 현재 점검 중인 것처럼 쓰지 않습니다.
+      const isPaused = s.state === 'paused';
       const agoLabel = el('span', '', isDemo ? DEMO_REFRESH_TEXT
+        : isPaused ? `현재 점검하지 않음${s.lastCheckedAt ? ` · 마지막 점검 ${formatKst(s.lastCheckedAt)}` : ''}`
         : s.lastCheckedAt ? agoPrefix + agoText(s.lastCheckedAt, Date.now()) : '아직 점검 기록 없음');
-      if (s.lastCheckedAt && !isDemo) {
+      if (s.lastCheckedAt && !isDemo && !isPaused) {
         agoLabel.dataset.ago = s.lastCheckedAt;
         if (agoPrefix) agoLabel.dataset.agoPrefix = agoPrefix;
       }
@@ -448,7 +502,7 @@ function renderDetailLive() {
   const days = s.daily.filter((d) => d.total > 0).length;
 
   const kpis = [
-    { label: '현재 상태', value: (STATE_META[s.state] ?? STATE_META.unknown).text, tone, sub: s.source === 'sample' ? DEMO_REFRESH_TEXT : s.lastCheckedAt ? null : '아직 점검 기록 없음', ago: s.source === 'sample' ? null : s.lastCheckedAt, agoPrefix },
+    { label: '현재 상태', value: (STATE_META[s.state] ?? STATE_META.unknown).text, tone, sub: s.source === 'sample' ? DEMO_REFRESH_TEXT : s.state === 'paused' ? '현재 점검하지 않음' : s.lastCheckedAt ? null : '아직 점검 기록 없음', ago: s.source === 'sample' || s.state === 'paused' ? null : s.lastCheckedAt, agoPrefix },
     { label: lv.label, value: lv.value, sub: secondSub },
     { label: '24시간 가동률', value: up24 === undefined ? '…' : uptimeText(up24), sub: h ? `기록 ${h.points.length}회` : '불러오는 중' },
     { label: '30일 가동률', value: uptimeText(s.uptime30d), sub: `기록 ${days}/${s.daily.length}일` },
@@ -581,7 +635,7 @@ function renderDetail(data) {
   document.getElementById('detail-kind').replaceChildren(icon(kind.icon));
   const tags = document.getElementById('detail-tags');
   tags.replaceChildren(statePill(s.state));
-  const badge = sourceBadge(s.source);
+  const badge = sourceBadge(s.source, s.state);
   if (badge) tags.append(badge);
   tags.append(el('span', 'card__kind', kind.text));
 
@@ -624,7 +678,7 @@ function renderDetail(data) {
   for (const [k, v] of [
     ['점검 종류', kind.text],
     ['데이터 출처', SOURCE_TEXT[s.source] ?? s.source],
-    ['마지막 점검', s.source === 'sample' ? DEMO_REFRESH_TEXT : s.lastCheckedAt ? formatKst(s.lastCheckedAt) : '-'],
+    [s.state === 'paused' ? '마지막 점검(현재는 점검 안 함)' : '마지막 점검', s.source === 'sample' ? DEMO_REFRESH_TEXT : s.lastCheckedAt ? formatKst(s.lastCheckedAt) : '-'],
   ]) {
     const item = el('div');
     item.append(el('dt', '', k), el('dd', '', v));
@@ -821,8 +875,16 @@ async function load() {
     document.getElementById('hero-title').textContent = '상태를 불러오지 못했습니다';
     document.getElementById('hero-icon').replaceChildren(icon('alert', 'ico ico--sm'));
     document.getElementById('hero-updated').textContent = '잠시 후 자동으로 다시 시도합니다.';
+    document.getElementById('hero-demo').hidden = true;
   }
 }
+
+// 소개 띠의 '실제 점검 상태 보기': 이동은 링크(#services-panel)가 하고, 여기서는 출처만 '실제 점검'으로, 상태는 '전체'로 맞춥니다.
+// (이전에 고른 상태 필터가 남아 있으면 실제 카드가 안 보일 수 있어서. 검색어는 입력칸에 보이므로 그대로 둡니다.)
+document.getElementById('goto-real').addEventListener('click', () => {
+  view.filter = 'all';
+  setSource('real');
+});
 
 document.getElementById('search').addEventListener('input', (e) => {
   view.query = e.target.value;
