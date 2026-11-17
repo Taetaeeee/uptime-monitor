@@ -11,3 +11,16 @@ AGENT_API_KEY=여기에_직접_만든_긴_무작위_문자열
 # 관리자 API(보고서 작성, 계획 작업 등록·취소) 토큰 — 에이전트 키와 다른 값으로 (B-5)
 #   배포본: npx.cmd wrangler secret put ADMIN_TOKEN
 ADMIN_TOKEN=여기에_에이전트_키와_다른_긴_무작위_문자열
+
+# AI 장애 조사 — 빈 값이면 유료 호출이 비활성화됩니다.
+# 실제 키·토큰은 .dev.vars 또는 서버 secret에만 입력합니다.
+OPENAI_API_KEY=
+RCA_OPERATOR_TOKEN=
+RCA_MODEL=
+# 선택한 모델의 공식 요금(USD / 백만 토큰). 입력/출력 모두 필요.
+RCA_INPUT_USD_PER_MILLION=
+RCA_OUTPUT_USD_PER_MILLION=
+RCA_DAILY_USD_LIMIT=
+RCA_RUN_USD_LIMIT=
+# 실제 점검을 허용할 내 서비스 호스트만 쉼표로 구분. 등록된 real·활성 HTTP 대상과 교집합.
+RCA_ALLOWED_HOSTS=

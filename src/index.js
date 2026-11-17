@@ -30,6 +30,7 @@ import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
 import { runReplay } from './replay-run.js';
 import { runStaleCheck } from './stale-run.js';
+import { handleRca } from './rca-api.js';
 
 /**
  * 예약 실행 1회분: 활성 HTTP 대상을 모두 점검하고 기록한다.
@@ -159,6 +160,10 @@ export default {
   // 상태 페이지 파일(public/의 index.html 등)은 Cloudflare가 정적 파일로 먼저 응답하고,
   // 파일이 없는 경로(/api/... 등)만 이 함수로 들어옵니다. (B-3 배포에서 동작 확인)
   async fetch(request, env) {
+    if (new URL(request.url).pathname.startsWith('/api/rca/')) {
+      try { return await handleRca(request, env); }
+      catch { return json({ error: 'rca_internal_error' }, 500); }
+    }
     const url = new URL(request.url);
 
     if (url.pathname === '/api/status') {

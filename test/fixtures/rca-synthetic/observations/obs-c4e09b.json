@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "case_id": "syn-c4e09b",
+  "mode": "synthetic",
+  "provenance": "synthetic-simulation",
+  "target_alias": "tgt-c4e09b",
+  "observation_start_rel": 0,
+  "initial_cutoff_rel": {
+    "doh": 900,
+    "http": 900
+  },
+  "observations": [
+    {
+      "obs_key": "o1",
+      "channel": "doh",
+      "observed_at": 300,
+      "facts": {
+        "outcome": "dns_nxdomain",
+        "rcode": 3,
+        "record_type": "A",
+        "answer_count": 0
+      }
+    },
+    {
+      "obs_key": "o2",
+      "channel": "doh",
+      "observed_at": 600,
+      "facts": {
+        "outcome": "dns_nxdomain",
+        "rcode": 3,
+        "record_type": "A",
+        "answer_count": 0
+      }
+    },
+    {
+      "obs_key": "o3",
+      "channel": "http",
+      "observed_at": 300,
+      "facts": {
+        "outcome": "network_error",
+        "status_code": null,
+        "response_ms": null
+      }
+    },
+    {
+      "obs_key": "o4",
+      "channel": "http",
+      "observed_at": 600,
+      "facts": {
+        "outcome": "network_error",
+        "status_code": null,
+        "response_ms": null
+      }
+    },
+    {
+      "obs_key": "o5",
+      "channel": "doh",
+      "observed_at": 1200,
+      "facts": {
+        "outcome": "ok",
+        "rcode": 0,
+        "record_type": "A",
+        "answer_count": 2
+      }
+    },
+    {
+      "obs_key": "o6",
+      "channel": "doh",
+      "observed_at": 1500,
+      "facts": {
+        "outcome": "ok",
+        "rcode": 0,
+        "record_type": "A",
+        "answer_count": 2
+      }
+    },
+    {
+      "obs_key": "o7",
+      "channel": "doh",
+      "observed_at": 1800,
+      "facts": {
+        "outcome": "ok",
+        "rcode": 0,
+        "record_type": "A",
+        "answer_count": 2
+      }
+    },
+    {
+      "obs_key": "o8",
+      "channel": "http",
+      "observed_at": 1200,
+      "facts": {
+        "outcome": "ok",
+        "status_code": 200,
+        "response_ms": 120
+      }
+    },
+    {
+      "obs_key": "o9",
+      "channel": "http",
+      "observed_at": 1500,
+      "facts": {
+        "outcome": "ok",
+        "status_code": 200,
+        "response_ms": 120
+      }
+    },
+    {
+      "obs_key": "o10",
+      "channel": "http",
+      "observed_at": 1800,
+      "facts": {
+        "outcome": "ok",
+        "status_code": 200,
+        "response_ms": 120
+      }
+    }
+  ]
+}
