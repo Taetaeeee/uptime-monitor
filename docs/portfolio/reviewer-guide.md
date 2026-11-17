@@ -18,7 +18,7 @@
 | 장애 대응 흐름을 해 봤나? | [장애 훈련 기록](../../README.md#장애-훈련-기록), [#41 PDF](../drills/drill-a-incident-41.pdf), [월간 보고서 PDF](../drills/drill-monthly-report-2026-11.pdf), [타임라인](../screenshots/incident-41-timeline.png), [사후 보고서](../screenshots/incident-41-report.png) | 첫 실패 13:40 → 판정 13:45 → 복구 13:55, 보고서 5항목 |
 | 계획 작업은 어떻게 처리하나? | [훈련 B](../../README.md#훈련-b-계획-작업-중에는-장애로-보지-않음) | 작업 중 실패 4번이 가동률에서 제외됨 |
 | 판정 규칙을 검증했나? | [성능 측정](../../README.md#판정-규칙-성능-측정), [results.md](../evaluation/results.md) | 설계에 안 쓴 데이터로 측정. 한계 절까지 읽을 것 |
-| 테스트는? | `test/`, `agent/tests/`, [CI 설정](../../.github/workflows/test.yml) | 판정·계산이 순수 함수. 화면 요약은 `public/summary.js` + `test/summary.test.js` (로컬, 미커밋) |
+| 테스트는? | `test/`, `agent/tests/`, [CI 설정](../../.github/workflows/test.yml) | 판정·계산이 순수 함수. 화면 요약은 `public/summary.js` + `test/summary.test.js` (커밋 `3660e91`) |
 | 한계는? | [알려진 한계](../../README.md#알려진-한계와-다음-과제) | 아래 요약 참고 |
 | 이력서·면접용 정리는? | [이력서 문장](resume-lines.md), [면접 Q&A](interview-qa.md) | 2026-11-12 시점 문서 (수치 기준 시점 차이 위 참고) |
 
