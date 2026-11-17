@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark"><title>규칙 조사 · Uptime Monitor</title>
+  <link rel="stylesheet" href="/rules.css"><script src="/rules.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">본문으로 이동</a>
+  <header class="topbar"><a class="brand" href="/">Uptime Monitor</a><nav aria-label="주요 메뉴"><a href="/">운영 개요</a><a href="/#services-panel" id="services-link">서비스 현황</a><a href="/rules.html" aria-current="page">규칙 조사</a></nav><span class="scope">내부 실습 조사</span></header>
+  <main id="main">
+    <div class="heading"><div><p class="eyebrow">질문에서 근거와 결과까지</p><h1>규칙 조사</h1><p class="subtitle">누가 어떤 작업을 받고, 무엇을 확인해 다음 단계로 넘겼는지 확인하세요.</p></div><span class="mode" id="mode">실행 환경 확인 중</span></div>
+    <p class="notice" id="notice" role="status">서버 연결을 확인하고 있습니다.</p>
+    <div class="workspace">
+      <section class="panel conversation" aria-labelledby="question-title">
+        <div class="panel-head"><h2 id="question-title">조사 요청</h2><span class="pill">ERP · lab</span></div>
+        <p class="muted">현재 등록 대상은 ERP 실습 환경입니다. 질문을 증상으로 기록하고 고정된 도구로 조사합니다.</p>
+        <form id="ask-form"><label for="question">어떤 문제가 있나요?</label><textarea id="question" maxlength="600" rows="4" required placeholder="ERP가 안 열려요. DNS와 DB 연결, 관련 로그를 확인해 주세요."></textarea><button class="primary" id="start" disabled>실측 조사 시작</button></form>
+        <p class="form-error" id="form-error" role="alert"></p>
+        <div class="conversation-log" id="conversation" aria-label="질문과 작업 전달 기록"><p class="empty">질문을 보내면 단계별 실행 기록이 표시됩니다.</p></div>
+        <div class="history-head"><h3>최근 조사</h3><button class="text-button" id="refresh-runs">새로고침</button></div><div id="run-list" class="run-list"></div>
+      </section>
+      <section class="panel graph-panel" aria-labelledby="graph-title"><div class="panel-head"><h2 id="graph-title">역할별 작업 흐름</h2><span class="pill" id="run-status" role="status" aria-live="polite" aria-atomic="true">실행 전</span></div><p class="muted">각 역할을 선택해 지시·검사 결과·다음 전달을 확인합니다.</p><ol class="flow" id="flow"></ol><p class="graph-note">역할은 한 조사 안의 실행 단계입니다.<br>실측 도구와 규칙 판단을 구분해 표시합니다.</p><button class="danger" id="cancel" disabled>후속 작업 중단</button></section>
+      <section class="panel detail" aria-labelledby="detail-title"><div class="panel-head"><h2 id="detail-title">선택한 단계</h2><span class="pill" id="step-status">대기</span></div><div id="step-detail"><p class="empty">작업 흐름에서 역할을 선택하세요.</p></div></section>
+    </div>
+    <footer>실제 모델 호출은 미연결입니다. 새로고침 후 저장된 조사를 조회할 수 있습니다. 실행기 재시작 시 진행 중 작업은 미완료로 마감합니다.</footer>
+  </main>
+</body></html>

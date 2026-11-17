@@ -1,0 +1,15 @@
+[Unit]
+Description=Uptime Monitor local Paseo team bridge
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/uptime-monitor
+ExecStart=/usr/bin/node %h/uptime-monitor/lab/team-bridge/server.mjs
+Environment=PASEO_CLI_COMMAND=/usr/local/bin/paseo
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

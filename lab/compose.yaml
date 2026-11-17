@@ -1,0 +1,86 @@
+name: uptime-monitor-lab
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: lab_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+    secrets: [db_admin_password, db_app_password]
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./db/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    networks: [lab]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U lab_admin -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    cpus: 0.5
+    logging: &logging
+      driver: json-file
+      options: { max-size: 5m, max-file: "2" }
+  erp:
+    build:
+      context: .
+      additional_contexts:
+        agent_ui: ../public
+    image: uptime-monitor-lab-app:local
+    environment:
+      PGHOST: db
+      PGUSER: lab_app
+      PGDATABASE: erp_lab
+      DB_PASSWORD_FILE: /run/secrets/db_app_password
+    secrets: [db_app_password]
+    depends_on:
+      db: { condition: service_healthy }
+    ports: ["127.0.0.1:18910:8080"]
+    networks: [lab, access]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    logging: *logging
+  dns:
+    image: coredns/coredns:1.15.0
+    command: ["-conf", "/etc/coredns/Corefile"]
+    volumes: ["./dns/Corefile:/etc/coredns/Corefile:ro"]
+    networks: [lab]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    cpus: 0.25
+    logging: *logging
+  collector:
+    image: uptime-monitor-lab-app:local
+    command: ["node", "collector/server.mjs"]
+    environment:
+      INTERVAL_MS: "15000"
+      DATA_DIR: /data
+    depends_on: [erp, dns]
+    ports: ["127.0.0.1:18911:8081"]
+    volumes: [evidence:/data]
+    networks: [lab, access]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    logging: *logging
+networks:
+  lab:
+    internal: true
+  access:
+    driver: bridge
+volumes:
+  database:
+  evidence:
+secrets:
+  db_admin_password:
+    file: ./.runtime/secrets/db-admin.txt
+  db_app_password:
+    file: ./.runtime/secrets/db-app.txt

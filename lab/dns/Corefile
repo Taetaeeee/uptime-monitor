@@ -1,0 +1,8 @@
+# .test 이름만 처리합니다. 외부 DNS 서비스로 공개하지 않습니다.
+lab.test:53 {
+    errors
+    log
+    prometheus :9153
+    rewrite stop name exact erp.lab.test erp
+    forward . 127.0.0.11
+}

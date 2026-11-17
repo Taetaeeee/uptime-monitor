@@ -1,0 +1,16 @@
+{
+  "teams": [
+    {
+      "id": "improvement",
+      "name": "서비스 개선팀",
+      "sessions": {
+        "leader": "Paseo에서 확인한 기존 팀장 UUID",
+        "planner": "기존 A UUID",
+        "implementer": "기존 B UUID",
+        "reviewer": "공통 C UUID",
+        "release": "공통 D UUID",
+        "final-review": "공통 E UUID"
+      }
+    }
+  ]
+}

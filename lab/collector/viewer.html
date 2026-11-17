@@ -1,0 +1,17 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>인프라 실습 관측</title>
+<style>body{font:16px system-ui;background:#0e1729;color:#e4edff;margin:0;padding:28px;max-width:1100px}h1{font-size:26px}p{line-height:1.6;color:#bac9e2}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}.card{background:#19273e;border:1px solid #38506e;border-radius:12px;padding:18px}strong{display:block;font-size:24px;margin:12px 0}.ok{color:#77e6b5}.bad{color:#ffaeae}pre{white-space:pre-wrap;overflow-wrap:anywhere}button{padding:10px;border-radius:6px;background:#a9cdff;color:#10223b;border:0}small{color:#bac9e2}</style>
+<style>button{min-height:44px;cursor:pointer}button:focus-visible{outline:3px solid #fff;outline-offset:4px}.card{min-width:0}@media(max-width:420px){body{padding:16px}.grid{grid-template-columns:1fr}}</style>
+<main><nav aria-label="실습 메뉴"><a href="/" aria-current="page" style="color:#a9cdff;margin-right:20px">운영 개요</a><a href="http://127.0.0.1:18912/agents.html" style="color:#a9cdff;margin-right:20px">AI 에이전트 팀</a><a href="/rules.html" style="color:#a9cdff">규칙 조사</a></nav><h1>네트워크·서버 실습 관측</h1>
+<p>실제 측정 · 실습 환경<br>내부 DNS → ERP API → PostgreSQL의 관측입니다. 업무 항목은 가상이며, 지표는 ERP 컨테이너 범위입니다.</p>
+<button id="refresh">지금 화면 갱신</button><p id="time" role="status">첫 관측을 기다리고 있습니다.</p>
+<div class="grid" id="probes"></div><h2>ERP 자원</h2><div class="grid" id="metrics"></div>
+<h2>최근 업무 조회 로그</h2><pre id="logs">기록 없음</pre>
+<p>수집 15초 · 화면 5초 갱신. CPU는 1코어 기준 프로세스 사용률입니다. 메모리·디스크는 호스트 전체 값이 아닙니다.<br>이 화면은 수집 기반 확인용이며 AI 분석·장애 자동 조사·원격 운영 연결은 아직 포함하지 않습니다.</p>
+<script>
+const $=id=>document.getElementById(id);
+function card(title,value,detail='',tone=''){const el=document.createElement('div');el.className='card';const label=document.createElement('span');label.textContent=title;const strong=document.createElement('strong');strong.textContent=value;strong.className=tone;const small=document.createElement('small');small.textContent=detail;el.append(label,strong,small);return el;}
+function number(value,suffix){return typeof value==='number'&&Number.isFinite(value)?value.toFixed(1)+suffix:'미수집';}
+async function load(){try{const response=await fetch('/api/snapshot',{cache:'no-store'});if(!response.ok)throw Error();const s=await response.json();const valid=s.fresh;$('time').textContent=(valid?'최근 관측: ':'수집 지연 · 현재 상태 불명: ')+s.received_at;$('probes').replaceChildren(...s.probes.map(p=>card(p.channel.toUpperCase(),valid?(p.ok?'성공':'실패'):'확인 불가',p.error_code||p.check||p.resolver_id,valid?(p.ok?'ok':'bad'):'')));const m=s.metrics?.metrics;const r=s.metrics?.rates;$('metrics').replaceChildren(card('프로세스 CPU',valid?number(r?.process_cpu_percent_one_core,'%'):'확인 불가','두 표본 사이 실측'),card('프로세스 RSS',valid?number(m?.process_rss_bytes/1048576,' MiB'):'확인 불가'),card('컨테이너 메모리',valid?number(m?.container_memory_current_bytes==null?null:m.container_memory_current_bytes/1048576,' MiB'):'확인 불가'),card('공유 파일시스템 여유',valid?number(m?.filesystem?.available_bytes/1073741824,' GiB'):'확인 불가','컨테이너별 전용 디스크 아님'));$('logs').textContent=(s.metrics?.logs||[]).map(x=>`${x.observed_at} ${x.status} ${x.code} request=${x.request_id}`).join('\n')||'기록 없음';}catch{$('time').textContent='수집기에 연결할 수 없습니다. 표시된 이전 값은 현재 상태를 보장하지 않습니다.';$('probes').replaceChildren();$('metrics').replaceChildren();$('logs').textContent='현재 기록 확인 불가';}}
+$('refresh').addEventListener('click',load);load();setInterval(load,5000);
+</script></main></html>
