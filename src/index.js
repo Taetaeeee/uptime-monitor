@@ -7,9 +7,11 @@
 //          GET  /api/reports/monthly?month=YYYY-MM → 월간 가용성 보고서 (api.js + report.js)
 //          GET  /api/monitors/:id/history?hours=24 → 상세 팝업 그래프용 최근 기록 (api.js)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
-//          [Cron] 실제 점검 뒤에 공개 데이터셋 재생(replay-run.js)도 같은 회차에 실행
+//          [Cron] 실제 점검 뒤에 에이전트 무응답 감지(stale-run.js)도 같은 회차에 실행
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
-// ingest.js(에이전트 보고), api.js(상태 조회), replay-run.js(데이터셋 재생)가 맡습니다.
+// ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
+// (공개 데이터셋 재생은 2026-11-19 가짜 데이터 정리 때 실행 경로를 없앴습니다. 판정 순수 함수 replay.js는
+//  판정 규칙 성능 평가(scripts/evaluate-rules)가 쓰므로 남겨 둡니다.)
 
 import { observe } from './checker.js';
 import { observeDns } from './dns.js';
@@ -28,7 +30,6 @@ import {
 import { isValidMonth, kstMonthOf } from './report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
-import { runReplay } from './replay-run.js';
 import { runStaleCheck } from './stale-run.js';
 import { handleRca } from './rca-api.js';
 
@@ -139,14 +140,6 @@ export default {
     // 정각(:00초)이 아닐 수 있어서(실제로 02:50:12가 들어옴) runChecks 안에서 회차로 내림합니다.
     const runTime = new Date(controller.scheduledTime);
     await runChecks(env, runTime);
-
-    // 공개 데이터셋 재생 (B-7d): 재생 대상이 없으면 아무 일도 하지 않습니다.
-    // 실제 점검이 끝난 뒤에 하고, 재생이 실패해도 방금 기록한 실제 점검에는 영향이 없도록 따로 잡습니다.
-    try {
-      await runReplay(env.DB, runTime);
-    } catch (err) {
-      console.error(`[재생] ${toCheckSlot(runTime)} 실패:`, err);
-    }
 
     // 에이전트 무응답 감지 (B-11): 감시를 켠 대상이 없으면 쿼리 1번으로 끝납니다. 실패해도 위 기록에는 영향 없음.
     try {
