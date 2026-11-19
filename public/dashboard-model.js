@@ -32,6 +32,12 @@
     return c;
   }
 
+  /** 남은 초 → 'MM:SS' (항상 두 자리씩: 숫자가 바뀔 때 글자 폭이 흔들리지 않게) */
+  function mmss(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  }
+
   /** 검색: 서비스 이름·설명·묶인 점검 이름에서 찾습니다 (대소문자 무시) */
   function searchServices(services, query) {
     const q = String(query ?? '').trim().toLowerCase();
@@ -143,6 +149,6 @@
 
   root.DashboardModel = {
     kstDay, countByState, searchServices, chipLabel, chipState, lastDays, incidentsByDay, responseSeries, uptimeSeries, firstRecordedDay,
-    chartStart, sliceSeries,
+    chartStart, sliceSeries, mmss,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

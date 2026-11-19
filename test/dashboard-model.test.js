@@ -117,3 +117,9 @@ test('chartStart: 기록 시작일부터, 최소 일수는 보장, 30일보다 �
   const sliced = M.sliceSeries([{ name: 'A', points: [{ v: 1 }, { v: 2 }, { v: 3 }] }], 1);
   assert.deepEqual(plain(sliced), [{ name: 'A', points: [{ v: 2 }, { v: 3 }] }]);
 });
+
+test('mmss: 남은 시간은 항상 두 자리:두 자리', () => {
+  assert.equal(M.mmss(276), '04:36');
+  assert.equal(M.mmss(0), '00:00');
+  assert.equal(M.mmss(-5), '00:00');
+});

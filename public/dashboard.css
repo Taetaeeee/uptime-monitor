@@ -59,7 +59,11 @@
 }
 .side__nav a:hover { color: var(--d-text); background: rgba(255, 255, 255, .03); }
 .side__nav a[aria-current="page"] { background: var(--d-blue-soft); color: var(--d-nav-on); box-shadow: inset 2px 0 0 var(--d-blue); }
-.side__foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* 메뉴 아래쪽 작은 글씨 링크 (운영 근거) — GitHub 바로 위 */
+.side__minor { margin-top: auto; margin-bottom: -10px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 7px; color: var(--d-faint); font-size: 12px; }
+.side__minor:hover { color: var(--d-text); }
+.side__minor[aria-current="page"] { color: var(--d-nav-on); background: var(--d-blue-soft); }
+.side__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .side__foot a { display: inline-flex; align-items: center; gap: 6px; color: var(--d-muted); font-size: 12.5px; }
 
 .main { min-width: 0; padding: 18px 24px 40px; }
@@ -74,32 +78,73 @@
 /* ── 카드 공통 ── */
 .kcard, .svc, .metrics-card { background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); }
 
-/* ── 요약 카드 4개 ── */
-.kcards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
-.kcard { padding: 16px 18px; display: flex; gap: 14px; align-items: center; min-width: 0; }
-.kcard__ico { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex: none; }
-.kcard__ico .ico { width: 20px; height: 20px; }
+/* ── 위 줄: 작은 요약 3개 (전체 폭, 작은 높이) ── */
+.kcards { grid-area: stats; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.kcard { padding: 14px 16px; display: flex; gap: 12px; align-items: center; min-width: 0; }
+.kcard__ico { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.kcard__ico .ico { width: 17px; height: 17px; }
 .kcard__ico--info { background: rgba(59, 130, 246, .16); color: var(--d-info); }
 .kcard__ico--good { background: rgba(34, 197, 94, .14); color: var(--d-good); }
 .kcard__ico--warn { background: rgba(245, 158, 11, .15); color: var(--d-warn); }
 .kcard__ico--bad { background: var(--d-bad-soft); color: var(--d-bad); }
-.kcard__label { color: var(--d-muted); font-weight: 600; font-size: 13px; white-space: nowrap; }
-.svc__checks, .svc__metric { min-width: 0; }
-.svc__metric .svc__v--sm { white-space: nowrap; }
-.kcard__value { font-size: 28px; font-weight: 800; line-height: 1.15; color: var(--d-text); }
-.kcard__value small { font-size: 14px; color: var(--d-muted); font-weight: 600; margin-left: 3px; }
-.kcard__aside { margin-left: auto; color: var(--d-muted); font-size: 12px; text-align: right; line-height: 1.5; }
-.kcard__aside b { color: var(--d-text); font-variant-numeric: tabular-nums; }
+.kcard__label { color: var(--d-muted); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+.kcard__value { font-size: 22px; font-weight: 800; line-height: 1.2; color: var(--d-text); }
+.kcard__value small { font-size: 13px; color: var(--d-muted); font-weight: 600; margin-left: 2px; }
 
-/* ── 두 칸 배치: 왼쪽 서비스, 오른쪽 운영 지표 ── */
-.dash-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 18px; align-items: start; margin-bottom: 24px; }
-.dash-grid--even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
 
-.pagehead { display: flex; gap: 12px; align-items: center; margin: 2px 0 14px; }
+/* 최근 알림: 오른쪽 칸(운영 지표와 같은 폭), 세로는 왼쪽 요약 + 제목 줄 두 줄을 함께 씀.
+   contain: size → 알림 내용이 길어도 줄 높이를 늘리지 않고(높이는 왼쪽이 정함), 넘치는 알림은 안에서 스크롤 */
+.alerts-card {
+  grid-area: alerts; contain: size;
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  padding: 12px 16px; background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r);
+}
+.alerts-card__title { margin: 0 0 6px; font-size: 14px; display: flex; gap: 6px; align-items: center; color: var(--d-text); }
+.alerts-card__title [data-icon] { color: var(--d-info); }
+.alerts-card__hint { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--d-faint); }
+.alerts-card #notifications { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.alerts-card .scroll-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; padding-right: 4px; }
+.alerts-card .note { grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 0 10px; padding: 5px 0; }
+/* 한 줄 안에: 점 · 메시지(길면 …) · 시각 — 좁은 칸에서 더 많은 알림이 보이게. 전체 문장은 마우스를 올리면 */
+.alerts-card .note__icon { grid-row: auto; width: 7px; height: 7px; margin: 0; box-shadow: none; }
+.alerts-card .note__msg { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--d-text); }
+.alerts-card .note__time { font-size: 12px; white-space: nowrap; color: var(--d-faint); }
+.alerts-card .notes__empty { margin: 0; font-size: 12px; color: var(--d-muted); }
+
+/* ── 두 칸 격자: 왼쪽(요약·제목·서비스 줄), 오른쪽(최근 알림·운영 지표). 알림은 위 두 줄을 함께 씀 ── */
+.dash-grid {
+  display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  grid-template-areas: "stats alerts" "head alerts" "list metrics";
+  gap: 14px 18px; align-items: start; margin-bottom: 24px;
+}
+.dash-grid > .alerts-card { align-self: stretch; }
+.svc-area { grid-area: list; min-width: 0; }
+.metrics-card { grid-area: metrics; }
+
+.pagehead { grid-area: head; display: flex; gap: 12px; align-items: center; margin: 4px 0 0; }
 .pagehead__ico { color: var(--d-info); display: grid; place-items: center; }
 .pagehead__ico .ico { width: 40px; height: 40px; }
 .pagehead h1 { margin: 0; font-size: 24px; color: var(--d-text); }
 .pagehead p { margin: 0; color: var(--d-muted); font-size: 13px; }
+/* 점검 시간: 제목 줄 오른쪽 끝(검색 칸 바로 위). 위 줄 "● 다음 점검 04:36", 아래 작은 글씨 "5분 점검 │ 화면 갱신 60초" */
+.cycle { margin-left: auto; text-align: right; line-height: 1.35; white-space: nowrap; }
+.cycle__main { display: flex; align-items: center; justify-content: flex-end; gap: 7px; font-size: 14px; font-weight: 600; color: var(--d-muted); }
+.cycle__main b { color: var(--d-text); font-size: 16px; font-variant-numeric: tabular-nums; }
+.cycle__sub { margin-top: 2px; font-size: 11.5px; color: var(--d-faint); }
+.cycle__sub span { margin: 0 4px; color: var(--d-line2); }
+.cycle__dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--d-good); box-shadow: 0 0 0 3px var(--d-good-soft); }
+/* 살아 있음 표시: 점 둘레에서 옅은 고리가 2초마다 퍼지며 사라짐 (점 자체를 깜빡이지 않음 — 눈이 덜 피로하게) */
+.cycle__dot::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--d-good); opacity: .5;
+  animation: cycle-pulse 2s ease-out infinite;
+}
+@keyframes cycle-pulse { from { transform: scale(1); opacity: .5; } to { transform: scale(3); opacity: 0; } }
+.cycle.is-stale .cycle__dot { background: var(--d-warn); box-shadow: 0 0 0 3px var(--d-warn-soft); }
+/* 연결 지연(노란 점)일 때는 멈춤: 퍼지는 고리 = "지금 잘 돌고 있다"는 뜻으로만 쓰려고 */
+.cycle.is-stale .cycle__dot::after { animation: none; opacity: 0; }
+/* '애니메이션 효과 줄이기'를 켠 사용자에게는 효과 없이 점만 */
+@media (prefers-reduced-motion: reduce) { .cycle__dot::after { animation: none; opacity: 0; } }
 
 .svc-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .pilltab { background: var(--d-blue); color: #fff; padding: 7px 14px; border-radius: 999px; font-weight: 600; }
@@ -166,7 +211,22 @@
 .metrics-card__title [data-icon] { color: var(--d-info); }
 .metrics-card__sel { margin-left: auto; font-size: 12px; color: var(--d-muted); border: 1px solid var(--d-line2); border-radius: 7px; padding: 3px 9px; font-weight: 600; }
 .metrics { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-.mbox { background: var(--d-panel2); border: 1px solid var(--d-line); border-radius: 10px; padding: 12px; min-width: 0; }
+.mbox { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: zoom-in;
+  background: var(--d-panel2); border: 1px solid var(--d-line); border-radius: 10px; padding: 12px; min-width: 0; transition: border-color .15s; }
+.mbox:hover { border-color: var(--d-blue); }
+.mbox:focus-visible { outline: 2px solid var(--d-blue); outline-offset: 2px; }
+.metrics-card__hint { margin: -6px 0 10px; font-size: 11.5px; color: var(--d-faint); }
+
+/* 지표 확대 팝업 */
+.modal--metric .modal__box { background: var(--d-panel); border-color: var(--d-line2); }
+.modal--metric .modal__title { color: var(--d-text); }
+.mzoom__head { margin-bottom: 8px; }
+.mzoom .mbox__t { font-size: 13px; }
+.mzoom .mbox__n { font-size: 30px; }
+.mzoom .mbox__sub { font-size: 12.5px; color: var(--d-muted); }
+.mzoom .chart { width: 100%; height: auto; display: block; margin-top: 8px; }
+.mzoom .mlegend { font-size: 13px; margin-top: 10px; }
+.mzoom__note { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--d-line); font-size: 12.5px; color: var(--d-muted); line-height: 1.6; }
 .mbox--wide { grid-column: 1 / -1; }
 .mbox__t { color: var(--d-muted); font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .mbox__n { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--d-text); }
@@ -198,7 +258,15 @@
 .chart__mdot.chart__series--4, .chart__mdot.chart__c--violet { fill: var(--d-violet); }
 .chart__mdot.chart__c--teal { fill: var(--d-teal); }
 
-/* ── 아래쪽 목록(장애 이력·최근 알림·운영 근거)도 같은 카드 색으로 ── */
+/* ── 서비스 페이지: 점검별 카드 (모양은 style.css의 .card, 색만 대시보드 팔레트로) ── */
+.dash .card { background: var(--d-panel); border-color: var(--d-line); }
+.dash .card:hover { border-color: var(--d-line2); background: var(--d-panel2); }
+.dash .kind-ico { background: var(--d-panel2); border-color: var(--d-line2); }
+.dash .mini { background: var(--d-panel2); border-color: var(--d-line); }
+.pagehead__count { font-size: 14px; font-weight: 600; color: var(--d-muted); margin-left: 6px; }
+.svc-legend { margin-top: 14px; }
+
+/* ── 아래쪽 목록(장애 이력·운영 근거)도 같은 카드 색으로 ── */
 .dash .panel { background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); box-shadow: none; }
 .dash .panel + .panel { margin-top: 0; }
 .dash .main > .panel { margin-bottom: 24px; }
@@ -208,7 +276,9 @@
 
 /* ── 좁은 화면 (시안과 같은 기준: 1180px에서 한 칸, 760px에서 메뉴가 위로) ── */
 @media (max-width: 1180px) {
-  .dash-grid, .dash-grid--even { grid-template-columns: minmax(0, 1fr); }
+  .dash-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stats" "alerts" "head" "list" "metrics"; }
+  .alerts-card { contain: none; }
+  .alerts-card .scroll-list { flex: none; height: 170px; }
   .svc { grid-template-columns: 44px minmax(0, 1fr) auto; }
   .svc__metric, .svc__checks { grid-column: 2 / -1; }
 }
@@ -226,11 +296,16 @@
   .side__foot { margin: 0 0 0 auto; }
   .side__foot a span:last-child { display: none; }
   .main { padding: 16px 16px 32px; }
-  .kcards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .kcard { padding: 12px 14px; }
+  .kcards { gap: 8px; }
+  .kcard { padding: 10px 12px; }
+  .kcard__value { font-size: 20px; }
+  .cycle { margin-left: 0; text-align: left; }
+  .cycle__main { justify-content: flex-start; }
   .kcard__ico { display: none; }
-  .kcard__value { font-size: 22px; }
-  .kcard__aside { display: none; }
+  .kcard__label { white-space: normal; }
+  .side__minor { margin: 0; order: 2; }
+  .pagehead { flex-wrap: wrap; }
+  .cycle { margin-left: 0; text-align: left; }
   .dash .search { min-width: 0; margin-left: 0; width: 100%; flex: 1 1 100%; }
   .metrics { grid-template-columns: minmax(0, 1fr); }
 }

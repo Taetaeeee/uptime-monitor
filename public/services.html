@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <!-- 테마를 화면을 그리기 전에 정함 (깜빡임 방지). index.html과 같은 규칙 -->
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search).get('theme');
+        var t = q === 'light' || q === 'dark' ? q : localStorage.getItem('um-theme');
+        if (t === 'light') document.documentElement.dataset.theme = 'light';
+      } catch (e) {}
+    })();
+  </script>
+  <title>서비스 · Uptime Monitor</title>
+  <meta name="description" content="운영 중인 서비스의 점검(HTTP·DNS·DB 상태)별 상태와 30일 가동률">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body class="dash">
+  <!-- 서비스 페이지: 점검 하나하나를 카드로 보여 줌 (대시보드는 서비스 단위로 묶어서 봄). 카드를 누르면 점검 상세 팝업.
+       왼쪽 메뉴는 index.html과 같은 마크업 (바꿀 때는 index.html·services.html·incidents.html·evidence.html을 함께 고칩니다) -->
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+  <div class="shell">
+    <aside class="side" aria-label="사이트 메뉴">
+      <a class="side__brand" href="/">
+        <span class="brand__logo" data-icon="activity"></span>
+        <span>
+          <span class="brand__name">Uptime Monitor</span>
+          <span class="brand__sub">서비스 상태 진단</span>
+        </span>
+      </a>
+      <nav class="side__nav" aria-label="주요 메뉴">
+        <a href="/"><span data-icon="layers" data-icon-class="ico ico--sm"></span>대시보드</a>
+        <a href="/services.html" aria-current="page"><span data-icon="globe" data-icon-class="ico ico--sm"></span>서비스</a>
+        <a href="/incidents.html"><span data-icon="alert" data-icon-class="ico ico--sm"></span>장애 이력</a>
+        <a href="/report.html"><span data-icon="report" data-icon-class="ico ico--sm"></span>월간 보고서</a>
+      </nav>
+      <a class="side__minor" href="/evidence.html"><span data-icon="shield" data-icon-class="ico ico--xs"></span>운영 근거</a>
+      <div class="side__foot">
+        <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span>GitHub</a>
+        <button type="button" class="theme-switch" id="theme-switch" role="switch" aria-checked="false" aria-label="밝은 화면">
+          <span class="theme-switch__track" aria-hidden="true">
+            <span class="theme-switch__icon theme-switch__icon--moon" data-icon="moon" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__icon theme-switch__icon--sun" data-icon="sun" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__thumb"></span>
+          </span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <div class="pagebar">
+        <span class="pagebar__crumb">서비스</span>
+        <p class="load-status" id="load-status" role="status">점검 상태를 불러오는 중…</p>
+      </div>
+
+      <header class="pagehead">
+        <span class="pagehead__ico" data-icon="globe"></span>
+        <div>
+          <h1>서비스 점검 <span class="pagehead__count" id="check-count"></span></h1>
+          <p>서비스마다 묶인 점검(HTTP·DNS·DB 상태)을 하나씩 봅니다. 카드를 누르면 최근 24시간 기록이 열립니다.</p>
+        </div>
+      </header>
+
+      <div class="services" id="services"></div>
+      <!-- 막대 색 범례 -->
+      <div class="legend svc-legend" aria-hidden="true">
+        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-good)"></span>99.9% 이상</span>
+        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-warn)"></span>99% 이상</span>
+        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-bad)"></span>99% 미만</span>
+        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-empty)"></span>기록 없음</span>
+      </div>
+
+      <footer class="site-footer">
+        <p>웹 서비스(HTTP·DNS)는 Worker가 5분마다 점검하고, 2회 연속 실패를 장애로 판정해 기록합니다.</p>
+      </footer>
+    </main>
+  </div>
+
+  <!-- 점검 상세 팝업: 카드를 누르면 열림 (detail.js가 채움). index.html과 같은 마크업 -->
+  <dialog id="detail-dialog" class="modal" aria-labelledby="detail-title">
+    <div class="modal__box">
+      <div class="modal__head">
+        <div class="modal__titlebox">
+          <span class="kind-ico" id="detail-kind" aria-hidden="true"></span>
+          <div style="min-width:0">
+            <h2 class="modal__title" id="detail-title">점검 상세</h2>
+            <div class="card__tags" id="detail-tags"></div>
+          </div>
+        </div>
+        <button type="button" class="modal__close" id="detail-close" aria-label="닫기"><span data-icon="x-mark" data-icon-class="ico ico--sm"></span></button>
+      </div>
+      <div id="detail"></div>
+    </div>
+  </dialog>
+
+  <script src="/common.js" defer></script>
+  <script src="/chart.js" defer></script>
+  <script src="/detail.js" defer></script>
+  <script src="/services.js" defer></script>
+</body>
+</html>

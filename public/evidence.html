@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <!-- 테마를 화면을 그리기 전에 정함 (깜빡임 방지). index.html과 같은 규칙 -->
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search).get('theme');
+        var t = q === 'light' || q === 'dark' ? q : localStorage.getItem('um-theme');
+        if (t === 'light') document.documentElement.dataset.theme = 'light';
+      } catch (e) {}
+    })();
+  </script>
+  <title>운영 근거 · Uptime Monitor</title>
+  <meta name="description" content="장애 훈련 기록, 판정 규칙 측정, 자동 테스트, 알려진 한계">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body class="dash">
+  <!-- 운영 근거 페이지: 대시보드 아래에 있던 '운영 근거' 칸을 옮겨 왔습니다. 데이터를 불러오지 않는 정적 페이지입니다.
+       왼쪽 메뉴는 index.html과 같은 마크업 (바꿀 때는 index.html·services.html·incidents.html·evidence.html을 함께 고칩니다) -->
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+  <div class="shell">
+    <aside class="side" aria-label="사이트 메뉴">
+      <a class="side__brand" href="/">
+        <span class="brand__logo" data-icon="activity"></span>
+        <span>
+          <span class="brand__name">Uptime Monitor</span>
+          <span class="brand__sub">서비스 상태 진단</span>
+        </span>
+      </a>
+      <nav class="side__nav" aria-label="주요 메뉴">
+        <a href="/"><span data-icon="layers" data-icon-class="ico ico--sm"></span>대시보드</a>
+        <a href="/services.html"><span data-icon="globe" data-icon-class="ico ico--sm"></span>서비스</a>
+        <a href="/incidents.html"><span data-icon="alert" data-icon-class="ico ico--sm"></span>장애 이력</a>
+        <a href="/report.html"><span data-icon="report" data-icon-class="ico ico--sm"></span>월간 보고서</a>
+      </nav>
+      <a class="side__minor" href="/evidence.html" aria-current="page"><span data-icon="shield" data-icon-class="ico ico--xs"></span>운영 근거</a>
+      <div class="side__foot">
+        <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span>GitHub</a>
+        <button type="button" class="theme-switch" id="theme-switch" role="switch" aria-checked="false" aria-label="밝은 화면">
+          <span class="theme-switch__track" aria-hidden="true">
+            <span class="theme-switch__icon theme-switch__icon--moon" data-icon="moon" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__icon theme-switch__icon--sun" data-icon="sun" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__thumb"></span>
+          </span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <div class="pagebar">
+        <span class="pagebar__crumb">운영 근거</span>
+      </div>
+
+      <header class="pagehead">
+        <span class="pagehead__ico" data-icon="shield"></span>
+        <div>
+          <h1>운영 근거</h1>
+          <p>이 화면이 믿을 만한지 확인할 수 있는 자료입니다. 문서는 GitHub 저장소로 연결됩니다.</p>
+        </div>
+      </header>
+
+      <!-- 수치는 일부러 적지 않고 원문에서 확인하게 합니다 (화면과 문서의 숫자가 어긋나지 않게) -->
+      <section class="panel" aria-label="운영 근거 자료">
+        <div class="evidence">
+          <article class="evidence__item">
+            <h3>장애 훈련</h3>
+            <p>일부러 낸 장애로 감지 → 알림 → 복구 → 사후 보고서까지 확인했습니다. 실제 서비스 장애가 아닌 <strong>훈련</strong>이라 화면의 장애 이력에서는 지웠고, 기록은 PDF로 남겼습니다.</p>
+            <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/drills/drill-a-incident-41.pdf" target="_blank" rel="noopener noreferrer">훈련 기록 PDF</a></p>
+          </article>
+          <article class="evidence__item">
+            <h3>판정 규칙 측정</h3>
+            <p>설계에 쓰지 않은 공개 데이터로 탐지율·오탐·지연을 쟀습니다. 이 서비스의 HTTP 점검 성능을 잰 것은 아닙니다.</p>
+            <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/evaluation/results.md" target="_blank" rel="noopener noreferrer">측정 결과 표</a></p>
+          </article>
+          <article class="evidence__item">
+            <h3>자동 테스트</h3>
+            <p>판정·집계 로직을 순수 함수로 분리해 테스트하고, 푸시마다 CI에서 JS·Python 테스트를 다시 실행합니다.</p>
+            <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/tree/main/test" target="_blank" rel="noopener noreferrer">테스트 코드</a> · <a href="https://github.com/Taetaeeee/uptime-monitor/actions/workflows/test.yml" target="_blank" rel="noopener noreferrer">CI 실행 결과</a></p>
+          </article>
+          <article class="evidence__item evidence__item--limits">
+            <h3>알려진 한계 <span class="evidence__asof">(2026-11-19 기준)</span></h3>
+            <ul>
+              <li>도메인 만료는 판정 로직만 있고 실제 조회는 하지 않습니다.</li>
+              <li>에이전트 무응답 감지는 운영에서 켠 대상이 없습니다.</li>
+              <li>SSL 인증서 만료는 Worker에서 잴 수 없어 점검하지 않습니다(인증서가 깨지면 HTTP 점검이 실패로 잡음).</li>
+              <li>실제 점검은 2026-11-11부터라 기간이 짧습니다.</li>
+              <li>점검 정밀도는 5분입니다(그보다 짧은 장애는 놓칠 수 있음).</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <footer class="site-footer">
+        <p>웹 서비스(HTTP·DNS)는 Worker가 5분마다 점검하고, 2회 연속 실패를 장애로 판정해 기록합니다.</p>
+      </footer>
+    </main>
+  </div>
+
+  <!-- 아이콘·테마 전환만 쓰므로 common.js 하나만 불러옵니다 -->
+  <script src="/common.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <!-- 테마를 화면을 그리기 전에 정함 (깜빡임 방지). index.html과 같은 규칙 -->
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search).get('theme');
+        var t = q === 'light' || q === 'dark' ? q : localStorage.getItem('um-theme');
+        if (t === 'light') document.documentElement.dataset.theme = 'light';
+      } catch (e) {}
+    })();
+  </script>
+  <title>장애 이력 · Uptime Monitor</title>
+  <meta name="description" content="실제 점검에서 판정된 장애와 사후 보고서 목록">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body class="dash">
+  <!-- 장애 이력 페이지: 대시보드에서 옮겨 온 목록. 왼쪽 메뉴는 index.html과 같은 마크업입니다
+       (빌드 도구가 없어 페이지마다 들어감 — 바꿀 때는 index.html·services.html·incidents.html·evidence.html을 함께 고칩니다) -->
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+  <div class="shell">
+    <aside class="side" aria-label="사이트 메뉴">
+      <a class="side__brand" href="/">
+        <span class="brand__logo" data-icon="activity"></span>
+        <span>
+          <span class="brand__name">Uptime Monitor</span>
+          <span class="brand__sub">서비스 상태 진단</span>
+        </span>
+      </a>
+      <nav class="side__nav" aria-label="주요 메뉴">
+        <a href="/"><span data-icon="layers" data-icon-class="ico ico--sm"></span>대시보드</a>
+        <a href="/services.html"><span data-icon="globe" data-icon-class="ico ico--sm"></span>서비스</a>
+        <a href="/incidents.html" aria-current="page"><span data-icon="alert" data-icon-class="ico ico--sm"></span>장애 이력</a>
+        <a href="/report.html"><span data-icon="report" data-icon-class="ico ico--sm"></span>월간 보고서</a>
+      </nav>
+      <a class="side__minor" href="/evidence.html"><span data-icon="shield" data-icon-class="ico ico--xs"></span>운영 근거</a>
+      <div class="side__foot">
+        <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span>GitHub</a>
+        <button type="button" class="theme-switch" id="theme-switch" role="switch" aria-checked="false" aria-label="밝은 화면">
+          <span class="theme-switch__track" aria-hidden="true">
+            <span class="theme-switch__icon theme-switch__icon--moon" data-icon="moon" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__icon theme-switch__icon--sun" data-icon="sun" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__thumb"></span>
+          </span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <div class="pagebar">
+        <span class="pagebar__crumb">장애 이력</span>
+        <p class="load-status" id="load-status" role="status">장애 이력을 불러오는 중…</p>
+      </div>
+
+      <header class="pagehead">
+        <span class="pagehead__ico" data-icon="alert"></span>
+        <div>
+          <h1>장애 이력</h1>
+          <p>2회 연속 실패로 판정된 장애입니다. 누르면 사후 보고서(요약·영향·원인·조치·재발 방지)를 볼 수 있습니다.</p>
+        </div>
+      </header>
+
+      <section class="panel" aria-labelledby="incidents-title">
+        <div class="panel__head">
+          <div>
+            <h2 class="panel__title" id="incidents-title">최근 장애 <span class="panel__count" id="incident-count"></span></h2>
+            <p class="panel__desc">당시 기록이며 지금의 상태와는 별개입니다. 가동률·SLA는 <a href="/report.html">월간 보고서</a>에서 볼 수 있습니다.</p>
+          </div>
+        </div>
+        <div id="incidents"></div>
+      </section>
+
+      <footer class="site-footer">
+        <p>장애 판정: 같은 점검이 2회 연속(5분 간격) 실패하면 장애, 그 뒤 한 번 성공하면 복구로 기록합니다 (src/state.js).</p>
+      </footer>
+    </main>
+  </div>
+
+  <script src="/common.js" defer></script>
+  <script src="/incidents.js" defer></script>
+</body>
+</html>
