@@ -1,16 +1,15 @@
 // 월간 가용성 보고서 페이지 — /api/reports/monthly 를 받아 출처별 표를 그린다.
 // 공용 도우미(formatKst, el, sourceBadge, formatMinutes, fetchJson)는 common.js에 있습니다.
 
+// 출처별 묶음 제목. 배포본에는 실제 점검만 있고, 시뮬레이터는 로컬 시험에서만 생깁니다.
 const GROUP_TITLE = {
   real: '실제 점검',
-  replay: '공개 데이터셋 재생 (다른 조직의 실제 기록)',
-  simulator: '시뮬레이터 (가짜 측정값)',
-  sample: '데모 데이터 (시드)',
+  simulator: '시뮬레이터 (가짜 측정값, 로컬 시험용)',
 };
 
 const KIND_TEXT = {
   http: 'HTTP', dns: 'DNS', domain: '도메인 만료',
-  ping: 'ping', tcp: 'TCP', ssl: 'SSL 인증서', disk: '디스크', service: '서비스', replay: '데이터 재생',
+  ping: 'ping', tcp: 'TCP', ssl: 'SSL 인증서', disk: '디스크', service: '서비스',
 };
 
 const pct = (v) => (v === null || v === undefined ? '-' : `${v}%`);

@@ -45,8 +45,8 @@ function el(tag, className, text) {
   return node;
 }
 
-// 출처 표시: real → '실제 점검', sample(시드) → '데모 데이터', simulator(에이전트 시뮬레이터) → '시뮬레이터',
-//            replay(공개 데이터셋 재생) → '실제 데이터 재생'
+// 출처 표시: real → '실제 점검', simulator(에이전트 시뮬레이터, 로컬 시험용) → '시뮬레이터',
+//            그 밖의 알 수 없는 출처 → '실제 아님' (배포본에는 실제 점검만 있지만, 실제가 아닌 기록이 섞여도 표시 없이 보이지 않게)
 // '실제 점검'은 "기록의 출처가 실제 점검"이라는 뜻일 뿐, "지금 점검 중"이라는 뜻이 아닙니다.
 // 그래서 색을 초록(정상처럼 보임)이 아닌 중립색으로 하고, 점검 대기 대상은 글자로 그 사실을 덧붙입니다(state === 'paused').
 function sourceBadge(source, state) {
@@ -58,10 +58,11 @@ function sourceBadge(source, state) {
       : '출처가 실제 점검(Worker 또는 에이전트 실제 모드)이라는 뜻입니다. 지금 점검 중이라는 뜻은 아니므로 상태와 점검 시각을 함께 보세요.';
     return badge;
   }
-  if (source === 'sample') return el('span', 'badge badge--demo', '데모 데이터');
   if (source === 'simulator') return el('span', 'badge badge--sim', '시뮬레이터');
-  if (source === 'replay') return el('span', 'badge badge--replay', '실제 데이터 재생');
-  return null;
+  if (!source) return null;
+  const other = el('span', 'badge badge--sim', '실제 아님');
+  other.title = `출처: ${source}`;
+  return other;
 }
 
 // options: fetch에 그대로 넘길 추가 설정 (예: { cache: 'no-store' }로 브라우저 캐시를 건너뜀)
@@ -225,7 +226,6 @@ const KIND_META = {
   ssl: { icon: 'lock', text: 'SSL 인증서' },
   disk: { icon: 'disk', text: '디스크' },
   service: { icon: 'cpu', text: 'Windows 서비스' },
-  replay: { icon: 'activity', text: '데이터 재생' },
 };
 function kindMeta(kind) {
   return KIND_META[kind] ?? { icon: 'server', text: kind };

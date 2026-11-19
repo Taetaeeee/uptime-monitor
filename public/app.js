@@ -25,39 +25,21 @@ const KIND_DESC = {
   ssl: '사내 PC의 에이전트가 인증서 만료까지 남은 날을 측정합니다. 14일 미만이면 실패입니다.',
   disk: '사내 PC의 에이전트가 디스크 사용률을 측정합니다. 기준(90%) 이상이면 실패입니다.',
   service: '사내 PC의 에이전트가 Windows 서비스가 실행 중인지 확인합니다.',
-  replay: '공개된 실제 운영 데이터셋의 과거 기록을 5분마다 한 칸씩 재생합니다. 판정·장애·알림은 실제 점검과 같은 경로를 거칩니다.',
 };
 
-// 데모 카드에 "N분 전 점검" 대신 보여 줄 글자. 데모는 실제로 점검하지 않고 시드로 넣은 시각이 마지막이라,
-// "20시간 전 점검"처럼 보이면 장애로 오해할 수 있어서입니다. (배포본에서는 B-7f에서 데모를 정리해 보이지 않음)
-const DEMO_REFRESH_TEXT = '데모 데이터 · 시드로 넣은 가짜 기록';
-
-// 출처 필터 (상태 필터와 별개로 적용). 데이터에 없는 출처는 숨깁니다.
-const SOURCES = [
-  ['all', '모든 출처'],
-  ['real', '실제 점검'],
-  ['replay', '실제 데이터 재생'],
-  ['simulator', '시뮬레이터'],
-  ['sample', '데모 데이터'],
-];
-
+// 2026-11-19부터 배포본에는 실제 점검 대상만 둡니다(데모·재생 데이터 삭제). 그래서 출처 필터는 없앴습니다.
+// 다만 에이전트 시뮬레이터는 로컬 시험용으로 남아 있으므로, 실제가 아닌 기록이 들어오면 여전히 구분해 보여 줍니다.
 const SOURCE_TEXT = {
   real: '실제 점검 (Worker 또는 에이전트 실제 모드)',
-  replay: '공개 데이터셋 재생 (다른 조직의 실제 기록)',
-  sample: '데모 데이터 (시드)',
-  simulator: '시뮬레이터 (가짜 측정값)',
+  simulator: '시뮬레이터 (가짜 측정값, 로컬 시험용)',
 };
 
-// 상단 배너의 시연 보조 줄처럼 좁은 곳에서 이름 뒤에 붙이는 짧은 출처 표시
-const SOURCE_SHORT = { real: '실제', replay: '재생', simulator: '시뮬레이터', sample: '데모' };
-
 // "N분 전 점검" 앞에 붙이는 말: 실제 점검이 아닌 기록은 시간 표시 옆에서도 그 사실을 알립니다
-const AGO_PREFIX = { simulator: '시뮬레이터(수동 전송) · ', replay: '데이터 재생 · ' };
+const AGO_PREFIX = { simulator: '시뮬레이터(수동 전송) · ' };
 
 const view = {
   data: null,
   filter: 'all', // 상태 필터
-  source: 'all', // 출처 필터 (상태 필터와 따로 적용)
   query: '',
   selectedId: null,
   open: {}, // 접기 상자(<details>)를 펼쳐 두었는지 — 자동 갱신 후에도 유지
@@ -125,8 +107,6 @@ function lastValue(s) {
     case 'ssl': return { label: '인증서 남은 날', value: s.lastValue === null ? '-' : `${s.lastValue}일` };
     case 'domain': return { label: '만료까지', value: s.lastValue === null ? '-' : `${s.lastValue}일` };
     case 'service': return { label: '서비스', value: s.state === 'down' ? '중지' : '실행 중' };
-    // 공개 데이터셋 재생: 값의 단위는 데이터셋마다 달라서 서버가 알려 준 단위를 씁니다 (NAB처럼 모르면 숫자만)
-    case 'replay': return { label: '현재 값', value: s.lastValue === null ? '-' : `${roundTo2(s.lastValue)}${s.replay?.unit ?? ''}` };
     case 'dns': return { label: 'DNS 응답', value: s.lastResponseMs === null ? '-' : `${s.lastResponseMs}ms · ${s.lastValue ?? 0}개` };
     default: return { label: '응답 시간', value: s.lastResponseMs === null ? '-' : `${s.lastResponseMs}ms` };
   }
@@ -141,42 +121,10 @@ function barClass(uptime) {
 }
 
 const uptimeText = (v) => (v === null || v === undefined ? '-' : `${v}%`);
-const roundTo2 = (v) => Math.round(v * 100) / 100; // 62.46317 → 62.46
 
-/**
- * 재생 대상의 판정 규칙을 사람이 읽는 한 줄로 (상세 핵심 지표의 보조 글자)
- * 규칙은 서버가 판정할 때 쓰는 값 그대로입니다. 규칙이 깨져 있으면 빈 글자.
- */
-function replayRuleText(r) {
-  const u = r.unit ?? '';
-  const rule = r.rule;
-  if (!rule) return '';
-  switch (rule.type) {
-    case 'high': return `느림 ${rule.slowAt}${u} 이상 · 장애 ${rule.failAt}${u} 이상`;
-    case 'deviation': return `평소 값 ${roundTo2(r.baseline)}에서 ±${rule.slowPct}% 느림 · ±${rule.failPct}% 장애`;
-    case 'ratio': return `평소 대비 ${rule.slowX}배 느림 · ${rule.failX}배 장애`;
-    case 'smart': return '불량 섹터가 있으면 느림 · 고장 기록이면 장애';
-    default: return '';
-  }
-}
-
-/**
- * 측정값 종류의 그래프·표시 설정. 측정값 종류(disk·ssl·domain)는 고정 설정, 재생 대상은 서버가 준 정보로 만듭니다.
- * 기준선은 규칙이 "값 이상이면 장애" 하나뿐인 경우(high)에만 그립니다. 차트가 선 하나만 지원하고,
- * 평소 값 ±% 같은 규칙은 위·아래 두 선이 필요해서 선을 그리면 오해를 부르기 때문이에요(대신 규칙 문장으로 보여 줌).
- */
+/** 측정값 종류(disk·ssl·domain)의 그래프·표시 설정. 그 밖의 종류는 null(응답 시간 그래프). */
 function valueSpec(s) {
-  if (VALUE_KINDS[s.kind]) return VALUE_KINDS[s.kind];
-  const r = s.replay;
-  if (!r) return null;
-  const u = r.unit ?? '';
-  return {
-    unit: u,
-    name: r.metric,
-    yMax: u === '%' ? 100 : undefined, // %는 0~100으로 고정 (자동 눈금은 급등 한 번에 200%까지 늘어나 오해를 부름)
-    threshold: r.rule?.type === 'high' ? r.rule.failAt : undefined,
-    label: (v) => `장애 기준 ${v}${u}`,
-  };
+  return VALUE_KINDS[s.kind] ?? null;
 }
 
 // ─────────────────────────────────────────────
@@ -188,8 +136,7 @@ function renderHero(data) {
   // 기준 시각은 방문자 PC 시계가 아니라 API가 만든 시각(generatedAt) — PC 시계가 틀려도 오래된 기록이 가려지지 않게
   const real = UptimeSummary.summarizeReal(data.services, UptimeSummary.statusNow(data));
 
-  // 이 띠는 "실제 점검" 대상만 반영합니다. 재생·시뮬레이터·데모의 장애는 아래 보조 줄에만 보여 줘서
-  // 실제 서비스가 멀쩡한데 빨간 띠가 뜨거나, 반대로 시연 데이터 때문에 "정상"으로 보이는 일을 막습니다.
+  // 이 띠는 "실제 점검" 대상만 반영합니다. 로컬에서 시뮬레이터 기록이 섞여도 띠 색이 바뀌지 않게 하려는 것입니다.
   const look = { good: ['', 'check'], bad: ['bad', 'x'], info: ['info', 'wrench'], idle: ['idle', 'help'] }[real.tone];
   bar.className = `statusbar${look[0] ? ` statusbar--${look[0]}` : ''}`;
   document.getElementById('hero-title').textContent = UptimeSummary.realTitle(real);
@@ -207,19 +154,10 @@ function renderHero(data) {
   if (!real.clockKnown) parts.push('데이터 생성 시각을 읽을 수 없어 최신 여부를 판단하지 않음');
   else parts.push(`데이터 생성 ${formatKst(data.generatedAt)}`);
   document.getElementById('hero-updated').textContent = parts.join(' · ');
-
-  const demo = UptimeSummary.summarizeDemo(data.services);
-  const demoEl = document.getElementById('hero-demo');
-  demoEl.hidden = !demo;
-  if (demo) {
-    demoEl.textContent = demo.down.length
-      ? `재생·시뮬레이터·데모(실제 점검 아님): 장애 ${demo.down.length}건 — ${demo.down.map((d) => `${d.name}(${SOURCE_SHORT[d.source] ?? d.source})`).join(', ')}`
-      : '시연 데이터(재생·시뮬레이터·데모): 장애 없음';
-  }
 }
 
 // 요약 카드 — 여러 서비스를 합친 '평균 가동률'은 만들지 않습니다.
-// 실제·데모·시뮬레이터 데이터를 합친 숫자는 의미가 없기 때문이에요(출처 규칙). 대신 개수만 셉니다.
+// 서비스마다 중요도·점검 방식이 달라 단순 평균은 의미가 없기 때문이에요. 대신 개수만 셉니다.
 // 숫자는 전부 /api/status에서 그때그때 계산합니다(코드에 박아 두지 않음). 서비스 이름으로 "서비스 몇 개"를 추정하지도 않아요.
 function renderStats(data) {
   const real = UptimeSummary.summarizeReal(data.services, UptimeSummary.statusNow(data));
@@ -227,14 +165,14 @@ function renderStats(data) {
   const inc = UptimeSummary.ongoingIncidents(data.incidents);
   const activeMaint = data.maintenance.filter((w) => w.active).length;
 
-  const parts = [['실제 활성', b.realActive], ['실제 점검 대기', b.realPaused], ['재생', b.replay], ['시뮬레이터', b.simulator], ['데모', b.sample], ['기타', b.other]]
+  const parts = [['실제 활성', b.realActive], ['실제 점검 대기', b.realPaused], ['실제 아님(시험)', b.other]]
     .filter(([, n]) => n > 0)
     .map(([label, n]) => `${label} ${n}`);
 
   const cards = [
-    // 분모는 "실제 활성 대상"뿐 — 점검 대기·재생·시뮬레이터·데모는 제외
+    // 분모는 "실제 활성 대상"뿐 — 점검 대기·실제가 아닌 시험 기록은 제외
     ['activity', '실제 점검 정상', real.total ? `${real.counts.up}/${real.total}` : '-', UptimeSummary.realHelper(real)],
-    ['alert', '진행 중 장애', String(inc.total), `실제 ${inc.real} · 재생·시뮬레이터·데모 ${inc.other}`],
+    ['alert', '진행 중 장애', String(inc.total), inc.other ? `실제 ${inc.real} · 실제 아님 ${inc.other}` : `실제 ${inc.real}`],
     ['wrench', '계획 작업', `${activeMaint}건 진행`, `예정 포함 ${data.maintenance.length}건`],
     ['layers', '점검 대상', `${b.total}건`, `전체 ${b.total} = ${parts.join(' + ') || '없음'}`],
   ];
@@ -274,12 +212,10 @@ function renderMaintenance(list) {
 // 검색·필터·서비스 카드
 // ─────────────────────────────────────────────
 
-// 필터 두 줄: 출처(어디서 온 데이터인가)와 상태(지금 어떤가). 서로 독립으로 적용합니다.
-// 상태 필터의 숫자는 "고른 출처 안에서" 세어서, 누르면 보일 개수와 같게 맞춥니다.
+// 상태 필터(지금 어떤가). 숫자는 누르면 보일 개수와 같습니다.
 function renderFilters(data) {
-  const inSource = UptimeSummary.filterServices(data.services, { source: view.source });
-  const counts = { all: inSource.length };
-  for (const s of inSource) counts[s.state] = (counts[s.state] ?? 0) + 1;
+  const counts = { all: data.services.length };
+  for (const s of data.services) counts[s.state] = (counts[s.state] ?? 0) + 1;
   document.getElementById('filters').replaceChildren(
     ...FILTERS.map(([key, label]) => {
       const b = el('button', `filter${view.filter === key ? ' is-active' : ''}`, label);
@@ -294,39 +230,17 @@ function renderFilters(data) {
       return b;
     })
   );
-
-  const srcCounts = { all: data.services.length };
-  for (const s of data.services) srcCounts[s.source] = (srcCounts[s.source] ?? 0) + 1;
-  document.getElementById('source-filters').replaceChildren(
-    ...SOURCES.filter(([key]) => key === 'all' || key === view.source || srcCounts[key]).map(([key, label]) => {
-      const b = el('button', `filter${view.source === key ? ' is-active' : ''}`, label);
-      b.type = 'button';
-      b.setAttribute('aria-pressed', String(view.source === key));
-      b.append(el('span', 'filter__count', String(srcCounts[key] ?? 0)));
-      b.addEventListener('click', () => setSource(key));
-      return b;
-    })
-  );
-}
-
-// 출처 필터 바꾸기. 검색어·열린 팝업·자동 갱신은 건드리지 않습니다.
-function setSource(key) {
-  view.source = key;
-  if (view.data) {
-    renderFilters(view.data);
-    renderServices(view.data);
-  }
 }
 
 function visibleServices(data) {
-  return UptimeSummary.filterServices(data.services, { source: view.source, state: view.filter, query: view.query });
+  return UptimeSummary.filterServices(data.services, { state: view.filter, query: view.query });
 }
 
 function renderServices(data) {
   const root = document.getElementById('services');
   const list = visibleServices(data);
   if (list.length === 0) {
-    root.replaceChildren(el('div', 'services__empty', '조건에 맞는 서비스가 없습니다. 출처·상태 필터와 검색어를 확인해 보세요.'));
+    root.replaceChildren(el('div', 'services__empty', '조건에 맞는 서비스가 없습니다. 상태 필터와 검색어를 확인해 보세요.'));
     return;
   }
   root.replaceChildren(
@@ -376,16 +290,12 @@ function renderServices(data) {
       // 마지막 점검 상대 시간 ("2분 전 점검") — tickClock()이 1초마다 글자만 고칩니다
       const ago = el('div', 'card__ago');
       ago.append(icon('clock', 'ico ico--xs'));
-      // 데모(sample) 카드는 실제로 점검하지 않으므로 "N분 전 점검" 대신 데모라는 사실과 갱신 주기를 보여 줍니다.
-      // (시드 시각 기준 "20시간 전 점검"처럼 보이면 장애로 오해할 수 있어서)
-      const isDemo = s.source === 'sample';
-      const agoPrefix = AGO_PREFIX[s.source] ?? ''; // 시뮬레이터·재생은 실제 점검이 아니므로 시간 표시 앞에 그 사실을 붙임
+      const agoPrefix = AGO_PREFIX[s.source] ?? ''; // 시뮬레이터는 실제 점검이 아니므로 시간 표시 앞에 그 사실을 붙임
       // 점검 대기(paused) 대상은 지금 점검하지 않으므로 "N분 전 점검"처럼 현재 점검 중인 것처럼 쓰지 않습니다.
       const isPaused = s.state === 'paused';
-      const agoLabel = el('span', '', isDemo ? DEMO_REFRESH_TEXT
-        : isPaused ? `현재 점검하지 않음${s.lastCheckedAt ? ` · 마지막 점검 ${formatKst(s.lastCheckedAt)}` : ''}`
+      const agoLabel = el('span', '', isPaused ? `현재 점검하지 않음${s.lastCheckedAt ? ` · 마지막 점검 ${formatKst(s.lastCheckedAt)}` : ''}`
         : s.lastCheckedAt ? agoPrefix + agoText(s.lastCheckedAt, Date.now()) : '아직 점검 기록 없음');
-      if (s.lastCheckedAt && !isDemo && !isPaused) {
+      if (s.lastCheckedAt && !isPaused) {
         agoLabel.dataset.ago = s.lastCheckedAt;
         if (agoPrefix) agoLabel.dataset.agoPrefix = agoPrefix;
       }
@@ -494,15 +404,14 @@ function renderDetailLive() {
   // ── ② 핵심 지표 4칸 ──
   const lv = lastValue(s);
   let secondSub = '';
-  if (s.replay) secondSub = replayRuleText(s.replay);
-  else if (k) secondSub = `기준 ${h?.monitor.threshold ?? k.threshold}${k.unit}`;
+  if (k) secondSub = `기준 ${h?.monitor.threshold ?? k.threshold}${k.unit}`;
   else if (RESPONSE_KINDS.includes(s.kind)) secondSub = h ? `느림 기준 ${h.monitor.maxResponseMs}ms` : '';
   else if (s.kind === 'service') secondSub = 'Windows 서비스 실행 여부';
   const up24 = h ? uptimeOf(h.points) : undefined;
   const days = s.daily.filter((d) => d.total > 0).length;
 
   const kpis = [
-    { label: '현재 상태', value: (STATE_META[s.state] ?? STATE_META.unknown).text, tone, sub: s.source === 'sample' ? DEMO_REFRESH_TEXT : s.state === 'paused' ? '현재 점검하지 않음' : s.lastCheckedAt ? null : '아직 점검 기록 없음', ago: s.source === 'sample' || s.state === 'paused' ? null : s.lastCheckedAt, agoPrefix },
+    { label: '현재 상태', value: (STATE_META[s.state] ?? STATE_META.unknown).text, tone, sub: s.state === 'paused' ? '현재 점검하지 않음' : s.lastCheckedAt ? null : '아직 점검 기록 없음', ago: s.state === 'paused' ? null : s.lastCheckedAt, agoPrefix },
     { label: lv.label, value: lv.value, sub: secondSub },
     { label: '24시간 가동률', value: up24 === undefined ? '…' : uptimeText(up24), sub: h ? `기록 ${h.points.length}회` : '불러오는 중' },
     { label: '30일 가동률', value: uptimeText(s.uptime30d), sub: `기록 ${days}/${s.daily.length}일` },
@@ -546,8 +455,8 @@ function renderDetailLive() {
     } else if (s.kind === 'service') {
       node = statusStrip({ points, ...range, label: titleMain });
     } else if (k) {
-      // 재생 대상은 규칙에서 온 기준선(없을 수 있음), 측정값 종류는 서버 판정 기준(없으면 기본값)
-      const th = s.replay ? k.threshold : (h.monitor.threshold ?? k.threshold);
+      // 측정값 종류의 기준선: 서버 판정 기준(없으면 기본값)
+      const th = h.monitor.threshold ?? k.threshold;
       node = lineChart({ points, ...range, gapMs, unit: k.unit, yMax: k.yMax, threshold: th === undefined ? undefined : { v: th, label: k.label(th) }, label: titleMain });
     } else {
       const th = h.monitor.maxResponseMs;
@@ -678,7 +587,7 @@ function renderDetail(data) {
   for (const [k, v] of [
     ['점검 종류', kind.text],
     ['데이터 출처', SOURCE_TEXT[s.source] ?? s.source],
-    [s.state === 'paused' ? '마지막 점검(현재는 점검 안 함)' : '마지막 점검', s.source === 'sample' ? DEMO_REFRESH_TEXT : s.lastCheckedAt ? formatKst(s.lastCheckedAt) : '-'],
+    [s.state === 'paused' ? '마지막 점검(현재는 점검 안 함)' : '마지막 점검', s.lastCheckedAt ? formatKst(s.lastCheckedAt) : '-'],
   ]) {
     const item = el('div');
     item.append(el('dt', '', k), el('dd', '', v));
@@ -687,9 +596,7 @@ function renderDetail(data) {
   foot.append(facts);
   const notice = {
     paused: '실제 대상으로 등록만 되어 있고 아직 점검을 켜지 않았습니다.',
-    sample: '데모 데이터: 시드 스크립트로 넣은 가짜 기록이며 실제로 점검하지 않습니다. 보고서에서 실제 데이터와 합산하지 않습니다.',
-    simulator: '시뮬레이터: 에이전트 시뮬레이터가 보낸 가짜 측정값입니다. PC에서 에이전트를 실행해 전송할 때만 갱신됩니다. 판정·장애·알림은 실제와 같은 경로를 거칩니다.',
-    replay: '실제 데이터 재생: 다른 조직의 실제 운영 기록(과거)을 재생한 것이며 이 회사의 실시간 데이터가 아닙니다. 가짜 값은 아니고, 판정·장애·알림은 실제 점검과 같은 경로를 거칩니다. 보고서에서 다른 출처와 합산하지 않습니다.',
+    simulator: '시뮬레이터: 에이전트 시뮬레이터가 보낸 가짜 측정값입니다(로컬 시험용). 판정·장애·알림은 실제와 같은 경로를 거칩니다.',
   }[s.state === 'paused' ? 'paused' : s.source];
   if (notice) foot.append(el('p', 'detail-foot__notice', notice));
   const link = el('a', 'detail-foot__link', '월간 가용성 보고서 보기');
@@ -697,46 +604,8 @@ function renderDetail(data) {
   link.append(icon('arrowRight', 'ico ico--xs'));
   foot.append(link);
 
-  root.replaceChildren(...[desc, kpis, charts, incBox, datasetBlock(s, data), foot].filter(Boolean));
+  root.replaceChildren(desc, kpis, charts, incBox, foot);
   renderDetailLive();
-}
-
-/**
- * ⑤-1 데이터 출처 (공개 데이터셋 재생 대상만): 어떤 데이터를 어떻게 가공했는지, 쓸 수 있는 조건은 무엇인지
- *   서버가 준 데이터셋 정보(이름·링크·라이선스·가공 방법·인용)를 그대로 보여 줍니다.
- *   링크는 https 주소일 때만 걸어서, 데이터에 이상한 주소가 들어와도 스크립트가 실행되지 않게 합니다.
- */
-function datasetBlock(s, data) {
-  const d = s.replay ? data.datasets?.[s.replay.datasetKey] : null;
-  if (!d) return null;
-
-  const box = el('section', 'detail-source');
-  const head = el('h4', 'subhead', '데이터 출처');
-  head.prepend(icon('layers', 'ico ico--sm'));
-  const list = el('dl', 'detail-source__list');
-  const add = (label, content) => {
-    const row = el('div');
-    row.append(el('dt', '', label), el('dd'));
-    row.lastChild.append(content);
-    list.append(row);
-  };
-
-  if (/^https:\/\//.test(d.url)) {
-    const a = el('a', '', d.name);
-    a.href = d.url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    add('데이터셋', a);
-  } else {
-    add('데이터셋', d.name);
-  }
-  add('지표', s.replay.metric);
-  add('라이선스', d.license);
-  add('가공 방법', d.processing);
-  if (d.citation) add('인용', d.citation);
-
-  box.append(head, list);
-  return box;
 }
 
 // ─────────────────────────────────────────────
@@ -875,15 +744,17 @@ async function load() {
     document.getElementById('hero-title').textContent = '상태를 불러오지 못했습니다';
     document.getElementById('hero-icon').replaceChildren(icon('alert', 'ico ico--sm'));
     document.getElementById('hero-updated').textContent = '잠시 후 자동으로 다시 시도합니다.';
-    document.getElementById('hero-demo').hidden = true;
   }
 }
 
-// 소개 띠의 '실제 점검 상태 보기': 이동은 링크(#services-panel)가 하고, 여기서는 출처만 '실제 점검'으로, 상태는 '전체'로 맞춥니다.
-// (이전에 고른 상태 필터가 남아 있으면 실제 카드가 안 보일 수 있어서. 검색어는 입력칸에 보이므로 그대로 둡니다.)
+// 소개 띠의 '실제 점검 상태 보기': 이동은 링크(#services-panel)가 하고, 여기서는 상태 필터를 '전체'로 맞춥니다.
+// (이전에 고른 상태 필터가 남아 있으면 카드가 안 보일 수 있어서. 검색어는 입력칸에 보이므로 그대로 둡니다.)
 document.getElementById('goto-real').addEventListener('click', () => {
   view.filter = 'all';
-  setSource('real');
+  if (view.data) {
+    renderFilters(view.data);
+    renderServices(view.data);
+  }
 });
 
 document.getElementById('search').addEventListener('input', (e) => {
