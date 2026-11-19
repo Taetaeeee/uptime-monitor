@@ -1,7 +1,7 @@
 // 점검 결과 기록 — Cron(HTTP 점검)과 에이전트 보고(B-4)가 함께 쓰는 공용 경로
 //
 //   판정된 결과 → 계획 작업 확인 → 장애 판정(상태 전이) → (결과 + 상태 + 장애 이력) 한 batch 저장
-//   → 상태가 바뀌었으면 알림 → 일별 집계
+//   → 상태가 바뀌었으면 알림 → 일별 집계 (대상별 + 서비스별, 0015)
 //
 // 왜 공용으로 뺐나?
 //   내부 점검도 장애 판정·알림·가동률을 HTTP 점검과 똑같이 받아야 합니다.
@@ -14,7 +14,10 @@ import {
   upsertDailyStats,
   getActiveMaintenanceAt,
   getOpenIncidents,
+  getActiveServiceMembers,
+  upsertServiceDailyStats,
 } from './db.js';
+import { summarizeSlots } from './service-status.js';
 import { initialState, nextState, TRANSITION } from './state.js';
 import { dispatch } from './notify.js';
 import { logChannel } from './channels/log.js';
@@ -155,13 +158,55 @@ async function refreshDailyStats(db, monitorIds, checkedAt, source) {
   const today = toKstDay(checkedAt);
   const days = [addDays(today, -1), today];
   const stats = [];
+  // 읽은 원본을 서비스 집계에서 다시 쓰려고 보관합니다 ("대상id|날짜" → 결과 배열).
+  // 같은 행을 두 번 읽지 않아서 D1 읽기 양이 늘지 않아요.
+  const cache = new Map();
   for (const monitorId of monitorIds) {
     for (const day of days) {
       const { startUtc, endUtc } = kstDayRange(day);
       const rows = await getResultsInRange(db, monitorId, startUtc, endUtc);
+      cache.set(`${monitorId}|${day}`, rows);
       if (rows.length === 0) continue; // 기록이 없는 날은 행을 만들지 않음 (화면에서 빈 칸)
       stats.push({ monitorId, day, ...summarizeDay(rows) });
     }
   }
   await upsertDailyStats(db, stats, checkedAt, source);
+
+  // 서비스 집계는 대상 집계와 따로 잡습니다: 서비스 쪽이 실패해도 대상 집계는 이미 저장됐으니까요.
+  try {
+    await refreshServiceStats(db, monitorIds, days, cache, checkedAt, source);
+  } catch (err) {
+    console.error(`[서비스 집계 실패] ${checkedAt}:`, err);
+  }
+}
+
+/**
+ * 이번에 기록한 대상이 속한 서비스의 '어제'·'오늘' 일별 집계를 다시 계산한다. (0015)
+ *
+ * 서비스에 묶인 점검 중 이번 회차에 기록하지 않은 것(예: 에이전트가 따로 보고하는 점검)이 있으면
+ * 그 점검의 원본만 추가로 읽습니다. 지금 서비스는 모두 Cron 점검이라 추가 읽기는 없어요.
+ */
+async function refreshServiceStats(db, monitorIds, days, cache, checkedAt, source) {
+  const recorded = new Set(monitorIds);
+  const services = (await getActiveServiceMembers(db)).filter((s) => s.monitorIds.some((id) => recorded.has(id)));
+  if (services.length === 0) return;
+
+  const stats = [];
+  for (const { serviceId, monitorIds: members } of services) {
+    for (const day of days) {
+      const rows = [];
+      for (const id of members) {
+        const key = `${id}|${day}`;
+        if (!cache.has(key)) {
+          const { startUtc, endUtc } = kstDayRange(day);
+          cache.set(key, await getResultsInRange(db, id, startUtc, endUtc));
+        }
+        rows.push(...cache.get(key));
+      }
+      const summary = summarizeSlots(rows);
+      if (summary.totalSlots === 0) continue; // 기록이 없는 날은 행을 만들지 않음
+      stats.push({ serviceId, day, ...summary });
+    }
+  }
+  await upsertServiceDailyStats(db, stats, checkedAt, source);
 }

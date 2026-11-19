@@ -6,6 +6,7 @@
 //          GET  /api/incidents/:id → 장애 상세·보고서 (api.js)
 //          GET  /api/reports/monthly?month=YYYY-MM → 월간 가용성 보고서 (api.js + report.js)
 //          GET  /api/monitors/:id/history?hours=24 → 상세 팝업 그래프용 최근 기록 (api.js)
+//          GET  /api/services, /api/services/:key → 서비스 묶음 목록·상세 (api.js + service-status.js, 0015)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
 //          [Cron] 실제 점검 뒤에 에이전트 무응답 감지(stale-run.js)도 같은 회차에 실행
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
@@ -24,6 +25,8 @@ import {
   buildIncidentDetail,
   buildMonthlyReport,
   buildMonitorHistory,
+  buildServices,
+  buildServiceDetail,
   HISTORY_DEFAULT_HOURS,
   HISTORY_MAX_HOURS,
 } from './api.js';
@@ -168,6 +171,22 @@ export default {
       } catch (err) {
         console.error('[API 오류] /api/status:', err);
         // 내부 오류 내용은 공개 응답에 넣지 않습니다 (로그에만 남김)
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    // 서비스 묶음 목록·상세 (공개, 0015)
+    // 키는 0015의 CHECK와 같은 모양(영문 소문자·숫자·하이픈, 40자 이하)만 받아서, 이상한 값은 DB까지 가지 않게 합니다.
+    const serviceMatch = url.pathname.match(/^\/api\/services(?:\/([a-z0-9][a-z0-9-]{0,39}))?$/);
+    if (serviceMatch) {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+      try {
+        const key = serviceMatch[1];
+        const body = key ? await buildServiceDetail(env.DB, key, new Date()) : await buildServices(env.DB, new Date());
+        if (!body) return json({ error: 'not_found' }, 404);
+        return json(body, 200, { 'cache-control': 'public, max-age=60' });
+      } catch (err) {
+        console.error('[API 오류] /api/services:', err);
         return json({ error: 'internal_error' }, 500);
       }
     }

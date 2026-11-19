@@ -221,13 +221,14 @@ export async function insertNotification(db, n) {
 export async function getResultsInRange(db, monitorId, startUtc, endUtc) {
   const { results } = await db
     .prepare(
-      `SELECT is_success, is_slow, response_ms, in_maintenance
+      `SELECT checked_at, is_success, is_slow, response_ms, in_maintenance
          FROM check_results
         WHERE monitor_id = ?1 AND checked_at >= ?2 AND checked_at < ?3`
     )
     .bind(monitorId, startUtc, endUtc)
     .all();
   return results.map((r) => ({
+    checkedAt: r.checked_at, // 서비스 집계(0015)에서 회차별로 묶을 때 사용
     isSuccess: r.is_success === 1,
     isSlow: r.is_slow === 1,
     responseMs: r.response_ms,
@@ -272,11 +273,12 @@ export async function upsertDailyStats(db, stats, updatedAt, source = 'real') {
 export async function getStatusMonitors(db) {
   const { results } = await db
     .prepare(
-      `SELECT m.id, m.name, m.kind, m.source, m.is_active,
+      `SELECT m.id, m.name, m.kind, m.source, m.is_active, m.service_id,
               s.state,
               r.checked_at  AS last_checked_at,
               r.response_ms AS last_response_ms,
-              r.value       AS last_value
+              r.value       AS last_value,
+              r.is_slow     AS last_is_slow
          FROM monitors m
          LEFT JOIN monitor_state s ON s.monitor_id = m.id
          -- 대상별 "가장 최근 결과 1건": 복합 인덱스로 대상마다 맨 끝 1행만 읽습니다
@@ -298,7 +300,109 @@ export async function getStatusMonitors(db) {
     lastCheckedAt: r.last_checked_at,
     lastResponseMs: r.last_response_ms,
     lastValue: r.last_value, // 디스크 %·인증서 남은 일수 (B-4)
+    lastIsSlow: r.last_is_slow === 1, // 서비스 '주의' 판정용 (0015)
+    serviceId: r.service_id, // 묶인 서비스 (없으면 null)
   }));
+}
+
+// ─────────────────────────────────────────────
+// 서비스 묶음 (0015)
+// ─────────────────────────────────────────────
+
+/**
+ * 켜진 서비스와 그 서비스에 묶인 켜진 점검 id 목록. (서비스 일별 집계 계산용)
+ * 대상 수가 적어서 전체를 한 번에 읽고 JS에서 고릅니다.
+ * @returns {Promise<Array<{serviceId:number, monitorIds:number[]}>>}
+ */
+export async function getActiveServiceMembers(db) {
+  const { results } = await db
+    .prepare(
+      `SELECT m.service_id, m.id
+         FROM monitors m
+         JOIN services s ON s.id = m.service_id
+        WHERE s.is_active = 1 AND m.is_active = 1
+        ORDER BY m.service_id, m.id`
+    )
+    .all();
+  const byService = new Map();
+  for (const r of results) {
+    if (!byService.has(r.service_id)) byService.set(r.service_id, []);
+    byService.get(r.service_id).push(r.id);
+  }
+  return [...byService].map(([serviceId, monitorIds]) => ({ serviceId, monitorIds }));
+}
+
+/** 서비스 일별 집계 저장 (있으면 덮어쓰기) */
+export async function upsertServiceDailyStats(db, stats, updatedAt, source = 'real') {
+  if (stats.length === 0) return;
+  const stmt = db.prepare(
+    `INSERT INTO service_daily_stats (service_id, day, total_slots, up_slots, slow_slots, source, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+     ON CONFLICT (service_id, day) DO UPDATE SET
+       total_slots = excluded.total_slots,
+       up_slots    = excluded.up_slots,
+       slow_slots  = excluded.slow_slots,
+       updated_at  = excluded.updated_at`
+  );
+  await db.batch(
+    stats.map((s) => stmt.bind(s.serviceId, s.day, s.totalSlots, s.upSlots, s.slowSlots, source, updatedAt))
+  );
+}
+
+/** 켜진 서비스 목록 (정렬 순서대로). 공개용이라 대표 주소(home_url)는 조회하지 않습니다. */
+export async function getServices(db) {
+  const { results } = await db
+    .prepare(
+      `SELECT id, service_key, name, description, source
+         FROM services
+        WHERE is_active = 1
+        ORDER BY sort_order, id`
+    )
+    .all();
+  return results.map((r) => ({
+    id: r.id,
+    key: r.service_key,
+    name: r.name,
+    description: r.description,
+    source: r.source,
+  }));
+}
+
+/** fromDay(KST, 포함) 이후의 모든 서비스 일별 집계 */
+export async function getServiceDailyStatsSince(db, fromDay) {
+  const { results } = await db
+    .prepare(
+      `SELECT service_id, day, total_slots, up_slots, slow_slots
+         FROM service_daily_stats
+        WHERE day >= ?1`
+    )
+    .bind(fromDay)
+    .all();
+  return results.map((r) => ({
+    serviceId: r.service_id,
+    day: r.day,
+    totalSlots: r.total_slots,
+    upSlots: r.up_slots,
+    slowSlots: r.slow_slots,
+  }));
+}
+
+/** 한 서비스에 묶인 점검들의 최근 장애 N건 (시작 최신 순) */
+export async function getServiceIncidents(db, serviceId, limit) {
+  const { results } = await db
+    .prepare(
+      `SELECT i.id, i.monitor_id, m.name AS monitor_name, m.kind AS monitor_kind,
+              i.started_at, i.detected_at, i.resolved_at, i.cause, i.source,
+              i.report_summary
+         FROM incidents i
+         JOIN monitors m ON m.id = i.monitor_id
+        WHERE m.service_id = ?1
+        ORDER BY i.started_at DESC, i.id DESC
+        LIMIT ?2`
+    )
+    .bind(serviceId, limit)
+    .all();
+  return results.map((r) => ({ ...mapIncident(r), summary: r.report_summary }));
 }
 
 /** fromDay(KST, 포함) 이후의 모든 대상 일별 집계 */
