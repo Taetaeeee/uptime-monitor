@@ -1,4 +1,4 @@
-// 월간 보고서 API 테스트 (B-6) — 가짜 D1 + 실제 시드(seed/sample.sql)
+// 월간 보고서 API 테스트 (B-6) — 가짜 D1 + 테스트 고정 자료(test/fixtures/sample.sql)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,7 +7,7 @@ import { buildMonthlyReport } from '../src/api.js';
 import { kstMonthOf, monthRange } from '../src/report.js';
 import worker from '../src/index.js';
 
-const SEED_SQL = readFileSync(new URL('../seed/sample.sql', import.meta.url), 'utf8');
+const SEED_SQL = readFileSync(new URL('./fixtures/sample.sql', import.meta.url), 'utf8');
 
 // 시드는 SQLite의 'now' 기준으로 날짜를 만들므로 보고서도 현재 시각으로 계산합니다.
 function seeded() {

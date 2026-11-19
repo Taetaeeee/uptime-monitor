@@ -2,7 +2,7 @@
 //
 // 사용 (프로젝트 폴더에서):
 //   node scripts/evaluate-rules/run.mjs [--raw <폴더>]
-//   먼저 node scripts/evaluate-rules/fetch-heldout.mjs 로 검증용 원본을 받아 둡니다.
+//   먼저 node scripts/evaluate-rules/fetch-heldout.mjs 로 평가에 필요한 원본(검증용 + NAB 라벨)을 받아 둡니다.
 //   결과: docs/evaluation/results.md (표), docs/evaluation/results.json (원자료)
 //
 // 무엇을 하나
@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseSmdRows, parseLabelLines, parseInterpretation, segmentsOf, quantile,
   parseNabCsv, parseNabWindows, labelByWindows,
-} from '../prepare-datasets/lib.mjs';
+} from './datasets.mjs';
 import { downsample, judgeReplay, baselineOf } from '../../src/replay.js';
 import { alarmsFromFlags, scoreAlarms, mergeScores, summarize } from './metrics.mjs';
 

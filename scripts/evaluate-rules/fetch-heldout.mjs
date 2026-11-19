@@ -1,11 +1,13 @@
 // B-9 검증용 원본 데이터 내려받기 — "임계값 선정에 쓰지 않은" 서버·파일만
 //
 // 사용: node scripts/evaluate-rules/fetch-heldout.mjs [--raw <폴더>]
-//   기본 폴더: ..\uptime-monitor-data\raw (저장소 밖. B-7c의 fetch.mjs와 같은 곳)
+//   기본 폴더: ..\uptime-monitor-data\raw (저장소 밖)
 //
-// 안전장치는 fetch.mjs와 같습니다:
-//   목록 안의 파일만 받고 / Content-Length가 상한을 넘으면 멈추고 / 이미 있으면 건너뛰고 / SHA-256을 기록합니다.
-// 왜 fetch.mjs를 고치지 않고 따로 만들었나: 7c의 "승인된 파일 목록"을 바꾸지 않고, 검증용 목록을 분리해 두려고.
+// 안전장치: 목록 안의 파일만 받고 / Content-Length가 상한을 넘으면 멈추고 / 이미 있으면 건너뛰고 / SHA-256을 기록합니다.
+//
+// 2026-11-19: 재생용 데이터 준비 스크립트(scripts/prepare-datasets/fetch.mjs)를 지우면서,
+//   그 스크립트만 받던 파일 중 평가(run.mjs)에 필요한 2개(NAB 라벨 창, 기준값을 정할 때 본 NAB 파일)를
+//   이 목록 끝에 옮겨 왔습니다. 이제 이 스크립트 하나로 평가에 필요한 원본을 모두 받습니다.
 
 import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, appendFileSync, statSync } from 'node:fs';
@@ -19,7 +21,8 @@ const argRaw = process.argv.indexOf('--raw');
 const RAW_DIR = argRaw > 0 ? resolve(process.argv[argRaw + 1]) : resolve(ROOT, '..', 'uptime-monitor-data', 'raw');
 
 const SMD = 'https://raw.githubusercontent.com/NetManAIOps/OmniAnomaly/master/ServerMachineDataset';
-const NAB = 'https://raw.githubusercontent.com/numenta/NAB/master/data/realKnownCause';
+const NAB_ROOT = 'https://raw.githubusercontent.com/numenta/NAB/master';
+const NAB = `${NAB_ROOT}/data/realKnownCause`;
 const MB = 1024 * 1024;
 
 export const HELDOUT_FILES = [
@@ -33,6 +36,9 @@ export const HELDOUT_FILES = [
     path: `nab/${n}.csv`,
     maxBytes: 2 * MB,
   })),
+  // 원래 prepare-datasets/fetch.mjs가 받던 것 (평가의 NAB 라벨과 "이미 본 파일" 참고 표에 필요)
+  { url: `${NAB}/machine_temperature_system_failure.csv`, path: 'nab/machine_temperature_system_failure.csv', maxBytes: 2 * MB },
+  { url: `${NAB_ROOT}/labels/combined_windows.json`, path: 'nab/combined_windows.json', maxBytes: 2 * MB },
 ];
 
 async function main() {

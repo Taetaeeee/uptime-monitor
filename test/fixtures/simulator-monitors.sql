@@ -1,11 +1,9 @@
--- 시뮬레이터용 가상 내부 점검 대상 등록 (source = 'simulator')
+-- 테스트 전용 고정 자료: 시뮬레이터용 가상 내부 점검 대상 (source = 'simulator')
 --
--- 에이전트 시뮬레이터(agent/agent.py --simulate)가 보고할 대상입니다.
--- 측정값 자체는 이 파일이 아니라 시뮬레이터가 API로 보내서 쌓입니다.
--- (이 파일은 "어떤 대상이 있는지"만 등록)
---
--- 실행 (PowerShell, 마이그레이션 0005까지 적용된 뒤):
---   npx.cmd wrangler d1 execute status-monitor-db --remote --file=seed/simulator-monitors.sql
+-- 배포 DB에는 넣지 않습니다. (2026-11-19 방침: 배포본에는 실제 운영 서비스만 둠)
+-- 원래 seed/simulator-monitors.sql이었고, 지금은 수신 API·무응답 감지 테스트와
+-- 에이전트 시나리오 키 검사(agent/tests/test_agent.py)가 쓰는 입력으로만 남겨 두었습니다.
+-- 로컬에서 시뮬레이터를 끝까지 시연하려면 로컬 D1에만 이 파일을 넣습니다(--local).
 --
 -- 다시 실행하면 시뮬레이터 대상과 그 기록(결과·상태·집계·알림)을 모두 지우고 새로 등록합니다.
 --   → 시뮬레이터 데모를 처음부터 다시 보여 주고 싶을 때 쓰는 "초기화" 역할도 합니다.

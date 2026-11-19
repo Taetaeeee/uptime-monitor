@@ -1,11 +1,11 @@
-// 관리자 API 테스트 (B-5) — 가짜 D1 + 실제 시드(seed/sample.sql)
+// 관리자 API 테스트 (B-5) — 가짜 D1 + 테스트 고정 자료(test/fixtures/sample.sql)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createFakeD1 } from './helpers/fake-d1.js';
 import worker from '../src/index.js';
 
-const SEED_SQL = readFileSync(new URL('../seed/sample.sql', import.meta.url), 'utf8');
+const SEED_SQL = readFileSync(new URL('./fixtures/sample.sql', import.meta.url), 'utf8');
 const TOKEN = 'test-admin-token'; // 테스트 전용 값 (실제 토큰 아님)
 
 function setup(env = {}) {

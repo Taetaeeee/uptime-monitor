@@ -37,7 +37,7 @@ class ScenarioFileTest(unittest.TestCase):
 
     def setUp(self):
         self.scenario = agent.load_json(str(AGENT_DIR / "scenarios" / "db-outage.json"))
-        seed = (AGENT_DIR.parent / "seed" / "simulator-monitors.sql").read_text(encoding="utf-8")
+        seed = (AGENT_DIR.parent / "test" / "fixtures" / "simulator-monitors.sql").read_text(encoding="utf-8")
         import re
         self.seed_keys = set(re.findall(r"'(sim-[a-z0-9-]+)'", seed))
 

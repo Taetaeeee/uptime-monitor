@@ -9,7 +9,7 @@
 //   알림         "연속 N회 실패"가 채워진 그 칸 (운영에서 장애 알림이 기록되는 시점)
 //   이상 구간    라벨이 1인 칸이 이어진 덩어리 [시작, 끝] (끝 포함)
 
-import { quantile } from '../prepare-datasets/lib.mjs';
+import { quantile } from './datasets.mjs';
 
 /**
  * 실패 표시 배열에서 "장애 알림"을 뽑는다 — 운영의 src/state.js와 같은 규칙, 단 연속 횟수 n을 바꿀 수 있게.
