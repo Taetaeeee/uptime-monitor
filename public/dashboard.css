@@ -266,6 +266,88 @@
 .pagehead__count { font-size: 14px; font-weight: 600; color: var(--d-muted); margin-left: 6px; }
 .svc-legend { margin-top: 14px; }
 
+/* ── 대시보드 서비스 줄 → 상세 화면 링크 (S3) ── */
+.svc { cursor: pointer; }
+.svc__link { color: inherit; }
+.svc__link:hover { color: var(--d-info); }
+.svc__link:focus-visible { outline: 2px solid var(--d-blue); outline-offset: 2px; border-radius: 4px; }
+.pagebar__crumb a { color: var(--d-muted); font-weight: 600; }
+.pagebar__crumb a:hover { color: var(--d-text); }
+
+/* ── 서비스 상세 화면 (S3, 시안의 상세 화면 배치) ── */
+.sd-k { color: var(--d-muted); font-size: 12px; }
+.sd-v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--d-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-v--good { color: var(--d-good-text); }
+.sd-v--warn { color: var(--d-warn-text); }
+.sd-v--bad { color: var(--d-bad-text); }
+.sd-sub { font-size: 11px; color: var(--d-faint); margin-top: 2px; }
+.sd-empty { color: var(--d-muted); font-size: 13px; padding: 12px 0; }
+
+/* ① 머리 */
+.sd-head {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr) auto auto auto auto; gap: 22px; align-items: center;
+  padding: 16px 20px; margin-bottom: 14px;
+  background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r);
+}
+.sd-head__ico { width: 54px; height: 54px; border-radius: 12px; background: rgba(99, 102, 241, .18); color: #a5b4fc; display: grid; place-items: center; }
+.sd-head__ico .ico { width: 28px; height: 28px; }
+.sd-head__who { min-width: 0; }
+.sd-head__who h1 { margin: 0; font-size: 22px; color: var(--d-text); }
+.sd-head__link { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 13px; color: var(--d-info); }
+.sd-head__link:hover { text-decoration: underline; }
+.sd-sep { border-left: 1px solid var(--d-line); padding-left: 18px; white-space: nowrap; }
+.sd-sep b { color: var(--d-text); font-variant-numeric: tabular-nums; }
+.chip--static { cursor: default; }
+.chip--static:hover { border-color: var(--d-line2); }
+
+/* ② 지표 4칸 */
+.sd-strip {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 14px 4px; margin-bottom: 14px;
+  background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r);
+}
+.sd-stat { padding: 0 18px; border-left: 1px solid var(--d-line); min-width: 0; }
+.sd-stat:first-child { border-left: 0; }
+.sd-stat .sd-k { font-size: 12.5px; font-weight: 600; }
+.sd-stat .sd-v { font-size: 24px; }
+
+/* ③ 점검 카드 (두 칸) */
+.sd-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; align-items: start; }
+.sd-card { padding: 14px 16px; min-width: 0; background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); }
+.sd-card__hd { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sd-card__ico { color: var(--d-info-text); display: grid; }
+.sd-card__title { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.sd-card__title b { font-size: 16px; color: var(--d-text); }
+.sd-card__title small { color: var(--d-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sd-card__hd .state { margin-left: auto; font-size: 12px; padding: 3px 10px; }
+.sd-card__more { font: inherit; font-size: 12px; font-weight: 600; color: var(--d-info); background: none; border: 1px solid var(--d-line2); border-radius: 7px; padding: 3px 9px; cursor: pointer; }
+.sd-card__more:hover { border-color: var(--d-blue); }
+.sd-card__more:focus-visible { outline: 2px solid var(--d-blue); outline-offset: 2px; }
+.sd-m3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--d-line); border-radius: 10px; margin-bottom: 10px; }
+.sd-m3 > div { padding: 8px 12px; border-left: 1px solid var(--d-line); min-width: 0; }
+.sd-m3 > div:first-child { border-left: 0; }
+.sd-m3 .sd-v { font-size: 20px; }
+.sd-subt { color: var(--d-muted); font-size: 12.5px; margin: 8px 0 3px; }
+.sd-card .chart { width: 100%; height: auto; display: block; }
+.dash .sd-card .chart__line { stroke: var(--d-info); }
+.sd-slots { display: grid; grid-template-columns: repeat(96, minmax(0, 1fr)); gap: 2px; margin-top: 4px; }
+.sd-slot { height: 16px; border-radius: 2px; background: var(--d-good); opacity: .85; }
+.sd-slot--fail { background: var(--d-bad); opacity: 1; }
+.sd-slot--slow { background: var(--d-warn); }
+.sd-slot--maint { background: var(--d-info); opacity: .6; }
+.sd-slot--none { background: var(--d-line2); opacity: .7; }
+.bars--sd { height: 22px; margin-top: 4px; }
+
+/* ④ 최근 이벤트 */
+.sd-events { padding: 14px 18px; margin-bottom: 14px; background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); }
+.sd-events h2 { margin: 0 0 8px; font-size: 16px; color: var(--d-text); }
+.sd-table { width: 100%; border-collapse: collapse; }
+.sd-table th, .sd-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--d-line); font-size: 13px; }
+.sd-table th { color: var(--d-muted); font-weight: 600; background: rgba(255, 255, 255, .02); }
+.sd-table a { color: var(--d-text); }
+.sd-table a:hover { color: var(--d-info); text-decoration: underline; }
+.sd-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+.sd-dot--bad { background: var(--d-bad); }
+
 /* ── 아래쪽 목록(장애 이력·운영 근거)도 같은 카드 색으로 ── */
 .dash .panel { background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); box-shadow: none; }
 .dash .panel + .panel { margin-top: 0; }
@@ -281,6 +363,9 @@
   .alerts-card .scroll-list { flex: none; height: 170px; }
   .svc { grid-template-columns: 44px minmax(0, 1fr) auto; }
   .svc__metric, .svc__checks { grid-column: 2 / -1; }
+  .sd-head { grid-template-columns: 54px minmax(0, 1fr) auto; }
+  .sd-sep { grid-column: 2 / -1; border-left: 0; padding-left: 0; }
+  .sd-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
@@ -308,4 +393,7 @@
   .cycle { margin-left: 0; text-align: left; }
   .dash .search { min-width: 0; margin-left: 0; width: 100%; flex: 1 1 100%; }
   .metrics { grid-template-columns: minmax(0, 1fr); }
+  .sd-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; }
+  .sd-stat:nth-child(3) { border-left: 0; }
+  .sd-table th:nth-child(2), .sd-table td:nth-child(2) { display: none; }
 }

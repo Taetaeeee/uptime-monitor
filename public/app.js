@@ -113,21 +113,7 @@ function renderMaintenance(list) {
 // 서비스 줄 (시안: 아이콘 | 이름·태그 | 상태 | 30일 가동률 | 최근 점검 | 세부 점검 상태 — 한 줄)
 // ─────────────────────────────────────────────
 
-const CHIP_TEXT = { up: '정상', down: '오류', slow: '지연', maintenance: '작업', paused: '대기', unknown: '확인 중' };
-const CHIP_ICON = { up: 'check', down: 'x', slow: 'clock', maintenance: 'wrench', paused: 'pause', unknown: 'help' };
-// 서비스 아이콘: 지금은 서비스 키로 고릅니다. 모르는 서비스(나중에 '+ 서비스 추가'로 생길 것)는 지구본
-const SERVICE_ICON = { gochyeora: 'game', keychats: 'chat' };
-
-// 한국 시각 'HH:MM' (최근 점검 칸: "17:40 · 5분 전")
-const kstHm = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });
-
-/** 상태 알약 (시안 모양: 꽉 찬 옅은 배경 + 굵은 글자). 문구·아이콘은 common.js STATE_META를 그대로 씀 */
-function serviceStatePill(state) {
-  const meta = STATE_META[state] ?? STATE_META.unknown;
-  const pill = el('span', `state state--${STATE_META[state] ? state : 'unknown'}`);
-  pill.append(icon(meta.icon, 'ico'), document.createTextNode(meta.text));
-  return pill;
-}
+// 칩 문구·아이콘, 서비스 아이콘, 상태 알약(serviceStatePill), 'HH:MM' 형식(kstHm)은 서비스 상세 화면과 함께 쓰므로 detail.js에 있습니다.
 
 /** 점검 칩: 누르면 그 점검의 상세 팝업(기존 팝업, /api/status의 점검 정보)을 엽니다 */
 function checkChip(check) {
@@ -175,6 +161,13 @@ function renderServiceRows(svc) {
   root.replaceChildren(
     ...list.map((s) => {
       const row = el('article', `svc svc--${s.state}`);
+      // 줄을 누르면 서비스 상세 화면으로 (S3). 이름은 진짜 링크라 키보드(Tab·Enter)로도 열 수 있고,
+      // 줄 안의 점검 칩은 지금처럼 그 점검의 팝업을 엽니다 (칩을 누른 경우에는 이동하지 않음)
+      const href = `/service.html?key=${encodeURIComponent(s.key)}`;
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.chip, a')) return;
+        location.href = href;
+      });
       if (view.changed.has(s.key)) row.classList.add('is-changed'); // 새로 불러온 데이터에서 상태가 바뀐 줄 강조
 
       const ico = el('span', 'svc__ico');
@@ -182,7 +175,10 @@ function renderServiceRows(svc) {
 
       const name = el('div');
       name.style.minWidth = '0';
-      const title = el('h3', 'svc__name', s.name);
+      const title = el('h3', 'svc__name');
+      const link = el('a', 'svc__link', s.name);
+      link.href = href;
+      title.append(link);
       // 배포본은 실제 서비스만 두므로 '실제 점검' 배지는 줄마다 반복하지 않고, 실제가 아닌 서비스(로컬 시험)에만 붙입니다
       const badge = s.source === 'real' ? null : sourceBadge(s.source, s.state);
       if (badge) title.append(' ', badge);

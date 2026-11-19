@@ -187,15 +187,21 @@ test('켜기 전(비활성)에는 서비스가 점검 대기로 나온다', asyn
   ]);
 });
 
-test('GET /api/services: 공개 응답에 주소가 없고, 내린 서비스는 목록·상세에서 빠진다', async () => {
+test('GET /api/services: 대표 주소만 공개하고 점검 주소는 없으며, 내린 서비스는 목록·상세에서 빠진다', async () => {
   const db = createFakeD1();
   const call = (path, method = 'GET') => worker.fetch(new Request(`https://example.test${path}`, { method }), { DB: db });
 
   const res = await call('/api/services');
   assert.equal(res.status, 200);
   const text = await res.text();
-  assert.ok(!/https?:\/\/|dns:\/\//.test(text), '서비스 대표 주소·점검 주소를 공개하지 않음');
-  assert.deepEqual(JSON.parse(text).services.map((s) => s.key), ['gochyeora', 'keychats']);
+  // 점검 주소(DNS 점검·DB 상태 확인 주소)는 공개하지 않음
+  assert.ok(!/dns:\/\/|\/api\/health/.test(text), '점검 주소를 공개하지 않음');
+  const list = JSON.parse(text).services;
+  assert.deepEqual(list.map((s) => s.key), ['gochyeora', 'keychats']);
+  // 대표 주소는 공개 사이트 첫 화면만 (S3 '사이트 열기' 링크). 응답에 나오는 http 주소는 이것뿐
+  assert.deepEqual(list.map((s) => s.homeUrl), ['https://gochyeora.pages.dev', 'https://keychats.vercel.app/']);
+  const urls = [...new Set(text.match(/https?:\/\/[^"]+/g))].sort();
+  assert.deepEqual(urls, ['https://gochyeora.pages.dev', 'https://keychats.vercel.app/']);
 
   const detail = await call('/api/services/keychats');
   assert.equal(detail.status, 200);

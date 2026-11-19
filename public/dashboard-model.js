@@ -147,7 +147,67 @@
     return series.map((s) => ({ ...s, points: s.points.slice(start) }));
   }
 
+  // ─────────────────────────────────────────────
+  // 서비스 상세 화면 (S3): 점검별 최근 24시간 기록(/api/monitors/:id/history)으로 계산
+  // 기록 한 점: { checkedAt, isSuccess, isSlow, responseMs, inMaintenance }
+  // ─────────────────────────────────────────────
+
+  /**
+   * 24시간 서비스 가동률: 묶인 점검들의 기록을 회차(checkedAt)별로 묶어 "모두 성공한 회차 비율".
+   * 서버 src/service-status.js summarizeSlots와 같은 규칙입니다 (계획 작업 중 기록은 빼고, 내림 표시).
+   * @param {Array<Array<object>>} histories  점검마다 기록 배열
+   * @returns {{totalSlots:number, upSlots:number, percent:number|null}}
+   */
+  function serviceUptimeFromHistories(histories) {
+    const slots = new Map();
+    for (const points of histories) {
+      for (const p of points) {
+        if (p.inMaintenance) continue;
+        const ok = slots.get(p.checkedAt) ?? true;
+        slots.set(p.checkedAt, ok && p.isSuccess);
+      }
+    }
+    const totalSlots = slots.size;
+    const upSlots = [...slots.values()].filter(Boolean).length;
+    return { totalSlots, upSlots, percent: totalSlots ? Math.floor((upSlots * 10000) / totalSlots) / 100 : null };
+  }
+
+  /** 성공한 점검의 평균 응답 시간(ms, 반올림). 없으면 null — 실패는 응답이 없거나 의미가 달라서 뺌 */
+  function avgResponse(points) {
+    const ms = points.filter((p) => p.isSuccess && !p.inMaintenance && p.responseMs !== null && p.responseMs !== undefined).map((p) => p.responseMs);
+    return ms.length ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null;
+  }
+
+  /**
+   * 성공/실패 칸: [from, to) 구간을 cellMin분 칸으로 나눠 칸마다 상태를 정합니다.
+   * 회차 수가 아니라 시각으로 칸을 정하는 이유: 기록이 빠진 시간이 있으면 그 칸을 '기록 없음'으로 보여 주려고요
+   * (회차 수로 묶으면 빠진 시간이 앞으로 당겨져 시각이 어긋나 보임).
+   * 칸 상태 우선순위: 실패 > 느림 > 정상 > 계획 작업 > 기록 없음
+   * @returns {Array<{start:string, state:'fail'|'slow'|'ok'|'maint'|'none', count:number, fails:number}>}
+   */
+  function timeCells(points, fromIso, toIso, cellMin) {
+    const from = Date.parse(fromIso);
+    const to = Date.parse(toIso);
+    const size = cellMin * 60 * 1000;
+    const n = Math.max(1, Math.ceil((to - from) / size));
+    const cells = Array.from({ length: n }, (_, i) => ({ start: new Date(from + i * size).toISOString(), state: 'none', count: 0, fails: 0, slow: 0, maint: 0 }));
+    for (const p of points) {
+      const i = Math.floor((Date.parse(p.checkedAt) - from) / size);
+      if (i < 0 || i >= n) continue;
+      const c = cells[i];
+      c.count += 1;
+      if (p.inMaintenance) c.maint += 1;
+      else if (!p.isSuccess) c.fails += 1;
+      else if (p.isSlow) c.slow += 1;
+    }
+    return cells.map(({ slow, maint, ...c }) => ({
+      ...c,
+      state: c.fails ? 'fail' : slow ? 'slow' : c.count > maint ? 'ok' : maint ? 'maint' : 'none',
+    }));
+  }
+
   root.DashboardModel = {
+    serviceUptimeFromHistories, avgResponse, timeCells,
     kstDay, countByState, searchServices, chipLabel, chipState, lastDays, incidentsByDay, responseSeries, uptimeSeries, firstRecordedDay,
     chartStart, sliceSeries, mmss,
   };
