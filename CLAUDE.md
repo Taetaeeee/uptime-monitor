@@ -119,7 +119,8 @@
      PATCH /api/admin/services/:key(끄기·다시 켜기), 대시보드 [+ 서비스 추가] 팝업(토큰은 저장하지 않고 닫을 때 지움).
      관리자 토큰 + 운영자 동의 필수, 공개 https 도메인만, 켜진 서비스 10개까지. 실제 서비스 추가는 사용자가 직접 함
    - 남음: README 스크린샷 교체(새 화면으로)
-15. 오래 가는 장애 메일 알림  ← 진행 중 (2026-11-20, 브랜치 feat/escalation, 커밋 전)
+15. 오래 가는 장애 메일 알림  ← 완료 (2026-11-20, 85e15de → main 병합 39454a7, Notion B-15)
    - 0016 service_escalations, src/escalation.js(판단·문구 순수 함수), escalation-run.js(Cron, 보낸 뒤에 기록 → 실패하면 다음 회차 재시도),
      channels/email.js(Resend), POST /api/admin/alerts/test(시험 메일). 서비스 단위 15분 1통 + 복구 1통, 반복 없음
-   - 사용자가 할 일: Resend 계정·API 키, wrangler secret put RESEND_API_KEY·ALERT_EMAIL_TO, 0016 원격 적용 → 배포 → 시험 메일
+   - Resend 무료 플랜, 받는 사람은 운영자 한 명(도메인 없이 가입 메일 주소로만 발송 — 공식 문서 확인).
+     비밀 값 등록·0016 원격 적용·배포·시험 메일 실제 수신까지 확인. 실제 장애 메일은 15분 넘는 장애가 생기면 확인
