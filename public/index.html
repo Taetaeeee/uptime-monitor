@@ -15,29 +15,34 @@
     })();
   </script>
   <title>Uptime Monitor</title>
-  <meta name="description" content="서비스 장애를 감지하고 복구 기록과 월간 보고서로 남기는 운영 모니터링 도구 — 실제 점검과 시연 데이터를 구분해 보여 주는 포트폴리오 프로젝트">
+  <meta name="description" content="내가 운영하는 웹 서비스를 5분마다 점검하고, 장애를 기록해 가동률·장애 이력·월간 보고서로 보여 주는 운영 모니터링 도구">
   <link rel="stylesheet" href="/style.css">
+  <!-- 대시보드 전용 배치(왼쪽 메뉴·카드·서비스 줄). 공용 style.css 뒤에 불러와서 이 페이지에서만 덮어씁니다 (S2) -->
+  <link rel="stylesheet" href="/dashboard.css">
 </head>
-<body>
-  <!-- 빌드 도구 없이 HTML/CSS/JS만 씁니다. 데이터는 app.js가 /api/status에서 받아와 채워요.
+<body class="dash">
+  <!-- 빌드 도구 없이 HTML/CSS/JS만 씁니다. 데이터는 app.js가 /api/services(서비스 묶음)와 /api/status(알림·장애 이력·점검 상세)에서 받아와 채워요.
        <span data-icon="이름">은 common.js가 SVG 아이콘으로 바꿔 넣는 자리입니다. -->
-  <div class="glow glow--1" aria-hidden="true"></div>
-  <div class="glow glow--2" aria-hidden="true"></div>
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
 
-  <header class="topbar">
-    <div class="wrap topbar__in">
-      <a class="brand" href="/">
+  <div class="shell">
+    <!-- 왼쪽 메뉴. 좁은 화면에서는 위쪽 가로 띠로 바뀝니다 (dashboard.css) -->
+    <aside class="side" aria-label="사이트 메뉴">
+      <a class="side__brand" href="/">
         <span class="brand__logo" data-icon="activity"></span>
         <span>
           <span class="brand__name">Uptime Monitor</span>
           <span class="brand__sub">서비스 상태 진단</span>
         </span>
       </a>
-      <nav class="topnav" aria-label="주요 링크">
-        <a href="/agents.html" aria-label="AI 에이전트 작업 흐름"><span data-icon="activity" data-icon-class="ico ico--sm"></span><span class="label">AI 에이전트</span></a>
-        <a href="/rca.html" aria-label="AI 장애 조사"><span data-icon="search" data-icon-class="ico ico--sm"></span><span class="label">AI 장애 조사</span></a>
-        <a href="/report.html" class="is-primary"><span data-icon="report" data-icon-class="ico ico--sm"></span><span class="label">월간 보고서</span></a>
-        <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span><span class="label">GitHub</span></a>
+      <nav class="side__nav" aria-label="주요 메뉴">
+        <a href="#main" aria-current="page"><span data-icon="layers" data-icon-class="ico ico--sm"></span>대시보드</a>
+        <a href="#services-panel"><span data-icon="globe" data-icon-class="ico ico--sm"></span>서비스</a>
+        <a href="#incidents-panel"><span data-icon="alert" data-icon-class="ico ico--sm"></span>장애 이력</a>
+        <a href="/report.html"><span data-icon="report" data-icon-class="ico ico--sm"></span>월간 보고서</a>
+      </nav>
+      <div class="side__foot">
+        <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span>GitHub</a>
         <!-- 화면 테마 토글 (어두운 ↔ 밝은). 동작은 common.js -->
         <button type="button" class="theme-switch" id="theme-switch" role="switch" aria-checked="false" aria-label="밝은 화면">
           <span class="theme-switch__track" aria-hidden="true">
@@ -46,144 +51,130 @@
             <span class="theme-switch__thumb"></span>
           </span>
         </button>
-      </nav>
-    </div>
-  </header>
-
-  <main class="wrap">
-    <!-- 소개 띠: 이 페이지가 무엇인지 먼저 알려 줍니다. 정적 HTML이라 /api/status가 실패해도 보입니다. -->
-    <section class="intro" aria-labelledby="intro-title">
-      <h1 class="intro__title" id="intro-title">서비스 장애를 감지하고, 복구 기록과 월간 보고서로 남기는 운영 모니터링 도구</h1>
-      <p class="intro__text">
-        사내 IT·인프라 운영 담당자와 채용 담당자를 위한 개인 포트폴리오입니다.
-        이 화면의 서비스는 모두 실제로 운영 중이며 5분마다 실제로 점검합니다
-        (제가 운영하는 사이트 고쳐라!, 팀 채팅 Keychats). 시연용 가짜 데이터는 넣지 않습니다.
-      </p>
-      <div class="intro__actions">
-        <a class="btn btn--primary" href="#services-panel" id="goto-real">실제 점검 상태 보기</a>
-        <a class="btn" href="/report.html">월간 보고서 보기</a>
       </div>
-    </section>
+    </aside>
 
-    <!-- 실제 점검 상태 띠: 출처가 '실제 점검'인 활성 대상만 반영 -->
-    <section id="hero" class="statusbar statusbar--loading" aria-live="polite" aria-labelledby="hero-title">
-      <span class="statusbar__icon" id="hero-icon"></span>
-      <div class="statusbar__text">
-        <h2 class="statusbar__title" id="hero-title">상태를 불러오는 중…</h2>
-        <p class="statusbar__sub" id="hero-updated">-</p>
+    <main class="main" id="main">
+      <!-- 위쪽 띠: 현재 위치 (시안과 같게 글자만) -->
+      <div class="pagebar">
+        <span class="pagebar__crumb">대시보드</span>
+        <!-- 불러오기 상태 안내 (불러오는 중 / 실패). 정상일 때는 비어 있어 보이지 않음 -->
+        <p class="load-status" id="load-status" role="status">상태를 불러오는 중…</p>
       </div>
-      <!-- 5분 점검 표시: 점검은 5분마다(Cron), 화면은 60초마다 새로 불러옴. 실시간 감시가 아님 -->
-      <div class="live" id="live" title="Cron이 5분마다 점검하고, 화면은 60초마다 새로 불러옵니다. 실시간 감시가 아닙니다.">
-        <span class="live__dot" aria-hidden="true"></span>
-        <span class="live__label">5분 점검</span>
-        <span class="live__next" id="live-next">-</span>
-      </div>
-    </section>
 
-    <!-- 한눈에 보기: 왼쪽 요약 카드, 오른쪽 최근 알림 -->
-    <div class="overview">
-      <div class="stats" id="stats"></div>
-      <section class="panel panel--compact" aria-labelledby="notes-title">
+      <!-- 요약 카드 4개: 전체 서비스 / 정상 / 부분 장애·장애 / 점검 주기 -->
+      <section class="kcards" id="stats" aria-label="서비스 요약"></section>
+
+      <div class="dash-grid">
+        <!-- 왼쪽: 제목 + 서비스 줄. 서비스 하나 = 묶인 점검 여러 개. 칩을 누르면 그 점검의 상세 팝업이 열립니다. -->
+        <section id="services-panel" aria-labelledby="services-title">
+          <!-- 페이지 제목 + 한 줄 소개. 정적 HTML이라 API가 실패해도 보입니다. -->
+          <header class="pagehead">
+            <span class="pagehead__ico" data-icon="database"></span>
+            <div>
+              <h1 id="services-title">서비스 모니터링</h1>
+              <p>운영하는 서비스를 5분마다 점검합니다.</p>
+            </div>
+          </header>
+          <div class="svc-toolbar">
+            <span class="pilltab" id="svc-count">전체</span>
+            <label class="search">
+              <span data-icon="search" data-icon-class="ico ico--sm"></span>
+              <input id="search" type="search" placeholder="서비스 이름으로 검색 (예: 고쳐라!, Keychats)" aria-label="서비스 이름으로 검색" autocomplete="off">
+            </label>
+          </div>
+          <div class="svc-list" id="services"></div>
+        </section>
+
+        <!-- 오른쪽: 운영 지표 요약 (2×2 칸) -->
+        <section class="metrics-card" id="metrics-panel" aria-labelledby="metrics-title">
+          <h2 class="metrics-card__title" id="metrics-title">
+            <span data-icon="chart" data-icon-class="ico ico--sm"></span>운영 지표 요약
+            <span class="metrics-card__sel">응답 일평균 · 장애 최근 30일</span>
+          </h2>
+          <div class="metrics" id="metrics"></div>
+        </section>
+      </div>
+
+      <!-- 계획 작업 안내 (진행 중·예정). 없으면 숨김 -->
+      <section id="maintenance" class="maint-list" aria-label="계획 작업"></section>
+
+      <div class="dash-grid dash-grid--even">
+        <section class="panel" id="incidents-panel" aria-labelledby="incidents-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="incidents-title">장애 이력</h2>
+              <p class="panel__desc">누르면 사후 보고서(요약·영향·원인·조치·재발 방지)를 볼 수 있습니다. 당시 기록이며 지금의 상태와는 별개입니다.</p>
+            </div>
+          </div>
+          <div id="incidents"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="notes-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="notes-title"><span data-icon="bell" data-icon-class="ico ico--sm"></span>최근 알림</h2>
+              <p class="panel__desc">상태가 바뀔 때(장애·복구)만 기록됩니다. 최근 20건</p>
+            </div>
+          </div>
+          <div id="notifications"></div>
+        </section>
+      </div>
+
+      <!-- 운영 근거: 화면 밖(저장소) 자료로 이어지는 길. 수치는 일부러 적지 않고 원문에서 확인하게 합니다. -->
+      <section class="panel" aria-labelledby="evidence-title">
         <div class="panel__head">
           <div>
-            <h2 class="panel__title" id="notes-title"><span data-icon="bell" data-icon-class="ico ico--sm"></span>최근 알림</h2>
-            <p class="panel__desc">상태가 바뀔 때(장애·복구)만 기록됩니다. 최근 20건 · 스크롤해서 보기</p>
+            <h2 class="panel__title" id="evidence-title">운영 근거</h2>
+            <p class="panel__desc">이 화면이 믿을 만한지 확인할 수 있는 자료입니다. 문서는 GitHub 저장소로 연결됩니다.</p>
           </div>
         </div>
-        <div id="notifications"></div>
+        <div class="evidence">
+          <article class="evidence__item">
+            <h3>장애 훈련</h3>
+            <p>일부러 낸 장애로 감지 → 알림 → 복구 → 사후 보고서까지 확인했습니다. 실제 서비스 장애가 아닌 <strong>훈련</strong>이라 화면의 장애 이력에서는 지웠고, 기록은 PDF로 남겼습니다.</p>
+            <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/drills/drill-a-incident-41.pdf" target="_blank" rel="noopener noreferrer">훈련 기록 PDF</a></p>
+          </article>
+          <article class="evidence__item">
+            <h3>판정 규칙 측정</h3>
+            <p>설계에 쓰지 않은 공개 데이터로 탐지율·오탐·지연을 쟀습니다. 이 서비스의 HTTP 점검 성능을 잰 것은 아닙니다.</p>
+            <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/evaluation/results.md" target="_blank" rel="noopener noreferrer">측정 결과 표</a></p>
+          </article>
+          <article class="evidence__item">
+            <h3>자동 테스트</h3>
+            <p>판정·집계 로직을 순수 함수로 분리해 테스트하고, 푸시마다 CI에서 JS·Python 테스트를 다시 실행합니다.</p>
+            <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/tree/main/test" target="_blank" rel="noopener noreferrer">테스트 코드</a> · <a href="https://github.com/Taetaeeee/uptime-monitor/actions/workflows/test.yml" target="_blank" rel="noopener noreferrer">CI 실행 결과</a></p>
+          </article>
+          <article class="evidence__item evidence__item--limits">
+            <h3>알려진 한계 <span class="evidence__asof">(2026-11-19 기준)</span></h3>
+            <ul>
+              <li>도메인 만료는 판정 로직만 있고 실제 조회는 하지 않습니다.</li>
+              <li>에이전트 무응답 감지는 운영에서 켠 대상이 없습니다.</li>
+              <li>SSL 인증서 만료는 Worker에서 잴 수 없어 점검하지 않습니다(인증서가 깨지면 HTTP 점검이 실패로 잡음).</li>
+              <li>실제 점검은 2026-11-11부터라 기간이 짧습니다.</li>
+              <li>점검 정밀도는 5분입니다(그보다 짧은 장애는 놓칠 수 있음).</li>
+            </ul>
+          </article>
+        </div>
       </section>
-    </div>
 
-    <!-- 계획 작업 안내 (진행 중·예정). 없으면 숨김 -->
-    <section id="maintenance" class="maint-list" aria-label="계획 작업"></section>
+      <footer class="site-footer">
+        <p>웹 서비스(HTTP·DNS)는 Worker가 5분마다 점검하고, 2회 연속 실패를 장애로 판정해 기록합니다.</p>
+        <p id="updated"></p>
+      </footer>
+    </main>
+  </div>
 
-    <!-- ① 한눈에 보기: 서비스 현황 (전체 폭) -->
-    <section class="panel" id="services-panel" aria-labelledby="services-title">
-      <div class="panel__head">
-        <div>
-          <h2 class="panel__title" id="services-title">서비스 현황</h2>
-          <p class="panel__desc">카드를 누르면 자세한 정보가 팝업으로 열립니다.</p>
-        </div>
-        <div class="toolbar">
-          <label class="search">
-            <span data-icon="search" data-icon-class="ico ico--sm"></span>
-            <input id="search" type="search" placeholder="서비스 이름 검색" aria-label="서비스 이름 검색" autocomplete="off">
-          </label>
-          <div class="filters" id="filters" role="group" aria-label="상태 필터"></div>
-        </div>
-      </div>
-      <!-- 출처 범례: 배지가 무엇을 뜻하는지 -->
-      <dl class="source-legend">
-        <div><dt><span class="badge badge--real">실제 점검</span></dt><dd>내가 운영하는 사이트·서비스를 Worker(Cron)가 직접 점검하거나, 내 PC의 Python 에이전트가 실제 모드로 측정해 보낸 기록입니다. 점검 대기 대상은 지금 점검하지 않습니다.</dd></div>
-      </dl>
-      <div class="services" id="services"></div>
-      <div class="legend" style="margin-top:14px" aria-hidden="true">
-        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-good)"></span>99.9% 이상</span>
-        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-warn)"></span>99% 이상</span>
-        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-bad)"></span>99% 미만</span>
-        <span class="legend__item"><span class="legend__swatch" style="background:var(--bar-empty)"></span>기록 없음</span>
-      </div>
-    </section>
-
-    <!-- ③ 장애 이력 -->
-    <section class="panel" aria-labelledby="incidents-title">
-      <div class="panel__head">
-        <div>
-          <h2 class="panel__title" id="incidents-title">장애 이력</h2>
-          <p class="panel__desc">최근 장애를 시작 시각 순으로 정리했습니다. 누르면 사후 보고서를 볼 수 있어요. 목록은 당시 기록이며 지금의 점검 상태와는 별개입니다.</p>
-        </div>
-      </div>
-      <p class="read-path">읽는 길: 장애를 누르면 사후 보고서(요약·영향·원인·조치·재발 방지)를, <a href="/report.html">월간 보고서</a>에서 가동률·SLA를 볼 수 있습니다.</p>
-      <div id="incidents"></div>
-    </section>
-
-    <!-- ④ 운영 근거: 화면 밖(저장소) 자료로 이어지는 길. 수치는 일부러 적지 않고 원문에서 확인하게 합니다. -->
-    <section class="panel" aria-labelledby="evidence-title">
-      <div class="panel__head">
-        <div>
-          <h2 class="panel__title" id="evidence-title">운영 근거</h2>
-          <p class="panel__desc">이 화면이 믿을 만한지 확인할 수 있는 자료입니다. 문서는 GitHub 저장소로 연결됩니다.</p>
-        </div>
-      </div>
-      <div class="evidence">
-        <article class="evidence__item">
-          <h3>장애 훈련</h3>
-          <p>일부러 낸 장애로 감지 → 알림 → 복구 → 사후 보고서까지 확인했습니다. 실제 서비스 장애가 아닌 <strong>훈련</strong>이라 화면의 장애 이력에서는 지웠고, 기록은 PDF로 남겼습니다.</p>
-          <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/drills/drill-a-incident-41.pdf" target="_blank" rel="noopener noreferrer">훈련 기록 PDF</a></p>
-        </article>
-        <article class="evidence__item">
-          <h3>판정 규칙 측정</h3>
-          <p>설계에 쓰지 않은 공개 데이터로 탐지율·오탐·지연을 쟀습니다. 이 서비스의 HTTP 점검 성능을 잰 것은 아닙니다.</p>
-          <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/evaluation/results.md" target="_blank" rel="noopener noreferrer">측정 결과 표</a></p>
-        </article>
-        <article class="evidence__item">
-          <h3>자동 테스트</h3>
-          <p>판정·집계 로직을 순수 함수로 분리해 테스트하고, 푸시마다 CI에서 JS·Python 테스트를 다시 실행합니다.</p>
-          <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/tree/main/test" target="_blank" rel="noopener noreferrer">테스트 코드</a> · <a href="https://github.com/Taetaeeee/uptime-monitor/actions/workflows/test.yml" target="_blank" rel="noopener noreferrer">CI 실행 결과</a></p>
-        </article>
-        <article class="evidence__item evidence__item--limits">
-          <h3>알려진 한계 <span class="evidence__asof">(2026-11-13 기준)</span></h3>
-          <ul>
-            <li>도메인 만료는 판정 로직만 있고 실제 조회는 하지 않습니다.</li>
-            <li>에이전트 무응답 감지는 운영에서 켠 대상이 없습니다.</li>
-            <li>실제 점검은 2026-11-11부터라 기간이 짧습니다.</li>
-            <li>점검 정밀도는 5분입니다(그보다 짧은 장애는 놓칠 수 있음).</li>
-          </ul>
-        </article>
-      </div>
-    </section>
-  </main>
-
-  <!-- 서비스 상세 팝업: 카드를 누르면 열림. ✕ 버튼·바깥(어두운 곳) 클릭·Esc로 닫힘.
+  <!-- 점검 상세 팝업: 서비스 줄의 점검 칩을 누르면 열림. ✕ 버튼·바깥(어두운 곳) 클릭·Esc로 닫힘.
        <dialog>는 브라우저 기본 기능이라 포커스 가두기·Esc 닫기·화면 낭독기 안내가 자동으로 됩니다. -->
   <dialog id="detail-dialog" class="modal" aria-labelledby="detail-title">
     <div class="modal__box">
       <div class="modal__head">
-        <!-- ① 머리: 팝업 제목 자리에 서비스 이름·상태·출처 (app.js renderDetail이 채움) -->
+        <!-- 머리: 팝업 제목 자리에 점검 이름·상태·출처 (app.js renderDetail이 채움) -->
         <div class="modal__titlebox">
           <span class="kind-ico" id="detail-kind" aria-hidden="true"></span>
           <div style="min-width:0">
-            <h2 class="modal__title" id="detail-title">서비스 상세</h2>
+            <h2 class="modal__title" id="detail-title">점검 상세</h2>
             <div class="card__tags" id="detail-tags"></div>
           </div>
         </div>
@@ -193,22 +184,9 @@
     </div>
   </dialog>
 
-  <footer class="site-footer">
-    <div class="wrap">
-      <p>
-        웹 서비스(HTTP·DNS)는 Worker가, 사내 시스템(ping·포트·디스크·인증서·서비스)은 Python 에이전트가 점검하고, 2회 연속 실패를 장애로 판정해 기록합니다.
-      </p>
-      <p>
-        <span class="badge badge--real">실제 점검</span>
-        기록의 출처가 실제 점검이라는 뜻이며 지금 점검 중이라는 뜻은 아닙니다. 상태와 점검 시각을 함께 보세요.
-      </p>
-      <p id="updated"></p>
-    </div>
-  </footer>
-
-  <!-- common.js(공용 도우미)를 먼저, 그다음 이 페이지 스크립트 (defer는 적힌 순서대로 실행) -->
+  <!-- common.js(공용 도우미)를 먼저, 그다음 계산(dashboard-model)·그래프(chart)·이 페이지 스크립트 (defer는 적힌 순서대로 실행) -->
   <script src="/common.js" defer></script>
-  <script src="/summary.js" defer></script>
+  <script src="/dashboard-model.js" defer></script>
   <script src="/chart.js" defer></script>
   <script src="/app.js" defer></script>
 </body>

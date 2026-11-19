@@ -157,7 +157,10 @@ const ICONS = {
     ['path', { d: 'M9 18c-4.51 2-5-2-7-2' }],
   ],
   arrowRight: [['path', { d: 'M5 12h14' }], ['path', { d: 'm12 5 7 7-7 7' }]],
-  sun: [['circle', { cx: 12, cy: 12, r: 4 }], ['path', { d: 'M12 2v2M12 20v2m-7.07-2.93 1.41-1.41M17.66 6.34l1.41-1.41M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41' }]],
+  // 서비스 아이콘 (대시보드 서비스 줄: 웹게임·채팅)
+  game: [['rect', { x: 2, y: 7, width: 20, height: 11, rx: 4 }], ['path', { d: 'M7 11v4M5 13h4M16 12h.01M18 14h.01' }]],
+  chat: [['path', { d: 'M4 5h16v11H9l-5 4z' }], ['path', { d: 'M8 10.5h.01M12 10.5h.01M16 10.5h.01' }]],
+  sun:[['circle', { cx: 12, cy: 12, r: 4 }], ['path', { d: 'M12 2v2M12 20v2m-7.07-2.93 1.41-1.41M17.66 6.34l1.41-1.41M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41' }]],
   moon: [['path', { d: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z' }]],
   arrowUpRight: [['path', { d: 'M7 7h10v10' }], ['path', { d: 'M7 17 17 7' }]],
   arrowLeft: [['path', { d: 'm12 19-7-7 7-7' }], ['path', { d: 'M19 12H5' }]],
@@ -206,6 +209,9 @@ const STATE_META = {
   maintenance: { text: '계획 작업 중', icon: 'wrench', tone: 'info' },
   unknown: { text: '확인 중', icon: 'help', tone: 'muted' },
   paused: { text: '점검 대기', icon: 'pause', tone: 'muted' },
+  // 서비스 묶음 상태 (0015, src/service-status.js): 점검 하나에는 쓰지 않고 서비스에만 나옵니다
+  partial: { text: '부분 장애', icon: 'alert', tone: 'warn' },
+  degraded: { text: '주의', icon: 'clock', tone: 'warn' },
 };
 
 /** 상태 알약: ● 정상 */
