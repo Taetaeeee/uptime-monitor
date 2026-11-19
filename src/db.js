@@ -27,42 +27,6 @@ export async function getActiveMonitors(db) {
 }
 
 /**
- * 활성 재생 대상과 그 설정을 가져온다. (B-7d)
- *   replay_config와 조인하므로 설정이 없는 대상은 나오지 않습니다.
- *   길이(length)는 replay_config에 적어 둔 값을 씁니다: replay_series를 COUNT(*)로 세면 5분마다 수천 행을 읽어요.
- */
-export async function getReplayMonitors(db) {
-  const { results } = await db
-    .prepare(
-      `SELECT m.id, m.name, c.length, c.step_minutes, c.anchor_at, c.rule, c.baseline
-         FROM monitors m
-         JOIN replay_config c ON c.monitor_id = m.id
-        WHERE m.is_active = 1 AND m.kind = 'replay'
-        ORDER BY m.id`
-    )
-    .all();
-
-  return results.map((r) => ({
-    monitorId: r.id,
-    name: r.name,
-    length: r.length,
-    stepMinutes: r.step_minutes,
-    anchorAt: r.anchor_at,
-    rule: r.rule,
-    baseline: r.baseline,
-  }));
-}
-
-/** 재생 시계열에서 값 1개 (기본 키로 1행만 읽음). 없으면 null */
-export async function getReplayValue(db, monitorId, seq) {
-  const row = await db
-    .prepare('SELECT value, is_anomaly FROM replay_series WHERE monitor_id = ?1 AND seq = ?2')
-    .bind(monitorId, seq)
-    .first();
-  return row ? { value: row.value, isAnomaly: row.is_anomaly } : null;
-}
-
-/**
  * 대상별 현재 상태를 모두 가져온다. (대상 수가 적어서 전체 조회로 충분)
  * @returns {Promise<Map<number, object>>}  monitorId → 상태 (state.js의 initialState()와 같은 모양)
  */
@@ -312,17 +276,9 @@ export async function getStatusMonitors(db) {
               s.state,
               r.checked_at  AS last_checked_at,
               r.response_ms AS last_response_ms,
-              r.value       AS last_value,
-              -- 공개 데이터셋 재생 대상만 값이 있고, 나머지는 NULL (B-7e)
-              c.rule        AS replay_rule,
-              c.baseline    AS replay_baseline,
-              c.metric_label AS replay_metric,
-              c.unit        AS replay_unit,
-              d.key         AS dataset_key
+              r.value       AS last_value
          FROM monitors m
          LEFT JOIN monitor_state s ON s.monitor_id = m.id
-         LEFT JOIN replay_config c ON c.monitor_id = m.id
-         LEFT JOIN datasets d ON d.id = m.dataset_id
          -- 대상별 "가장 최근 결과 1건": 복합 인덱스로 대상마다 맨 끝 1행만 읽습니다
          LEFT JOIN check_results r ON r.id = (
                 SELECT id FROM check_results
@@ -342,23 +298,7 @@ export async function getStatusMonitors(db) {
     lastCheckedAt: r.last_checked_at,
     lastResponseMs: r.last_response_ms,
     lastValue: r.last_value, // 디스크 %·인증서 남은 일수 (B-4)
-    replayRule: r.replay_rule,
-    replayBaseline: r.replay_baseline,
-    replayMetric: r.replay_metric,
-    replayUnit: r.replay_unit,
-    datasetKey: r.dataset_key,
   }));
-}
-
-/**
- * 공개 데이터셋 메타 전체 (3행 안팎). 화면의 "데이터 출처" 상세에 쓰입니다.
- * 상태 페이지가 한 번 불릴 때마다 읽으므로, 재생 대상이 있을 때만 호출합니다. (api.js)
- */
-export async function getDatasets(db) {
-  const { results } = await db
-    .prepare('SELECT key, name, url, license, processing, kind, citation FROM datasets ORDER BY key')
-    .all();
-  return results;
 }
 
 /** fromDay(KST, 포함) 이후의 모든 대상 일별 집계 */

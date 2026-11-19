@@ -62,7 +62,7 @@
   /**
    * 첫 상태 띠(실제 점검 기준) 계산.
    * 우선순위: down > maintenance > (기록 없음·시각 오류·확인 중·오래됨·기준 시각 불명) > 대상 0건 > 모두 정상
-   * 재생·시뮬레이터·데모는 여기에 영향을 주지 않습니다(summarizeDemo가 따로 다룸).
+   * 실제가 아닌 기록(로컬 시험용 시뮬레이터 등)은 여기에 영향을 주지 않습니다.
    * "모두 정상"은 모든 실제 활성 대상이 up이고, 점검 시각이 모두 유효하며, 모두 최근일 때만 나옵니다.
    */
   function summarizeReal(services, nowMs) {
@@ -122,38 +122,26 @@
   }
 
   /**
-   * 재생·시뮬레이터·데모(실제 점검이 아닌 것)의 장애 요약. 실제 띠의 색에는 쓰지 않습니다.
-   * 대상이 하나도 없으면 null(보조 줄 숨김).
-   */
-  function summarizeDemo(services) {
-    const others = services.filter((s) => s.source !== 'real');
-    if (others.length === 0) return null;
-    const down = others.filter((s) => s.state === 'down');
-    return { total: others.length, down: down.map((s) => ({ name: s.name, source: s.source })) };
-  }
-
-  /**
    * 점검 대상 수 분해. 합계가 항상 services.length와 같아야 합니다.
-   * 알 수 없는 출처는 '기타'에 넣어서 합이 어긋나지 않게 합니다.
+   * 실제가 아닌 출처(로컬 시험용 시뮬레이터 등)는 모두 '실제 아님(other)'에 넣어서 합이 어긋나지 않게 합니다.
    */
   function breakdown(services) {
-    const out = { total: services.length, realActive: 0, realPaused: 0, replay: 0, simulator: 0, sample: 0, other: 0 };
+    const out = { total: services.length, realActive: 0, realPaused: 0, other: 0 };
     for (const s of services) {
       if (s.source === 'real') out[s.state === 'paused' ? 'realPaused' : 'realActive'] += 1;
-      else if (s.source === 'replay' || s.source === 'simulator' || s.source === 'sample') out[s.source] += 1;
       else out.other += 1;
     }
     return out;
   }
 
-  /** 진행 중 장애 수: 실제 / 그 밖(재생·시뮬레이터·데모) 으로 나눠 셉니다. */
+  /** 진행 중 장애 수: 실제 / 그 밖(실제가 아닌 시험 기록)으로 나눠 셉니다. */
   function ongoingIncidents(incidents) {
     const ongoing = incidents.filter((i) => i.ongoing);
     const real = ongoing.filter((i) => i.source === 'real').length;
     return { real, other: ongoing.length - real, total: ongoing.length };
   }
 
-  /** 서비스 목록을 출처·상태 필터로 거른다 (두 필터는 서로 독립). 'all'이면 해당 필터를 적용하지 않음 */
+  /** 서비스 목록을 출처·상태·검색어로 거른다 (서로 독립). 'all'이면 해당 필터를 적용하지 않음. 화면은 지금 상태·검색어만 씀 */
   function filterServices(services, { source = 'all', state = 'all', query = '' } = {}) {
     const q = String(query).trim().toLowerCase();
     return services.filter(
@@ -163,5 +151,5 @@
     );
   }
 
-  root.UptimeSummary = { isRealActive, parseTime, statusNow, summarizeReal, realTitle, realHelper, summarizeDemo, breakdown, ongoingIncidents, filterServices };
+  root.UptimeSummary = { isRealActive, parseTime, statusNow, summarizeReal, realTitle, realHelper, breakdown, ongoingIncidents, filterServices };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

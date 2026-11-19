@@ -1,4 +1,4 @@
-// 에이전트 보고 수집 API 테스트 — 가짜 D1 + 실제 시뮬레이터 대상 시드(seed/simulator-monitors.sql)
+// 에이전트 보고 수집 API 테스트 — 가짜 D1 + 시뮬레이터 대상 고정 자료(test/fixtures/simulator-monitors.sql)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,7 +6,7 @@ import { createFakeD1 } from './helpers/fake-d1.js';
 import { handleAgentReport } from '../src/ingest.js';
 import worker from '../src/index.js';
 
-const SIM_SQL = readFileSync(new URL('../seed/simulator-monitors.sql', import.meta.url), 'utf8');
+const SIM_SQL = readFileSync(new URL('./fixtures/simulator-monitors.sql', import.meta.url), 'utf8');
 const KEY = 'test-agent-key'; // 테스트 전용 값 (실제 키 아님)
 const NOW = new Date('2026-11-10T05:00:00Z');
 

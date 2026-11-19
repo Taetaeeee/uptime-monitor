@@ -13,6 +13,9 @@ node_modules/
 # 에이전트 실제 설정 (내 PC 정보가 들어갈 수 있음 → 예시 파일만 저장소에)
 agent/config.json
 
+# 원격 D1 백업(export) 파일: 운영 기록이 들어 있으므로 저장소에 올리지 않음
+backup-*.sql
+
 # 파이썬 캐시
 __pycache__/
 

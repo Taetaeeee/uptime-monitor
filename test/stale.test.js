@@ -10,7 +10,7 @@ import { runStaleCheck } from '../src/stale-run.js';
 import { judgeStale, planStale } from '../src/stale.js';
 import { REASON_TEXT } from '../src/notify.js';
 
-const SIM_SQL = readFileSync(new URL('../seed/simulator-monitors.sql', import.meta.url), 'utf8');
+const SIM_SQL = readFileSync(new URL('./fixtures/simulator-monitors.sql', import.meta.url), 'utf8');
 const KEY = 'test-agent-key'; // 테스트 전용 값 (실제 키 아님)
 const T = (hhmm) => `2026-11-10T${hhmm}:00Z`; // 같은 날의 회차 시각
 

@@ -75,22 +75,15 @@ test('maintenance는 unknown보다 우선', () => {
   assert.equal(r.tone, 'info');
 });
 
-test('재생만 장애여도 실제 띠는 good, 보조 줄에만 나옴', () => {
-  const list = [svc(), svc({ source: 'replay', state: 'down', name: '재생NAS' }), svc({ source: 'simulator', state: 'up' })];
+test('실제가 아닌 대상(시뮬레이터 등)만 장애여도 실제 띠는 good', () => {
+  const list = [svc(), svc({ source: 'simulator', state: 'down', name: '시험 NAS' })];
   assert.equal(S.summarizeReal(list, NOW).tone, 'good');
-  const d = S.summarizeDemo(list);
-  assert.deepEqual(JSON.parse(JSON.stringify(d.down)), [{ name: '재생NAS', source: 'replay' }]);
-  assert.equal(d.total, 2);
 });
 
 test('실제 down이 없어도 시연 장애는 실제 장애 수에 안 섞임', () => {
   const r = S.summarizeReal([svc({ source: 'sample', state: 'down' })], NOW);
   assert.equal(r.counts.down, 0);
   assert.equal(r.tone, 'idle');
-});
-
-test('시연 대상이 하나도 없으면 summarizeDemo는 null', () => {
-  assert.equal(S.summarizeDemo([svc()]), null);
 });
 
 test('sample이 있어도 실제 분모에 들어가지 않음', () => {
@@ -107,18 +100,17 @@ test('마지막 점검 시각: 가장 최근과 가장 오래된 값을 따로 �
   assert.equal(r.staleCount, 1);
 });
 
-test('breakdown: 합계는 항상 전체와 같고 점검 대기(real)는 따로 센다', () => {
+test('breakdown: 합계는 항상 전체와 같고, 점검 대기(real)는 따로, 실제가 아닌 출처는 모두 other로 센다', () => {
   const list = [
     svc(), svc({ state: 'down' }), svc({ state: 'paused' }),
-    svc({ source: 'replay' }), svc({ source: 'replay', state: 'paused' }),
-    svc({ source: 'simulator' }), svc({ source: 'sample' }), svc({ source: 'mystery' }),
+    svc({ source: 'simulator' }), svc({ source: 'simulator', state: 'paused' }), svc({ source: 'mystery' }),
   ];
   const b = S.breakdown(list);
   assert.equal(b.total, list.length);
-  assert.equal(b.realActive + b.realPaused + b.replay + b.simulator + b.sample + b.other, b.total);
+  assert.equal(b.realActive + b.realPaused + b.other, b.total);
   assert.equal(b.realActive, 2);
   assert.equal(b.realPaused, 1);
-  assert.equal(b.other, 1);
+  assert.equal(b.other, 3);
   assert.equal(S.breakdown([]).total, 0);
 });
 

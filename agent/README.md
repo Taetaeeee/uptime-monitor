@@ -55,14 +55,15 @@ npx.cmd wrangler secret put AGENT_API_KEY
 $env:AGENT_API_KEY = "<위에서 만든 키>"
 ```
 
-### 4. 시뮬레이터 전송
-먼저 서버에 시뮬레이터 대상을 등록해야 합니다(`seed/simulator-monitors.sql`).
+### 4. 시뮬레이터 전송 (로컬 시험용)
+배포 DB에는 시뮬레이터 대상이 없습니다(2026-11-19 가짜 데이터 정리). 그래서 배포된 Worker로 보내면 '등록되지 않은 키'로 거절됩니다.
+시험하려면 **로컬 D1에만** 시뮬레이터 대상을 넣고(`test/fixtures/simulator-monitors.sql`, `--local`), 로컬 Worker 주소로 보냅니다.
 ```powershell
-python agent\agent.py --simulate agent\scenarios\db-outage.json --api-url https://<내 Worker 주소>/api/agent/report
+python agent\agent.py --simulate agent\scenarios\db-outage.json --api-url http://127.0.0.1:8787/api/agent/report
 ```
 - 시나리오의 마지막 단계가 '지금', 앞 단계는 5분씩 과거 시각으로 보내집니다(30분짜리 장애를 바로 재현).
 - 같은 시나리오를 바로 다시 보내면 서버가 '이미 기록된 회차'로 건너뜁니다(멱등).
-  처음부터 다시 보여 주려면 `seed/simulator-monitors.sql`을 다시 실행하세요(시뮬레이터 기록 초기화).
+  처음부터 다시 보여 주려면 로컬 D1에 `test/fixtures/simulator-monitors.sql`을 다시 실행하세요(시뮬레이터 기록 초기화).
 
 ### 5. (선택) 작업 스케줄러로 5분마다 실행 — 예시만, 실행은 직접 판단
 실제 모드를 계속 돌리려면 서버에 실제 대상(`source = 'real'`, `check_key` 지정)을 먼저 등록해야 합니다.

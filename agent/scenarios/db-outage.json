@@ -1,6 +1,6 @@
 {
   "name": "사내 DB 포트 장애와 파일 서버 디스크 증가",
-  "_설명": "시뮬레이터 시나리오. 모든 값은 가짜이며 서버에 source=simulator로 기록됩니다. steps는 오래된 회차 → 최근 회차 순서이고, 마지막 단계가 '지금' 시각으로 보내집니다. key는 seed/simulator-monitors.sql에 등록된 대상과 같아야 합니다.",
+  "_설명": "시뮬레이터 시나리오. 모든 값은 가짜이며 서버에 source=simulator로 기록됩니다. steps는 오래된 회차 → 최근 회차 순서이고, 마지막 단계가 '지금' 시각으로 보내집니다. key는 test/fixtures/simulator-monitors.sql(테스트 전용, 로컬 D1에만 넣음)에 등록된 대상과 같아야 합니다.",
   "agent_name": "simulator",
   "interval_seconds": 300,
   "steps": [

@@ -1,4 +1,4 @@
-// 상세 팝업 그래프용 기록 API 테스트 — 가짜 D1 + 실제 시드(seed/sample.sql)
+// 상세 팝업 그래프용 기록 API 테스트 — 가짜 D1 + 테스트 고정 자료(test/fixtures/sample.sql)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,7 +6,7 @@ import { createFakeD1 } from './helpers/fake-d1.js';
 import { buildMonitorHistory } from '../src/api.js';
 import worker from '../src/index.js';
 
-const SEED_SQL = readFileSync(new URL('../seed/sample.sql', import.meta.url), 'utf8');
+const SEED_SQL = readFileSync(new URL('./fixtures/sample.sql', import.meta.url), 'utf8');
 
 // 시드는 SQLite의 'now' 기준으로 시각을 만드므로 현재 시각으로 조회합니다.
 function seeded() {

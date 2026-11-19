@@ -56,23 +56,21 @@
       <h1 class="intro__title" id="intro-title">서비스 장애를 감지하고, 복구 기록과 월간 보고서로 남기는 운영 모니터링 도구</h1>
       <p class="intro__text">
         사내 IT·인프라 운영 담당자와 채용 담당자를 위한 개인 포트폴리오입니다.
-        제가 운영하는 사이트 1곳(고쳐라!)과 팀 채팅 1곳(Keychats)은 5분마다 실제로 점검하고,
-        나머지는 시연용 재생·시뮬레이션 데이터입니다. 회사·서비스 이름은 가상입니다.
+        이 화면의 서비스는 모두 실제로 운영 중이며 5분마다 실제로 점검합니다
+        (제가 운영하는 사이트 고쳐라!, 팀 채팅 Keychats). 시연용 가짜 데이터는 넣지 않습니다.
       </p>
       <div class="intro__actions">
         <a class="btn btn--primary" href="#services-panel" id="goto-real">실제 점검 상태 보기</a>
-        <a class="btn" href="/incident.html?id=41">장애 훈련 사례 보기 <span class="intro__note">(#41 · 일부러 낸 장애)</span></a>
         <a class="btn" href="/report.html">월간 보고서 보기</a>
       </div>
     </section>
 
-    <!-- 실제 점검 상태 띠: 출처가 '실제 점검'인 활성 대상만 반영. 아래 보조 줄은 재생·시뮬레이터·데모 -->
+    <!-- 실제 점검 상태 띠: 출처가 '실제 점검'인 활성 대상만 반영 -->
     <section id="hero" class="statusbar statusbar--loading" aria-live="polite" aria-labelledby="hero-title">
       <span class="statusbar__icon" id="hero-icon"></span>
       <div class="statusbar__text">
         <h2 class="statusbar__title" id="hero-title">상태를 불러오는 중…</h2>
         <p class="statusbar__sub" id="hero-updated">-</p>
-        <p class="statusbar__sub statusbar__demo" id="hero-demo" hidden></p>
       </div>
       <!-- 5분 점검 표시: 점검은 5분마다(Cron), 화면은 60초마다 새로 불러옴. 실시간 감시가 아님 -->
       <div class="live" id="live" title="Cron이 5분마다 점검하고, 화면은 60초마다 새로 불러옵니다. 실시간 감시가 아닙니다.">
@@ -104,23 +102,19 @@
       <div class="panel__head">
         <div>
           <h2 class="panel__title" id="services-title">서비스 현황</h2>
-          <p class="panel__desc">카드를 누르면 자세한 정보가 팝업으로 열립니다. 출처 배지로 실제 점검과 시연 데이터를 구분하세요.</p>
+          <p class="panel__desc">카드를 누르면 자세한 정보가 팝업으로 열립니다.</p>
         </div>
         <div class="toolbar">
           <label class="search">
             <span data-icon="search" data-icon-class="ico ico--sm"></span>
             <input id="search" type="search" placeholder="서비스 이름 검색" aria-label="서비스 이름 검색" autocomplete="off">
           </label>
-          <div class="filters" id="source-filters" role="group" aria-label="출처 필터"></div>
           <div class="filters" id="filters" role="group" aria-label="상태 필터"></div>
         </div>
       </div>
       <!-- 출처 범례: 배지가 무엇을 뜻하는지 -->
       <dl class="source-legend">
         <div><dt><span class="badge badge--real">실제 점검</span></dt><dd>내가 운영하는 사이트·서비스를 Worker(Cron)가 직접 점검하거나, 내 PC의 Python 에이전트가 실제 모드로 측정해 보낸 기록입니다. 점검 대기 대상은 지금 점검하지 않습니다.</dd></div>
-        <div><dt><span class="badge badge--replay">실제 데이터 재생</span></dt><dd>다른 조직의 과거 운영 기록을 이 프로젝트가 5분마다 한 칸씩 재생한 것입니다. 이 회사의 실시간 데이터가 아니며, 장애·복구 시각은 원본 기록의 과거 시각이 아니라 이 프로젝트가 재생을 실행한 시각(5분 회차)입니다.</dd></div>
-        <div><dt><span class="badge badge--sim">시뮬레이터</span></dt><dd>시나리오 파일의 가짜 측정값입니다. PC에서 에이전트를 실행해 수동으로 보낼 때만 갱신됩니다.</dd></div>
-        <div><dt><span class="badge badge--demo">데모 데이터</span></dt><dd>시드 스크립트로 넣은 가짜 기록입니다(현재 배포에서는 정리되어 보이지 않을 수 있음).</dd></div>
       </dl>
       <div class="services" id="services"></div>
       <div class="legend" style="margin-top:14px" aria-hidden="true">
@@ -154,8 +148,8 @@
       <div class="evidence">
         <article class="evidence__item">
           <h3>장애 훈련</h3>
-          <p>일부러 낸 장애로 감지 → 알림 → 복구 → 사후 보고서까지 확인했습니다. 실제 서비스 장애가 아닌 <strong>훈련</strong>이며, 훈련 대상은 지금 점검 대기입니다.</p>
-          <p class="evidence__links"><a href="/incident.html?id=41">장애 #41 (훈련) 보기</a> · <a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/drills/drill-a-incident-41.pdf" target="_blank" rel="noopener noreferrer">훈련 기록 PDF</a></p>
+          <p>일부러 낸 장애로 감지 → 알림 → 복구 → 사후 보고서까지 확인했습니다. 실제 서비스 장애가 아닌 <strong>훈련</strong>이라 화면의 장애 이력에서는 지웠고, 기록은 PDF로 남겼습니다.</p>
+          <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/drills/drill-a-incident-41.pdf" target="_blank" rel="noopener noreferrer">훈련 기록 PDF</a></p>
         </article>
         <article class="evidence__item">
           <h3>판정 규칙 측정</h3>
@@ -207,17 +201,6 @@
       <p>
         <span class="badge badge--real">실제 점검</span>
         기록의 출처가 실제 점검이라는 뜻이며 지금 점검 중이라는 뜻은 아닙니다. 상태와 점검 시각을 함께 보세요.
-      </p>
-      <p>
-        <span class="badge badge--demo">데모 데이터</span>
-        <span class="badge badge--sim">시뮬레이터</span>
-        표시가 붙은 항목은 시연용 가짜 데이터(시드 스크립트·에이전트 시뮬레이터)이며 실제 점검 결과가 아닙니다.
-        서비스·회사 이름은 모두 가상입니다.
-      </p>
-      <p>
-        <span class="badge badge--replay">실제 데이터 재생</span>
-        공개된 실제 운영 데이터셋(다른 조직의 과거 기록)을 5분마다 한 칸씩 재생한 것입니다.
-        가짜 값은 아니지만 이 회사의 실시간 데이터도 아닙니다. 서비스를 누르면 데이터셋 이름·링크·라이선스·가공 방법을 볼 수 있습니다.
       </p>
       <p id="updated"></p>
     </div>
