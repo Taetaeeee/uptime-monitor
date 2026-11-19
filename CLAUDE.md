@@ -99,5 +99,5 @@
    - 원격 D1 백업 → 삭제(scripts/purge-fake-data) → 전후 건수 대조  ← 완료 (모니터 15 → 5, 삭제 19,144행)
    - C1 재생 실행 경로 제거 · C2 화면 재생·데모 표시·출처 필터 제거 · C3 seed·데이터 준비 스크립트 삭제
      (테스트 자료는 test/fixtures, 평가용 파서는 scripts/evaluate-rules/datasets.mjs로 이전) · C4 문서  ← 완료(커밋 전)
-   - C5 테스트·배포·라이브 확인  ← 남음
+   - C5 테스트·배포·라이브 확인  ← 완료 (2026-11-19, 브랜치 chore/real-services-only, 깨끗한 worktree에서 배포. 푸시·main 병합은 아직)
    - 다음: 우리 실제 서비스 추가 + 서비스 묶음 모델(0015 services, monitors.service_id)
