@@ -102,7 +102,7 @@
      (테스트 자료는 test/fixtures, 평가용 파서는 scripts/evaluate-rules/datasets.mjs로 이전) · C4 문서  ← 완료(커밋 전)
    - C5 테스트·배포·라이브 확인  ← 완료 (2026-11-19, 브랜치 chore/real-services-only, 깨끗한 worktree에서 배포. main 병합·푸시 완료)
    - 다음: 우리 실제 서비스 추가 + 서비스 묶음 모델(0015 services, monitors.service_id) → 14단계
-14. 서비스 묶음 구조 + 대시보드 새 디자인  ← 진행 중 (S1·S2·S3 완료·배포, main 병합 b4d6438·5aaaa22, Notion B-14)
+14. 서비스 묶음 구조 + 대시보드 새 디자인  ← 진행 중 (S1~S4 완료·배포, main 병합 b4d6438·5aaaa22·db4295c, Notion B-14)
    - S1 0015(services·monitors.service_id·service_daily_stats), 회차 기준 서비스 가동률·상태 판정 순수 함수(src/service-status.js),
      Cron 서비스 집계, GET /api/services·/api/services/:key  ← 완료 (dc2c86c, 0015 원격 적용 → 배포·라이브 확인)
      서비스 가동률 = 묶인 점검이 모두 성공한 5분 회차의 비율. 점검은 id가 아니라 주소로 연결(로컬·원격 id가 다름).
@@ -112,7 +112,7 @@
      새 페이지 services.html(점검별 카드)·incidents.html(장애 이력)·evidence.html(운영 근거), 점검 상세 팝업은 public/detail.js
    - S3 서비스 상세 화면 service.html?key=…(service-detail.js)  ← 완료 (4ff6e3c, 2026-11-20 배포·라이브 확인)
      /api/services에 homeUrl(공개 사이트 첫 화면 주소만) 공개 — 점검 주소는 계속 비공개. 새 서버 API 없이 기존 history API 재사용
-   - S4 '+ 서비스 추가'  ← 완료(커밋 전, 브랜치 feat/add-service)
+   - S4 '+ 서비스 추가'  ← 완료 (346e27c, 2026-11-20 배포·라이브 확인: 토큰 없는 관리자 요청 401, 원격 ADMIN_TOKEN 등록됨)
      src/service-admin.js(주소 검사·서비스 키·점검 목록 순수 함수), POST /api/admin/services/preview·/api/admin/services,
      PATCH /api/admin/services/:key(끄기·다시 켜기), 대시보드 [+ 서비스 추가] 팝업(토큰은 저장하지 않고 닫을 때 지움).
      관리자 토큰 + 운영자 동의 필수, 공개 https 도메인만, 켜진 서비스 10개까지. 실제 서비스 추가는 사용자가 직접 함
