@@ -16,7 +16,11 @@ import {
   getReportMonths,
   getMonitorPublic,
   getResultsSince,
+  getServices,
+  getServiceDailyStatsSince,
+  getServiceIncidents,
 } from './db.js';
+import { serviceState, toDailyShape } from './service-status.js';
 import { SLA_TARGET, monthRange, kstMonthOf, summarizeMonth } from './report.js';
 import { toKstDay, addDays, buildDailyBars, overallUptime } from './aggregate.js';
 import { isInMaintenance, incidentMetrics } from './incident.js';
@@ -172,6 +176,105 @@ export async function buildMonthlyReport(db, month, now) {
       source,
       services: services.filter((s) => s.source === source),
     })).filter((g) => g.services.length > 0),
+  };
+}
+
+// ─────────────────────────────────────────────
+// 서비스 묶음 (0015)
+//   GET /api/services        서비스 목록: 서비스 상태·30일 가동률(회차 기준)·묶인 점검
+//   GET /api/services/:key   서비스 1개 + 그 서비스의 최근 장애
+// 기존 /api/status는 월간 보고서·장애 상세 화면이 쓰고 있어서 그대로 둡니다.
+// ─────────────────────────────────────────────
+
+export const SERVICE_INCIDENT_LIMIT = 10;
+
+/**
+ * 서비스 목록을 만든다. 서비스에 묶이지 않은 점검(예: 훈련 대상)은 여기 나오지 않습니다.
+ * 공개 응답이라 서비스 대표 주소·점검 주소는 넣지 않습니다.
+ */
+export async function buildServices(db, now) {
+  const { list, ...meta } = await collectServices(db, now);
+  return { ...meta, services: list.map((x) => x.view) };
+}
+
+/** /api/services/:key 응답 본문. 없거나 내린 서비스면 null */
+export async function buildServiceDetail(db, key, now) {
+  const { list, ...meta } = await collectServices(db, now);
+  const found = list.find((x) => x.view.key === key);
+  if (!found) return null;
+  const incidents = await getServiceIncidents(db, found.id, SERVICE_INCIDENT_LIMIT);
+  return {
+    ...meta,
+    service: found.view,
+    incidents: incidents.map((i) => ({
+      id: i.id,
+      monitorName: i.monitorName,
+      startedAt: i.startedAt,
+      resolvedAt: i.resolvedAt,
+      cause: i.cause,
+      causeText: causeText(i.cause),
+      source: i.source,
+      hasReport: Boolean(i.summary),
+      summary: i.summary,
+      ...incidentMetrics(i, now),
+    })),
+  };
+}
+
+// 목록·상세가 함께 쓰는 조립 함수. 내부 id는 공개 응답(view) 밖에 따로 둡니다.
+async function collectServices(db, now) {
+  const nowIso = toIsoSeconds(now);
+  const today = toKstDay(nowIso);
+  const fromDay = addDays(today, -(BAR_DAYS - 1));
+
+  const [services, monitors, monitorStats, serviceStats, maintenance] = await Promise.all([
+    getServices(db),
+    getStatusMonitors(db),
+    getDailyStatsSince(db, fromDay),
+    getServiceDailyStatsSince(db, fromDay),
+    getCurrentAndUpcomingMaintenance(db, nowIso),
+  ]);
+
+  return {
+    generatedAt: nowIso,
+    today,
+    barDays: BAR_DAYS,
+    list: services.map((svc) => {
+      const checks = monitors
+        .filter((m) => m.serviceId === svc.id)
+        .map((m) => {
+          const mine = monitorStats.filter((s) => s.monitorId === m.id);
+          return {
+            id: m.id,
+            name: m.name,
+            kind: m.kind,
+            source: m.source,
+            state: displayState(m, isInMaintenance(maintenance, m.id, nowIso)),
+            lastCheckedAt: m.lastCheckedAt,
+            lastResponseMs: m.lastResponseMs,
+            lastIsSlow: m.lastIsSlow,
+            uptime30d: overallUptime(mine),
+            daily: buildDailyBars(mine, today, BAR_DAYS),
+          };
+        });
+      const mine = serviceStats.filter((s) => s.serviceId === svc.id).map(toDailyShape);
+      // 서비스의 마지막 점검 시각 = 묶인 점검 중 가장 최근
+      const last = checks.map((c) => c.lastCheckedAt).filter(Boolean).sort().at(-1) ?? null;
+      return {
+        id: svc.id,
+        view: {
+          key: svc.key,
+          name: svc.name,
+          description: svc.description,
+          source: svc.source,
+          state: serviceState(checks),
+          lastCheckedAt: last,
+          uptime30d: overallUptime(mine), // 모든 점검이 성공한 회차 비율
+          daily: buildDailyBars(mine, today, BAR_DAYS),
+          checks,
+        },
+      };
+    }),
   };
 }
 

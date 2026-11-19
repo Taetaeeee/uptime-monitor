@@ -1,59 +1,29 @@
-// 상태 페이지 스크립트 — /api/status를 받아 화면을 그린다.
+// 대시보드 스크립트 (S2) — 두 API를 받아 화면을 그린다.
+//   /api/services : 서비스 묶음(서비스 상태·회차 기준 가동률·묶인 점검) → 요약 카드, 서비스 줄, 운영 지표
+//   /api/status   : 최근 알림·장애 이력·계획 작업, 점검별 상세 팝업 → 아래쪽 목록과 팝업
 // 공용 도우미(formatKst, el, icon, statePill, kindMeta, sourceBadge, formatMinutes, fetchJson)는 common.js에,
-// 요약 계산(첫 상태 띠·분모·필터)은 summary.js(UptimeSummary)에 있습니다. summary.js를 먼저 불러와야 합니다.
+// 대시보드 숫자 계산은 dashboard-model.js(DashboardModel)에, 그래프는 chart.js에,
+// 점검 상세 팝업과 점검 공용 도우미(agoText·lastValue·uptimeText 등)는 detail.js에 있습니다.
 //
-// 화면 상태(검색어·필터·선택한 서비스)는 이 파일의 변수에 두고,
+// 화면 상태(검색어·선택한 점검)는 이 파일의 변수에 두고,
 // 60초마다 데이터를 새로 받아도 사용자가 고른 것은 그대로 유지합니다.
 
 const REFRESH_MS = 60_000; // 60초마다 새로 고침 (API 캐시 시간과 같게)
-
-const FILTERS = [
-  ['all', '전체'],
-  ['up', '정상'],
-  ['down', '장애'],
-  ['maintenance', '작업 중'],
-  ['paused', '점검 대기'],
-];
-
-// 종류별 설명 (상세 패널) — 무엇을 어떻게 점검하는지
-const KIND_DESC = {
-  http: 'Worker가 5분마다 HTTP 요청을 보내 상태 코드·응답 시간·본문 키워드를 확인합니다.',
-  dns: 'Worker가 5분마다 DNS-over-HTTPS로 이름이 풀리는지, 기대한 값으로 풀리는지 확인합니다.',
-  domain: '도메인 만료일까지 남은 날을 확인합니다. 30일 전부터 만료 임박으로 판정합니다.',
-  ping: '사내 PC의 에이전트가 ping 응답과 응답 시간을 측정해 보고합니다.',
-  tcp: '사내 PC의 에이전트가 TCP 포트에 연결되는지 측정해 보고합니다.',
-  ssl: '사내 PC의 에이전트가 인증서 만료까지 남은 날을 측정합니다. 14일 미만이면 실패입니다.',
-  disk: '사내 PC의 에이전트가 디스크 사용률을 측정합니다. 기준(90%) 이상이면 실패입니다.',
-  service: '사내 PC의 에이전트가 Windows 서비스가 실행 중인지 확인합니다.',
-};
-
-// 2026-11-19부터 배포본에는 실제 점검 대상만 둡니다(데모·재생 데이터 삭제). 그래서 출처 필터는 없앴습니다.
-// 다만 에이전트 시뮬레이터는 로컬 시험용으로 남아 있으므로, 실제가 아닌 기록이 들어오면 여전히 구분해 보여 줍니다.
-const SOURCE_TEXT = {
-  real: '실제 점검 (Worker 또는 에이전트 실제 모드)',
-  simulator: '시뮬레이터 (가짜 측정값, 로컬 시험용)',
-};
-
-// "N분 전 점검" 앞에 붙이는 말: 실제 점검이 아닌 기록은 시간 표시 옆에서도 그 사실을 알립니다
-const AGO_PREFIX = { simulator: '시뮬레이터(수동 전송) · ' };
+const INCIDENT_LIMIT = 10; // /api/status가 주는 장애 이력 개수 (src/api.js INCIDENT_LIMIT과 같게)
 
 const view = {
-  data: null,
-  filter: 'all', // 상태 필터
+  data: null, // /api/status 응답 (알림·장애 이력·점검 상세 팝업)
+  svc: null, // /api/services 응답 (서비스 묶음)
   query: '',
-  selectedId: null,
-  open: {}, // 접기 상자(<details>)를 펼쳐 두었는지 — 자동 갱신 후에도 유지
-  prevStates: null, // 직전에 불러온 서비스별 상태 (상태가 바뀐 카드를 찾기 위해)
-  changed: new Set(), // 이번에 상태가 바뀐 서비스 id
+  prevStates: null, // 직전에 불러온 서비스별 상태 (상태가 바뀐 줄을 찾기 위해)
+  changed: new Set(), // 이번에 상태가 바뀐 서비스 key
   lastLoadedAt: 0, // 마지막으로 불러오기에 성공한 시각(ms)
   nextReloadAt: 0, // 다음 점검 회차 직후 다시 불러올 시각(ms)
-  history: new Map(), // 서비스 id → { at, data } 상세 팝업 그래프용 기록 (60초 동안 재사용)
 };
 
 // ─────────────────────────────────────────────
 // 점검 주기 표시: 5분 점검 카운트다운(화면 갱신 주기는 별개), 상대 시간
 // ─────────────────────────────────────────────
-const SLOT_MS = 5 * 60 * 1000;   // 점검 간격 5분 (서버 Cron과 같음)
 const CRON_DELAY_MS = 15 * 1000; // Cron은 정각보다 몇 초 늦게 돎 (실측 12초) → 15초로 잡음
 const FETCH_AFTER_MS = 25 * 1000; // 점검이 끝나 저장될 여유를 두고 다시 불러옴
 
@@ -62,32 +32,21 @@ function nextRunAt(nowMs) {
   return Math.floor((nowMs - CRON_DELAY_MS) / SLOT_MS) * SLOT_MS + SLOT_MS + CRON_DELAY_MS;
 }
 
-/** 경과 시간 → "방금" / "3분 전" / "2시간 전" */
-function agoText(iso, nowMs) {
-  if (!Number.isFinite(Date.parse(iso))) return '점검 시각 확인 불가';
-  const sec = Math.max(0, Math.round((nowMs - Date.parse(iso)) / 1000));
-  if (sec < 60) return '방금 점검';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}분 전 점검`;
-  const h = Math.floor(min / 60);
-  if (h < 48) return `${h}시간 전 점검`;
-  return `${Math.floor(h / 24)}일 전 점검`;
-}
-
 /** 1초마다: 카운트다운·상대 시간 글자 갱신, 점검 회차 직후 자동으로 다시 불러오기 */
 function tickClock() {
   const now = Date.now();
   const next = nextRunAt(now);
   const left = Math.max(0, Math.round((next - now) / 1000));
-  const live = document.getElementById('live');
-  // 3분 넘게 새 데이터를 못 받았으면 점검 주기 표시를 노란색 '연결 지연'으로
+  // 3분 넘게 새 데이터를 못 받았으면 '연결 지연'으로 (제목 줄 끝 점검 주기 표시: 점이 노란색으로)
   const stale = view.lastLoadedAt && now - view.lastLoadedAt > 3 * 60 * 1000;
-  live.classList.toggle('is-stale', Boolean(stale));
-  document.getElementById('live-next').textContent = stale
-    ? '연결 지연 · 다시 시도 중'
-    : `다음 점검까지 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · 화면은 ${REFRESH_MS / 1000}초마다 갱신`;
+  const nextRun = document.getElementById('next-run');
+  if (nextRun) nextRun.textContent = stale ? '연결 지연' : DashboardModel.mmss(left);
+  document.getElementById('cycle')?.classList.toggle('is-stale', Boolean(stale));
 
-  for (const node of document.querySelectorAll('[data-ago]')) node.textContent = (node.dataset.agoPrefix ?? '') + agoText(node.dataset.ago, now);
+  for (const node of document.querySelectorAll('[data-ago]')) {
+    const text = agoText(node.dataset.ago, now);
+    node.textContent = (node.dataset.agoPrefix ?? '') + (node.dataset.agoShort ? text.replace(' 점검', '') : text);
+  }
 
   if (view.nextReloadAt && now >= view.nextReloadAt) {
     view.nextReloadAt = 0;
@@ -96,92 +55,34 @@ function tickClock() {
 }
 
 // ─────────────────────────────────────────────
-// 작은 계산
-// ─────────────────────────────────────────────
-
-// 종류별 "마지막 측정값" — 카드의 두 번째 칸과 상세 패널에 사용
-function lastValue(s) {
-  if (s.state === 'paused' || !s.lastCheckedAt) return { label: '마지막 측정', value: '-' };
-  switch (s.kind) {
-    case 'disk': return { label: '디스크 사용률', value: s.lastValue === null ? '-' : `${s.lastValue}%` };
-    case 'ssl': return { label: '인증서 남은 날', value: s.lastValue === null ? '-' : `${s.lastValue}일` };
-    case 'domain': return { label: '만료까지', value: s.lastValue === null ? '-' : `${s.lastValue}일` };
-    case 'service': return { label: '서비스', value: s.state === 'down' ? '중지' : '실행 중' };
-    case 'dns': return { label: 'DNS 응답', value: s.lastResponseMs === null ? '-' : `${s.lastResponseMs}ms · ${s.lastValue ?? 0}개` };
-    default: return { label: '응답 시간', value: s.lastResponseMs === null ? '-' : `${s.lastResponseMs}ms` };
-  }
-}
-
-// 가동률 → 막대 색 등급
-function barClass(uptime) {
-  if (uptime === null) return 'bar--empty';
-  if (uptime >= 99.9) return 'bar--good';
-  if (uptime >= 99) return 'bar--warn';
-  return 'bar--bad';
-}
-
-const uptimeText = (v) => (v === null || v === undefined ? '-' : `${v}%`);
-
-/** 측정값 종류(disk·ssl·domain)의 그래프·표시 설정. 그 밖의 종류는 null(응답 시간 그래프). */
-function valueSpec(s) {
-  return VALUE_KINDS[s.kind] ?? null;
-}
-
-// ─────────────────────────────────────────────
 // 상태 영역 + 요약 카드
 // ─────────────────────────────────────────────
 
-function renderHero(data) {
-  const bar = document.getElementById('hero');
-  // 기준 시각은 방문자 PC 시계가 아니라 API가 만든 시각(generatedAt) — PC 시계가 틀려도 오래된 기록이 가려지지 않게
-  const real = UptimeSummary.summarizeReal(data.services, UptimeSummary.statusNow(data));
-
-  // 이 띠는 "실제 점검" 대상만 반영합니다. 로컬에서 시뮬레이터 기록이 섞여도 띠 색이 바뀌지 않게 하려는 것입니다.
-  const look = { good: ['', 'check'], bad: ['bad', 'x'], info: ['info', 'wrench'], idle: ['idle', 'help'] }[real.tone];
-  bar.className = `statusbar${look[0] ? ` statusbar--${look[0]}` : ''}`;
-  document.getElementById('hero-title').textContent = UptimeSummary.realTitle(real);
-  document.getElementById('hero-icon').replaceChildren(icon(look[1], 'ico ico--sm'));
-
-  // 마지막 점검 시각은 하나만 보여 주면 모든 대상이 그 시각에 점검된 것처럼 읽히므로, 가장 최근·가장 오래된 시각을 함께 보여 줍니다.
-  const parts = [];
-  if (real.newestCheckedAt) {
-    parts.push(real.newestCheckedAt === real.oldestCheckedAt
-      ? `실제 대상 마지막 점검 ${formatKst(real.newestCheckedAt)}`
-      : `실제 대상 마지막 점검: 가장 최근 ${formatKst(real.newestCheckedAt)} · 가장 오래된 ${formatKst(real.oldestCheckedAt)} (대상별 시각은 카드에서)`);
-  }
-  if (real.staleCount > 0) parts.push(`${real.staleCount}건은 30분 넘게 점검 기록이 없음`);
-  if (real.invalidCount > 0) parts.push(`${real.invalidCount}건은 점검 시각을 읽을 수 없음`);
-  if (!real.clockKnown) parts.push('데이터 생성 시각을 읽을 수 없어 최신 여부를 판단하지 않음');
-  else parts.push(`데이터 생성 ${formatKst(data.generatedAt)}`);
-  document.getElementById('hero-updated').textContent = parts.join(' · ');
-}
-
-// 요약 카드 — 여러 서비스를 합친 '평균 가동률'은 만들지 않습니다.
-// 서비스마다 중요도·점검 방식이 달라 단순 평균은 의미가 없기 때문이에요. 대신 개수만 셉니다.
-// 숫자는 전부 /api/status에서 그때그때 계산합니다(코드에 박아 두지 않음). 서비스 이름으로 "서비스 몇 개"를 추정하지도 않아요.
-function renderStats(data) {
-  const real = UptimeSummary.summarizeReal(data.services, UptimeSummary.statusNow(data));
-  const b = UptimeSummary.breakdown(data.services);
-  const inc = UptimeSummary.ongoingIncidents(data.incidents);
-  const activeMaint = data.maintenance.filter((w) => w.active).length;
-
-  const parts = [['실제 활성', b.realActive], ['실제 점검 대기', b.realPaused], ['실제 아님(시험)', b.other]]
+// 위 줄 작은 요약 3개 — 서비스 상태별 개수만 셉니다. (점검 시간은 '서비스 모니터링' 제목 줄 끝)
+// 여러 서비스를 합친 '평균 가동률'은 만들지 않습니다: 서비스마다 점검 수·중요도가 달라 평균은 의미가 없기 때문이에요.
+function renderStats(svc) {
+  const c = DashboardModel.countByState(svc.services);
+  // 정상·문제 칸에 들지 않는 상태(주의·계획 작업·점검 대기·확인 중)는 마우스를 올리면 보이게
+  const rest = [['주의', c.degraded], ['계획 작업', c.maintenance], ['점검 대기', c.paused], ['확인 중', c.unknown]]
     .filter(([, n]) => n > 0)
-    .map(([label, n]) => `${label} ${n}`);
-
+    .map(([label, n]) => `${label} ${n}`)
+    .join(' · ');
   const cards = [
-    // 분모는 "실제 활성 대상"뿐 — 점검 대기·실제가 아닌 시험 기록은 제외
-    ['activity', '실제 점검 정상', real.total ? `${real.counts.up}/${real.total}` : '-', UptimeSummary.realHelper(real)],
-    ['alert', '진행 중 장애', String(inc.total), inc.other ? `실제 ${inc.real} · 실제 아님 ${inc.other}` : `실제 ${inc.real}`],
-    ['wrench', '계획 작업', `${activeMaint}건 진행`, `예정 포함 ${data.maintenance.length}건`],
-    ['layers', '점검 대상', `${b.total}건`, `전체 ${b.total} = ${parts.join(' + ') || '없음'}`],
+    ['layers', 'info', '전체 서비스', c.total, rest],
+    ['check', 'good', '정상', c.up, ''],
+    ['alert', c.problem ? 'bad' : 'warn', '부분 장애 · 장애', c.problem, ''],
   ];
   document.getElementById('stats').replaceChildren(
-    ...cards.map(([ico, label, value, helper]) => {
-      const card = el('div', 'stat');
-      const top = el('div', 'stat__top', label);
-      top.append(icon(ico, 'ico ico--sm'));
-      card.append(top, el('div', 'stat__value', value), el('div', 'stat__helper', helper));
+    ...cards.map(([ico, tone, label, value, title]) => {
+      const card = el('div', 'kcard');
+      if (title) card.title = title;
+      const bub = el('span', `kcard__ico kcard__ico--${tone}`);
+      bub.append(icon(ico));
+      const body = el('div');
+      const v = el('div', 'kcard__value', String(value));
+      v.append(el('small', '', '개'));
+      body.append(el('div', 'kcard__label', label), v);
+      card.append(bub, body);
       return card;
     })
   );
@@ -209,482 +110,254 @@ function renderMaintenance(list) {
 }
 
 // ─────────────────────────────────────────────
-// 검색·필터·서비스 카드
+// 서비스 줄 (시안: 아이콘 | 이름·태그 | 상태 | 30일 가동률 | 최근 점검 | 세부 점검 상태 — 한 줄)
 // ─────────────────────────────────────────────
 
-// 상태 필터(지금 어떤가). 숫자는 누르면 보일 개수와 같습니다.
-function renderFilters(data) {
-  const counts = { all: data.services.length };
-  for (const s of data.services) counts[s.state] = (counts[s.state] ?? 0) + 1;
-  document.getElementById('filters').replaceChildren(
-    ...FILTERS.map(([key, label]) => {
-      const b = el('button', `filter${view.filter === key ? ' is-active' : ''}`, label);
-      b.type = 'button';
-      b.setAttribute('aria-pressed', String(view.filter === key));
-      b.append(el('span', 'filter__count', String(counts[key] ?? 0)));
-      b.addEventListener('click', () => {
-        view.filter = key;
-        renderFilters(view.data);
-        renderServices(view.data);
-      });
-      return b;
-    })
-  );
+const CHIP_TEXT = { up: '정상', down: '오류', slow: '지연', maintenance: '작업', paused: '대기', unknown: '확인 중' };
+const CHIP_ICON = { up: 'check', down: 'x', slow: 'clock', maintenance: 'wrench', paused: 'pause', unknown: 'help' };
+// 서비스 아이콘: 지금은 서비스 키로 고릅니다. 모르는 서비스(나중에 '+ 서비스 추가'로 생길 것)는 지구본
+const SERVICE_ICON = { gochyeora: 'game', keychats: 'chat' };
+
+// 한국 시각 'HH:MM' (최근 점검 칸: "17:40 · 5분 전")
+const kstHm = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });
+
+/** 상태 알약 (시안 모양: 꽉 찬 옅은 배경 + 굵은 글자). 문구·아이콘은 common.js STATE_META를 그대로 씀 */
+function serviceStatePill(state) {
+  const meta = STATE_META[state] ?? STATE_META.unknown;
+  const pill = el('span', `state state--${STATE_META[state] ? state : 'unknown'}`);
+  pill.append(icon(meta.icon, 'ico'), document.createTextNode(meta.text));
+  return pill;
 }
 
-function visibleServices(data) {
-  return UptimeSummary.filterServices(data.services, { state: view.filter, query: view.query });
+/** 점검 칩: 누르면 그 점검의 상세 팝업(기존 팝업, /api/status의 점검 정보)을 엽니다 */
+function checkChip(check) {
+  const state = DashboardModel.chipState(check);
+  const chip = el('button', `chip chip--${state}`);
+  chip.type = 'button';
+  chip.dataset.detailId = String(check.id); // 팝업을 닫으면 이 칩으로 포커스가 돌아옴 (detail.js)
+  chip.title = `${check.name} — 누르면 최근 기록`;
+  const st = el('span', 'chip__state');
+  st.append(icon(CHIP_ICON[state] ?? 'help', 'ico'), document.createTextNode(CHIP_TEXT[state] ?? state));
+  chip.append(el('span', '', DashboardModel.chipLabel(check)), st);
+  chip.addEventListener('click', () => select(check.id));
+  return chip;
 }
 
-function renderServices(data) {
+/** 최근 점검 글자: "17:40 · 5분 전" (상대 시간 부분은 tickClock이 1초마다 고침) */
+function lastCheckNode(s) {
+  const v = el('div', 'svc__v svc__v--sm');
+  if (s.state === 'paused') {
+    v.textContent = '현재 점검하지 않음';
+  } else if (s.lastCheckedAt) {
+    const ago = el('span', '', agoText(s.lastCheckedAt, Date.now()).replace(' 점검', ''));
+    ago.dataset.ago = s.lastCheckedAt;
+    ago.dataset.agoShort = '1';
+    v.append(document.createTextNode(`${kstHm.format(new Date(s.lastCheckedAt))} · `), ago);
+    v.title = formatKst(s.lastCheckedAt);
+  } else {
+    v.textContent = '아직 기록 없음';
+  }
+  return v;
+}
+
+function renderServiceRows(svc) {
   const root = document.getElementById('services');
-  const list = visibleServices(data);
+  document.getElementById('svc-count').textContent = `전체 (${svc.services.length})`;
+  const list = DashboardModel.searchServices(svc.services, view.query);
+  if (svc.services.length === 0) {
+    root.replaceChildren(el('div', 'svc__empty', '등록된 서비스가 없습니다.'));
+    return;
+  }
   if (list.length === 0) {
-    root.replaceChildren(el('div', 'services__empty', '조건에 맞는 서비스가 없습니다. 상태 필터와 검색어를 확인해 보세요.'));
+    root.replaceChildren(el('div', 'svc__empty', '검색어에 맞는 서비스가 없습니다.'));
     return;
   }
   root.replaceChildren(
     ...list.map((s) => {
-      const card = el('button', `card${s.id === view.selectedId ? ' is-selected' : ''}`);
-      card.type = 'button';
-      card.setAttribute('aria-pressed', String(s.id === view.selectedId));
-      card.dataset.id = String(s.id);
-      card.addEventListener('click', () => select(s.id));
+      const row = el('article', `svc svc--${s.state}`);
+      if (view.changed.has(s.key)) row.classList.add('is-changed'); // 새로 불러온 데이터에서 상태가 바뀐 줄 강조
 
-      // 위: 종류 아이콘 + 이름 + 상태·출처
-      const top = el('div', 'card__top');
-      const kind = kindMeta(s.kind);
-      const kindIco = el('span', 'kind-ico');
-      kindIco.append(icon(kind.icon));
-      const title = el('div');
-      title.style.minWidth = '0';
-      const tags = el('div', 'card__tags');
-      tags.append(statePill(s.state));
-      const badge = sourceBadge(s.source, s.state);
-      if (badge) tags.append(badge);
-      tags.append(el('span', 'card__kind', kind.text));
-      title.append(el('h3', 'card__name', s.name), tags);
-      top.append(kindIco, title);
+      const ico = el('span', 'svc__ico');
+      ico.append(icon(SERVICE_ICON[s.key] ?? 'globe'));
 
-      // 가운데: 30일 가동률 / 마지막 측정값
-      const lv = lastValue(s);
-      const minis = el('div', 'minis');
-      for (const [label, value] of [['30일 가동률', uptimeText(s.uptime30d)], [lv.label, lv.value]]) {
-        const m = el('div', 'mini');
-        m.append(el('div', 'mini__label', label), el('div', 'mini__value', value));
-        minis.append(m);
-      }
+      const name = el('div');
+      name.style.minWidth = '0';
+      const title = el('h3', 'svc__name', s.name);
+      // 배포본은 실제 서비스만 두므로 '실제 점검' 배지는 줄마다 반복하지 않고, 실제가 아닌 서비스(로컬 시험)에만 붙입니다
+      const badge = s.source === 'real' ? null : sourceBadge(s.source, s.state);
+      if (badge) title.append(' ', badge);
+      name.append(title);
+      if (s.description) name.append(el('span', 'svc__tag', s.description));
 
-      // 아래: 30일 막대 (마우스를 올리면 날짜와 가동률, 화면 낭독기용 설명은 aria-label)
-      const head = el('div', 'bars-head');
-      head.append(el('span', '', `${s.daily.length - 1}일 전`), el('span', '', '오늘'));
-      const bars = el('div', 'bars');
-      bars.setAttribute('role', 'img');
-      bars.setAttribute('aria-label', `최근 ${s.daily.length}일 가동률 ${s.uptime30d === null ? '기록 없음' : s.uptime30d + '%'}`);
-      for (const d of s.daily) {
-        const bar = el('span', `bar ${barClass(d.uptime)}`);
-        bar.title = d.uptime === null ? `${d.day} · 기록 없음` : `${d.day} · ${d.uptime}% (${d.total}회 점검)`;
-        bars.append(bar);
-      }
+      const uptime = el('div', 'svc__metric');
+      uptime.append(el('div', 'svc__k', '30일 가동률'), el('div', 'svc__v', uptimeText(s.uptime30d)));
+      uptime.title = '묶인 점검이 모두 성공한 5분 회차의 비율';
 
-      // 마지막 점검 상대 시간 ("2분 전 점검") — tickClock()이 1초마다 글자만 고칩니다
-      const ago = el('div', 'card__ago');
-      ago.append(icon('clock', 'ico ico--xs'));
-      const agoPrefix = AGO_PREFIX[s.source] ?? ''; // 시뮬레이터는 실제 점검이 아니므로 시간 표시 앞에 그 사실을 붙임
-      // 점검 대기(paused) 대상은 지금 점검하지 않으므로 "N분 전 점검"처럼 현재 점검 중인 것처럼 쓰지 않습니다.
-      const isPaused = s.state === 'paused';
-      const agoLabel = el('span', '', isPaused ? `현재 점검하지 않음${s.lastCheckedAt ? ` · 마지막 점검 ${formatKst(s.lastCheckedAt)}` : ''}`
-        : s.lastCheckedAt ? agoPrefix + agoText(s.lastCheckedAt, Date.now()) : '아직 점검 기록 없음');
-      if (s.lastCheckedAt && !isPaused) {
-        agoLabel.dataset.ago = s.lastCheckedAt;
-        if (agoPrefix) agoLabel.dataset.agoPrefix = agoPrefix;
-      }
-      ago.append(agoLabel);
+      const last = el('div', 'svc__metric');
+      last.append(el('div', 'svc__k', '최근 점검'), lastCheckNode(s));
 
-      // 새로 불러온 데이터에서 상태가 바뀐 카드는 잠깐 노랗게 강조
-      if (view.changed.has(s.id)) card.classList.add('is-changed');
+      const checks = el('div', 'svc__checks');
+      const chips = el('div', 'chips');
+      chips.append(...s.checks.map(checkChip));
+      checks.append(el('div', 'svc__k', '세부 점검 상태'), chips);
 
-      card.append(top, minis, head, bars, ago);
-      return card;
+      row.append(ico, name, serviceStatePill(s.state), uptime, last, checks);
+      return row;
     })
   );
 }
 
 // ─────────────────────────────────────────────
-// 상세 패널
+// 운영 지표 요약 (시안: 2×2 — HTTP 평균 응답 | 최근 장애 수 / DNS 평균 응답(넓게) / 서비스 상태 추이(넓게))
+// 모두 이미 받은 두 응답으로 계산합니다 — 이 칸 때문에 API를 더 부르지 않습니다.
 // ─────────────────────────────────────────────
 
-// 상세 팝업(<dialog>) 열기·닫기
-const dialog = () => document.getElementById('detail-dialog');
-
-function select(id) {
-  view.selectedId = id;
-  renderServices(view.data); // 선택한 카드 테두리 표시
-  renderDetail(view.data);
-  const d = dialog();
-  if (!d.open) d.showModal(); // showModal: 뒤 화면을 막고 가운데 띄움 (Esc로 닫힘)
-  d.querySelector('.modal__box').scrollTop = 0;
-  loadHistory(id);
-}
-
-// ─────────────────────────────────────────────
-// 상세 팝업 그래프 (최근 24시간 기록은 팝업을 열 때만 불러옴 — /api/status를 가볍게 유지)
-// ─────────────────────────────────────────────
-const HISTORY_HOURS = 24;
-const RESPONSE_KINDS = ['http', 'dns', 'ping', 'tcp']; // 응답 시간이 있는 종류
-// 측정값 종류: 단위, y축 최댓값, 기준선 기본값 (서버 판정의 기본값과 같음)
-const VALUE_KINDS = {
-  disk: { unit: '%', yMax: 100, threshold: 90, label: (v) => `기준 ${v}%`, name: '디스크 사용률' },
-  ssl: { unit: '일', threshold: 14, label: (v) => `기준 ${v}일`, name: '인증서 남은 날' },
-  domain: { unit: '일', threshold: 30, label: (v) => `기준 ${v}일`, name: '도메인 만료까지' },
-};
-
-async function loadHistory(id, force = false) {
-  const cached = view.history.get(id);
-  if (!force && cached && !cached.error && Date.now() - cached.at < 60_000) {
-    renderCharts();
-    return;
-  }
-  try {
-    const data = await fetchJson(`/api/monitors/${id}/history?hours=${HISTORY_HOURS}`, { cache: 'no-store' });
-    view.history.set(id, { at: Date.now(), data });
-  } catch (err) {
-    console.error(err);
-    view.history.set(id, { at: Date.now(), error: true });
-  }
-  if (view.selectedId === id) renderCharts(); // 그사이 다른 카드를 열었으면 그리지 않음
-}
-
-// 회차 1개를 그래프 점으로 (마우스를 올리면 보일 설명 포함)
-function toPoint(p, kind) {
-  const t = Date.parse(p.checkedAt);
-  const time = formatKst(p.checkedAt);
-  const k = kind; // 측정값 종류의 설정(valueSpec) 또는 null(응답 시간 종류)
-  const unit = k?.unit ?? 'ms';
-  // 응답 시간 종류는 실패하면 값이 없음(null) → 선을 끊고 빨간 막대, 측정값 종류는 실패해도 값이 있음
-  const v = k ? p.value : p.isSuccess ? p.responseMs : null;
-  const valueText = v === null || v === undefined ? '' : ` · ${v}${unit}`;
-  let tip;
-  if (p.inMaintenance) tip = `${time} · 계획 작업 중${valueText}`;
-  else if (!p.isSuccess) tip = `${time} · 실패: ${p.failureText ?? p.failureReason}${valueText}`;
-  else tip = `${time} · ${p.isSlow ? '느림' : '정상'}${valueText}`;
-  return { t, v, fail: !p.isSuccess && !p.inMaintenance, slow: p.isSlow, maint: p.inMaintenance, tip };
-}
-
-function chartSection(title, sub, node, extraClass = '') {
-  const box = el('section', `chart-box ${extraClass}`.trim());
-  const head = el('div', 'chart-box__head');
-  head.append(el('h4', 'chart-box__title', title), el('span', 'chart-box__sub', sub));
-  box.append(head, node);
+/**
+ * 지표 칸 하나. 칸 전체가 버튼이라 누르면(키보드 Enter·Space 포함) 같은 그래프를 크게 보여 주는 팝업이 열립니다.
+ * spec.draw(box)는 주어진 크기로 그래프를 새로 그리는 함수 — 작은 칸과 팝업이 같은 함수를 크기만 바꿔 씁니다.
+ */
+function metricBox(spec) {
+  const box = el('button', `mbox${spec.wide ? ' mbox--wide' : ''}`);
+  box.type = 'button';
+  box.setAttribute('aria-label', `${spec.title} 크게 보기`);
+  box.append(metricHead(spec, false));
+  if (spec.draw) box.append(spec.draw(spec.small));
+  if (spec.legend?.length) box.append(metricLegend(spec));
+  box.addEventListener('click', () => openMetric(spec));
   return box;
 }
 
-// 24시간 가동률: 팝업이 불러온 그 서비스의 기록만으로 계산 (계획 작업 중 점검은 제외 — 서버 집계와 같은 규칙)
-function uptimeOf(points) {
-  const counted = points.filter((p) => !p.inMaintenance);
-  if (counted.length === 0) return null;
-  return Math.floor((counted.filter((p) => p.isSuccess).length * 10000) / counted.length) / 100; // 내림 (보수적으로)
+/** 제목·숫자·설명 (작은 칸과 팝업이 함께 씀) */
+function metricHead(spec, large) {
+  const head = el('div', large ? 'mzoom__head' : '');
+  head.append(el('div', 'mbox__t', spec.title));
+  if (spec.value !== null && spec.value !== undefined) {
+    const n = el('div', 'mbox__n', String(spec.value));
+    n.append(el('small', '', spec.unit));
+    head.append(n);
+  }
+  if (spec.sub) head.append(el('div', 'mbox__sub', spec.sub));
+  return head;
 }
 
-/**
- * 팝업 안에서 기록(24시간)에 따라 바뀌는 부분: ② 핵심 지표 4칸, ③ 그래프
- * 기록을 불러오기 전에는 '…'으로 자리만 잡아 두고, 불러오면 다시 그립니다.
- */
-function renderDetailLive() {
-  const s = view.data?.services.find((x) => x.id === view.selectedId);
-  const kpiRoot = document.getElementById('detail-kpis');
-  const chartRoot = document.getElementById('detail-charts');
-  if (!s || !kpiRoot || !chartRoot) return;
-  const cached = view.history.get(s.id);
-  const h = cached && !cached.error ? cached.data : null;
-  const k = valueSpec(s);
-  const tone = { up: 'good', down: 'bad', maintenance: 'info' }[s.state] ?? 'muted';
-  const agoPrefix = AGO_PREFIX[s.source] ?? '';
-
-  // ── ② 핵심 지표 4칸 ──
-  const lv = lastValue(s);
-  let secondSub = '';
-  if (k) secondSub = `기준 ${h?.monitor.threshold ?? k.threshold}${k.unit}`;
-  else if (RESPONSE_KINDS.includes(s.kind)) secondSub = h ? `느림 기준 ${h.monitor.maxResponseMs}ms` : '';
-  else if (s.kind === 'service') secondSub = 'Windows 서비스 실행 여부';
-  const up24 = h ? uptimeOf(h.points) : undefined;
-  const days = s.daily.filter((d) => d.total > 0).length;
-
-  const kpis = [
-    { label: '현재 상태', value: (STATE_META[s.state] ?? STATE_META.unknown).text, tone, sub: s.state === 'paused' ? '현재 점검하지 않음' : s.lastCheckedAt ? null : '아직 점검 기록 없음', ago: s.state === 'paused' ? null : s.lastCheckedAt, agoPrefix },
-    { label: lv.label, value: lv.value, sub: secondSub },
-    { label: '24시간 가동률', value: up24 === undefined ? '…' : uptimeText(up24), sub: h ? `기록 ${h.points.length}회` : '불러오는 중' },
-    { label: '30일 가동률', value: uptimeText(s.uptime30d), sub: `기록 ${days}/${s.daily.length}일` },
-  ];
-  kpiRoot.replaceChildren(
-    ...kpis.map((x) => {
-      const box = el('div', 'kpi');
-      const value = el('div', `kpi__value${x.tone ? ` kpi__value--${x.tone}` : ''}`, x.value);
-      const sub = el('div', 'kpi__sub', x.sub ?? '');
-      if (x.ago) {
-        sub.dataset.ago = x.ago; // tickClock()이 1초마다 "N분 전 점검"으로 갱신
-        if (x.agoPrefix) sub.dataset.agoPrefix = x.agoPrefix;
-        sub.textContent = (x.agoPrefix ?? '') + agoText(x.ago, Date.now());
-      }
-      box.append(el('div', 'kpi__label', x.label), value, sub);
-      return box;
-    })
-  );
-
-  // ── ③ 추세 그래프 ──
-  const nodes = [];
-  const titleMain = s.kind === 'service' ? '최근 실행 여부' : k ? `최근 ${k.name}` : '최근 응답 시간';
-  if (!cached) {
-    nodes.push(chartSection(titleMain, '불러오는 중…', el('div', 'chart-empty', '기록을 불러오는 중입니다…'), 'chart-box--main'));
-  } else if (cached.error) {
-    nodes.push(chartSection(titleMain, '', el('div', 'chart-empty', '기록을 불러오지 못했습니다. 잠시 후 다시 시도합니다.'), 'chart-box--main'));
-  } else {
-    const points = h.points.map((p) => toPoint(p, k));
-    const fromMs = Date.parse(h.from);
-    const toMs = Date.parse(h.to);
-    // x축을 실제 기록이 있는 구간에 맞춤 (최소 1시간, 최대 24시간)
-    //   기록이 40분뿐인데 24시간 축으로 그리면 선이 오른쪽 끝에 손톱만큼만 보이기 때문
-    const firstT = points.length ? points[0].t : toMs;
-    const xMin = Math.max(fromMs, Math.min(toMs - 3600_000, firstT - SLOT_MS));
-    const range = { xMin, xMax: toMs };
-    const spanH = Math.round((toMs - xMin) / 3600_000);
-    const gapMs = 12 * 60_000; // 5분 간격이므로 12분 넘게 비면 기록이 빠진 것 → 선을 끊음
-    let node;
-    if (points.length === 0) {
-      node = el('div', 'chart-empty', s.state === 'paused' ? '아직 점검을 켜지 않아 기록이 없습니다.' : '최근 24시간 기록이 없습니다.');
-    } else if (s.kind === 'service') {
-      node = statusStrip({ points, ...range, label: titleMain });
-    } else if (k) {
-      // 측정값 종류의 기준선: 서버 판정 기준(없으면 기본값)
-      const th = h.monitor.threshold ?? k.threshold;
-      node = lineChart({ points, ...range, gapMs, unit: k.unit, yMax: k.yMax, threshold: th === undefined ? undefined : { v: th, label: k.label(th) }, label: titleMain });
-    } else {
-      const th = h.monitor.maxResponseMs;
-      node = lineChart({ points, ...range, gapMs, unit: 'ms', threshold: { v: th, label: `느림 기준 ${th}ms` }, label: titleMain });
-    }
-    const sub = points.length ? `최근 ${spanH}시간 · 기록 ${points.length}개 · 5분 간격` : '최근 24시간 기록 없음';
-    nodes.push(chartSection(titleMain, sub, node, 'chart-box--main'));
-  }
-
-  // 30일 가동률 (큰 막대, 마우스를 올리면 평균 응답까지)
-  const bars = el('div', 'bars bars--lg');
-  bars.setAttribute('role', 'img');
-  bars.setAttribute('aria-label', `최근 30일 가동률 ${uptimeText(s.uptime30d)}`);
-  for (const d of s.daily) {
-    const bar = el('span', `bar ${barClass(d.uptime)}`);
-    bar.title = d.uptime === null
-      ? `${d.day} · 기록 없음`
-      : `${d.day} · 가동률 ${d.uptime}% · ${d.total}회 점검${d.avgResponseMs !== null ? ` · 평균 ${d.avgResponseMs}ms` : ''}`;
-    bars.append(bar);
-  }
-  const barsBox = el('div');
-  const barsHead = el('div', 'bars-head');
-  barsHead.style.marginTop = '6px';
-  barsHead.append(el('span', '', `${s.daily.length - 1}일 전`), el('span', '', '오늘'));
-  barsBox.append(bars, barsHead);
-  const pair = el('div', 'chart-pair');
-  pair.append(chartSection('30일 가동률', uptimeText(s.uptime30d), barsBox));
-
-  // 30일 일평균 응답 시간 (응답 시간이 있는 종류만) — "요즘 느려지고 있나?"
-  if (RESPONSE_KINDS.includes(s.kind)) {
-    const daily = s.daily.map((d) => ({
-      t: Date.parse(`${d.day}T03:00:00Z`), // 한국 시간 정오 위치에 점을 찍음
-      v: d.avgResponseMs,
-      tip: `${d.day} · ${d.avgResponseMs === null ? '기록 없음' : `평균 ${d.avgResponseMs}ms`}`,
-    }));
-    const withValue = daily.filter((d) => d.v !== null).length;
-    const node = withValue === 0
-      ? el('div', 'chart-empty', '일별 평균 응답 기록이 없습니다.')
-      : lineChart({ points: daily, xMin: daily[0].t, xMax: daily[daily.length - 1].t, gapMs: 36 * 3600_000, unit: 'ms', xFormat: 'date', label: '최근 30일 일평균 응답 시간', box: { w: 360, h: 150, l: 44 } });
-    pair.append(chartSection('30일 일평균 응답', `기록 있는 날 ${withValue}일`, node));
-  } else {
-    pair.classList.add('chart-pair--single');
-  }
-  nodes.push(pair);
-  chartRoot.replaceChildren(...nodes);
+function metricLegend(spec) {
+  const lg = el('div', 'mlegend');
+  spec.legend.forEach((name, k) => {
+    const item = el('span');
+    item.append(el('i', spec.classes?.[k] ?? `chart__series--${(k % 4) + 1}`), document.createTextNode(name));
+    lg.append(item);
+  });
+  return lg;
 }
 
-// 이전 이름 유지 (loadHistory 등에서 호출)
-const renderCharts = renderDetailLive;
+// ── 지표 확대 팝업 ──
+const metricDialog = () => document.getElementById('metric-dialog');
+let metricOpener = null; // 팝업을 닫으면 포커스를 돌려줄 칸
 
-function closeDetail() {
-  const d = dialog();
-  if (d.open) d.close();
+function openMetric(spec) {
+  metricOpener = document.activeElement;
+  document.getElementById('metric-title').textContent = spec.title;
+  const body = el('div', 'mzoom');
+  body.append(metricHead(spec, true));
+  if (spec.draw) body.append(spec.draw(spec.large));
+  if (spec.legend?.length) body.append(metricLegend(spec));
+  if (spec.note) body.append(el('p', 'mzoom__note', spec.note));
+  document.getElementById('metric-body').replaceChildren(body);
+  const d = metricDialog();
+  if (!d.open) d.showModal();
 }
 
-// 닫힐 때(✕·바깥 클릭·Esc 모두) 선택 표시를 지우고, 눌렀던 카드로 키보드 포커스를 돌려줌
-function onDetailClosed() {
-  const id = view.selectedId;
-  document.getElementById('detail-title').textContent = '서비스 상세';
-  view.selectedId = null;
-  if (view.data) renderServices(view.data);
-  const card = document.querySelector(`.card[data-id="${id}"]`);
-  if (card) card.focus({ preventScroll: true });
+const CHART_MIN_DAYS = 7; // 기록이 짧아도 그래프는 최소 7일 폭으로
+
+function renderMetrics(svc, status) {
+  const allDays = DashboardModel.lastDays(svc.today, svc.barDays);
+  const first = DashboardModel.firstRecordedDay(svc.services);
+  // x축은 기록 시작일부터 (30일 축에 9일치를 그리면 선이 오른쪽에 몰려 읽기 어려움)
+  const start = DashboardModel.chartStart(allDays, first, CHART_MIN_DAYS);
+  const days = allDays.slice(start);
+  const big = (h) => ({ w: 880, h, l: 52, b: 28 }); // 팝업용 큰 그림
+  const specs = [];
+
+  // ① HTTP 평균 응답: 첫 화면 점검만 (DB 상태 확인 주소는 원래 약 1초라 섞으면 평균이 의미를 잃음)
+  const http = DashboardModel.responseSeries(svc.services, 'http', 'HTTP');
+  const httpCls = ['chart__c--blue', 'chart__c--violet', 'chart__c--teal', 'chart__c--amber'];
+  const httpSeries = DashboardModel.sliceSeries(http.series, start);
+  specs.push({
+    title: 'HTTP 평균 응답', value: http.mean ?? '-', unit: 'ms',
+    sub: http.series.map((x) => `${x.service} ${x.latest ?? '-'}ms`).join(' · ') + ' · 첫 화면, 가장 최근 일평균',
+    draw: httpSeries.length ? (box) => multiLineChart({ series: httpSeries, classes: httpCls, unit: box.w > 400 ? 'ms' : '', label: '첫 화면 점검별 일평균 응답 시간', box }) : null,
+    small: { w: 360, h: 90, l: 34 }, large: big(320),
+    legend: http.series.map((x) => `${x.service} 첫 화면`), classes: httpCls,
+    note: '성공한 점검의 하루 평균 응답 시간입니다. DB 상태 확인 주소(원래 약 1초)는 성격이 달라 이 평균에서 뺐고, 점검 칩을 누르면 따로 볼 수 있습니다. 점에 마우스를 올리면 날짜와 값이 보입니다.',
+  });
+
+  // ② 최근 장애 수 (장애 이력에서 시작일 기준). 숫자는 30일 전체, 막대는 그래프 구간만
+  const inc = DashboardModel.incidentsByDay(status.incidents ?? [], allDays, INCIDENT_LIMIT);
+  const incValues = inc.perDay.slice(start);
+  specs.push({
+    title: '최근 장애 수', value: inc.capped ? `${inc.count}+` : inc.count, unit: '건',
+    sub: inc.capped ? `장애 이력 최근 ${INCIDENT_LIMIT}건이 모두 30일 안이라 더 있을 수 있음` : '30일 · 2회 연속 실패로 판정된 장애',
+    draw: (box) => dayBarChart({ days, values: incValues, label: '날짜별 장애 수', box }),
+    small: { w: 360, h: 90, l: 24 }, large: big(260),
+    note: '장애가 시작된 날(한국 시간) 기준으로 셉니다. 막대에 마우스를 올리면 날짜와 건수가 보이고, 장애 하나하나는 왼쪽 메뉴의 장애 이력에서 볼 수 있습니다.',
+  });
+
+  // ③ DNS 평균 응답 (넓게)
+  const dns = DashboardModel.responseSeries(svc.services, 'dns');
+  const dnsCls = ['chart__c--teal', 'chart__c--amber', 'chart__c--blue', 'chart__c--violet'];
+  const dnsSeries = DashboardModel.sliceSeries(dns.series, start);
+  specs.push({
+    title: 'DNS 평균 응답', value: dns.mean ?? '-', unit: 'ms',
+    sub: `${dns.series.length}개 서비스 DNS 점검의 가장 최근 일평균 · 기록이 없는 날은 선을 끊음`,
+    draw: dnsSeries.length ? (box) => multiLineChart({ series: dnsSeries, classes: dnsCls, unit: box.w > 800 ? 'ms' : '', label: 'DNS 점검별 일평균 응답 시간', box }) : null,
+    small: { w: 720, h: 90, l: 34 }, large: big(300),
+    legend: dns.series.map((x) => `${x.service} DNS`), classes: dnsCls, wide: true,
+    note: 'DNS-over-HTTPS로 이름을 푸는 데 걸린 시간의 하루 평균입니다(성공한 점검만).',
+  });
+
+  // ④ 서비스 상태 추이: 서버가 회차 기준으로 계산한 서비스별 일 가동률. 95% 아래는 바닥에 붙여 위쪽 차이를 보이게
+  const up = DashboardModel.sliceSeries(DashboardModel.uptimeSeries(svc.services), start);
+  const upCls = ['chart__c--green', 'chart__c--amber', 'chart__c--blue', 'chart__c--violet'];
+  specs.push({
+    title: '서비스 상태 추이 (일 가동률)', value: null,
+    sub: `${first ? `기록 시작 ${first} — 그 전은 빈칸. ` : ''}세로축 95~100% (95% 아래는 바닥에 붙임)`,
+    draw: up.length ? (box) => multiLineChart({ series: up, classes: upCls, unit: '%', yMin: 95, yMax: 100, label: '서비스별 일 가동률', box }) : null,
+    small: { w: 720, h: 130, l: 40 }, large: big(340),
+    legend: up.map((x) => x.name), classes: upCls, wide: true,
+    note: '서비스 가동률은 묶인 점검(HTTP·DNS·DB)이 모두 성공한 5분 회차의 비율입니다. 같은 5분에 여러 점검이 함께 실패해도 장애 한 번으로 셉니다.',
+  });
+
+  document.getElementById('metrics').replaceChildren(...specs.map(metricBox));
+  // 팝업이 열려 있으면 같은 지표를 새 데이터로 다시 그림 (60초 자동 갱신)
+  const d = metricDialog();
+  if (d?.open) {
+    const same = specs.find((s) => s.title === document.getElementById('metric-title').textContent);
+    if (same) openMetric(same);
+  }
 }
 
-/**
- * 상세 팝업 내용 — 보는 사람의 질문 순서대로 위에서 아래로:
- *   ① 머리(팝업 제목 자리): 이름·상태·출처      → "어떤 서비스?"
- *   ② 핵심 지표 4칸(큰 숫자)                     → "지금 괜찮나?"
- *   ③ 추세 그래프(가장 크게)                     → "최근 어땠나?"
- *   ④ 최근 장애                                  → "문제가 있었나?"
- *   ⑤ 바닥 정보(작은 글씨): 종류·출처·안내·보고서 → "그 밖의 정보"
- */
-function renderDetail(data) {
-  const root = document.getElementById('detail');
-  const s = data.services.find((x) => x.id === view.selectedId);
-  if (!s) {
-    root.replaceChildren();
-    return;
-  }
-  const kind = kindMeta(s.kind);
-
-  // ① 머리: 팝업 제목 자리에 서비스 이름과 상태·출처
-  document.getElementById('detail-title').textContent = s.name;
-  document.getElementById('detail-kind').replaceChildren(icon(kind.icon));
-  const tags = document.getElementById('detail-tags');
-  tags.replaceChildren(statePill(s.state));
-  const badge = sourceBadge(s.source, s.state);
-  if (badge) tags.append(badge);
-  tags.append(el('span', 'card__kind', kind.text));
-
-  const desc = el('p', 'detail__desc', KIND_DESC[s.kind] ?? '점검 정보');
-
-  // ② 핵심 지표, ③ 그래프 자리 (내용은 renderDetailLive가 기록을 받아 채움)
-  const kpis = el('div', 'kpis');
-  kpis.id = 'detail-kpis';
-  const charts = el('div', 'detail-charts');
-  charts.id = 'detail-charts';
-
-  // ④ 최근 장애 (상태 페이지가 받은 최근 장애 목록 중 이 서비스 것)
-  const incBox = el('section', 'detail-section');
-  const incHead = el('h4', 'subhead', '최근 장애');
-  incHead.prepend(icon('alert', 'ico ico--sm'));
-  incBox.append(incHead);
-  const mine = data.incidents.filter((i) => i.monitorName === s.name).slice(0, 3);
-  if (mine.length === 0) {
-    incBox.append(el('p', 'detail__empty', '최근 장애 이력에 이 서비스의 장애가 없습니다.'));
-  } else {
-    const ul = el('ul', 'mini-list');
-    for (const i of mine) {
-      const li = el('li');
-      const a = el('a');
-      a.href = `/incident.html?id=${encodeURIComponent(i.id)}`;
-      const topRow = el('div', 'mini-list__top');
-      const pill = statePill(i.ongoing ? 'down' : 'up');
-      pill.lastChild.textContent = i.ongoing ? '진행 중' : '복구됨'; // 장애 이력에서는 '정상' 대신 '복구됨'
-      topRow.append(el('span', '', i.causeText ?? '원인 미상'), pill);
-      a.append(topRow, el('div', 'mini-list__time', `${formatKst(i.startedAt)} · ${formatMinutes(i.durationMinutes)}${i.hasReport ? ' · 보고서 있음' : ''}`));
-      li.append(a);
-      ul.append(li);
-    }
-    incBox.append(ul);
-  }
-
-  // ⑤ 바닥 정보: 덜 중요한 사실은 작은 글씨 한 줄로
-  const foot = el('div', 'detail-foot');
-  const facts = el('dl', 'detail-foot__facts');
-  for (const [k, v] of [
-    ['점검 종류', kind.text],
-    ['데이터 출처', SOURCE_TEXT[s.source] ?? s.source],
-    [s.state === 'paused' ? '마지막 점검(현재는 점검 안 함)' : '마지막 점검', s.lastCheckedAt ? formatKst(s.lastCheckedAt) : '-'],
-  ]) {
-    const item = el('div');
-    item.append(el('dt', '', k), el('dd', '', v));
-    facts.append(item);
-  }
-  foot.append(facts);
-  const notice = {
-    paused: '실제 대상으로 등록만 되어 있고 아직 점검을 켜지 않았습니다.',
-    simulator: '시뮬레이터: 에이전트 시뮬레이터가 보낸 가짜 측정값입니다(로컬 시험용). 판정·장애·알림은 실제와 같은 경로를 거칩니다.',
-  }[s.state === 'paused' ? 'paused' : s.source];
-  if (notice) foot.append(el('p', 'detail-foot__notice', notice));
-  const link = el('a', 'detail-foot__link', '월간 가용성 보고서 보기');
-  link.href = '/report.html';
-  link.append(icon('arrowRight', 'ico ico--xs'));
-  foot.append(link);
-
-  root.replaceChildren(desc, kpis, charts, incBox, foot);
-  renderDetailLive();
-}
+// 지표 팝업 닫기: ✕ 버튼, 바깥 클릭, Esc(브라우저 기본). 닫히면 눌렀던 칸으로 포커스를 돌려줌
+document.getElementById('metric-close').addEventListener('click', () => metricDialog().close());
+metricDialog().addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) metricDialog().close();
+});
+metricDialog().addEventListener('close', () => {
+  if (metricOpener?.isConnected) metricOpener.focus({ preventScroll: true });
+  metricOpener = null;
+});
 
 // ─────────────────────────────────────────────
-// 장애 이력·최근 알림
+// 최근 알림 (오른쪽 칸 맨 위, 운영 지표 요약과 같은 폭, 안에서 스크롤). 장애 이력은 /incidents.html(incidents.js)로 옮김
 // ─────────────────────────────────────────────
-
-const SHOW_FIRST = 5; // 알림·장애 이력은 최근 5건만 먼저 보여 줌
-
-/**
- * 목록을 "앞 5건 + 나머지는 접기(<details>)"로 그린다.
- * <details>는 HTML 기본 기능이라 자바스크립트 없이 열고 닫히고, 키보드·화면 낭독기에서도 동작합니다.
- * 60초마다 다시 그려도 사용자가 펼쳐 둔 상태는 유지합니다(view.open).
- */
-function renderCollapsible(rootId, items, makeItem, { listClass, emptyText, moreLabel }) {
-  const root = document.getElementById(rootId);
-  if (items.length === 0) {
-    root.replaceChildren(el('p', 'notes__empty', emptyText));
-    return;
-  }
-  const first = el('ol', listClass);
-  first.append(...items.slice(0, SHOW_FIRST).map(makeItem));
-  const nodes = [first];
-
-  const rest = items.slice(SHOW_FIRST);
-  if (rest.length > 0) {
-    const details = el('details', 'more');
-    details.open = Boolean(view.open[rootId]);
-    details.addEventListener('toggle', () => { view.open[rootId] = details.open; });
-    details.append(el('summary', '', `${moreLabel} ${rest.length}건 더 보기`));
-    const more = el('ol', listClass);
-    more.append(...rest.map(makeItem));
-    details.append(more);
-    nodes.push(details);
-  }
-  root.replaceChildren(...nodes);
-}
-
-function incidentItem(i) {
-  const li = el('li', 'incident');
-  const a = el('a');
-  a.href = `/incident.html?id=${encodeURIComponent(i.id)}`;
-
-  const top = el('div', 'incident__top');
-  const left = el('div');
-  left.style.minWidth = '0';
-  const tags = el('div', 'incident__tags');
-  const pill = el('span', `pill ${i.ongoing ? 'pill--bad' : 'pill--good'}`);
-  pill.append(icon(i.ongoing ? 'x' : 'check', 'ico ico--xs'), document.createTextNode(i.ongoing ? '진행 중' : '복구됨'));
-  tags.append(pill);
-  const badge = sourceBadge(i.source);
-  if (badge) tags.append(badge);
-  left.append(tags, el('h3', 'incident__title', i.causeText ?? '원인 미상'), el('div', 'incident__service', i.monitorName));
-
-  const time = el('div', 'incident__time');
-  time.append(
-    el('div', '', `시작 ${formatKst(i.startedAt)}`),
-    el('div', '', i.ongoing ? `${formatMinutes(i.durationMinutes)} 경과` : `복구 ${formatKst(i.resolvedAt)} · ${formatMinutes(i.durationMinutes)}`)
-  );
-  top.append(left, time);
-
-  const summary = el('p', `incident__summary${i.hasReport ? '' : ' is-empty'}`, i.hasReport ? i.summary : '사후 보고서 작성 전');
-  a.append(top, summary);
-  li.append(a);
-  return li;
-}
 
 function notificationItem(n) {
   const li = el('li', `note note--${n.event}`);
   const msg = el('div', 'note__msg', n.message);
-  const badge = sourceBadge(n.source);
+  msg.title = n.message; // 한 줄로 줄여 보이므로 전체 문장은 마우스를 올리면
+  const badge = n.source === 'real' ? null : sourceBadge(n.source); // 실제가 아닌 기록에만 표시
   if (badge) msg.append(' ', badge);
   li.append(el('span', 'note__icon'), msg, el('div', 'note__time', formatKst(n.createdAt)));
   return li;
-}
-
-function renderIncidents(list) {
-  renderCollapsible('incidents', list, incidentItem, {
-    listClass: 'incidents', emptyText: '기록된 장애가 없습니다.', moreLabel: '이전 장애',
-  });
 }
 
 function renderNotifications(notes) {
@@ -711,64 +384,48 @@ function renderNotifications(notes) {
 async function load() {
   try {
     // cache: 'no-store' — 브라우저가 60초 캐시를 쓰지 않고 항상 최신을 받아 오게 (실시간 표시를 위해)
-    const data = await fetchJson('/api/status', { cache: 'no-store' });
+    // 두 응답을 함께 받습니다. 하나라도 실패하면 이전 화면을 그대로 두고 안내만 바꿔요 (반쪽짜리 화면을 만들지 않으려고)
+    const [svc, data] = await Promise.all([
+      fetchJson('/api/services', { cache: 'no-store' }),
+      fetchJson('/api/status', { cache: 'no-store' }),
+    ]);
+    view.svc = svc;
     view.data = data;
     view.lastLoadedAt = Date.now();
     // 다음 점검 회차가 끝난 직후(+25초)에 다시 불러오도록 예약 → 새 점검 결과가 바로 보임
     view.nextReloadAt = nextRunAt(Date.now()) + FETCH_AFTER_MS;
 
     // 직전 데이터와 비교해서 상태가 바뀐 서비스 찾기 (처음 불러올 때는 비교 대상이 없으므로 강조 안 함)
-    const now = new Map(data.services.map((x) => [x.id, x.state]));
+    const now = new Map(svc.services.map((x) => [x.key, x.state]));
     view.changed = new Set(
-      view.prevStates ? [...now].filter(([id, st]) => view.prevStates.has(id) && view.prevStates.get(id) !== st).map(([id]) => id) : []
+      view.prevStates ? [...now].filter(([key, st]) => view.prevStates.has(key) && view.prevStates.get(key) !== st).map(([key]) => key) : []
     );
     view.prevStates = now;
-    // 팝업으로 보고 있던 서비스가 사라졌으면 팝업을 닫음
-    if (view.selectedId !== null && !data.services.some((s) => s.id === view.selectedId)) closeDetail();
-    renderHero(data);
-    renderStats(data);
+    const status = document.getElementById('load-status');
+    status.textContent = '';
+    status.classList.remove('is-error');
+    renderStats(svc);
+    renderServiceRows(svc);
+    renderMetrics(svc, data);
     renderMaintenance(data.maintenance ?? []);
-    renderFilters(data);
-    renderServices(data);
-    if (dialog().open) {
-      renderDetail(data); // 팝업이 열려 있으면 내용만 최신으로 (닫지 않음)
-      loadHistory(view.selectedId, true); // 그래프 기록도 새로
-    }
-    renderIncidents(data.incidents ?? []);
+    refreshDetail(data); // 점검 상세 팝업(detail.js)에도 새 데이터 전달
     renderNotifications(data.notifications);
     document.getElementById('updated').textContent = `데이터 생성 시각: ${formatKst(data.generatedAt)}`;
   } catch (err) {
     // 불러오기에 실패해도 이전 화면은 그대로 두고 안내만 바꿉니다
     console.error(err);
-    document.getElementById('hero').className = 'statusbar statusbar--error';
-    document.getElementById('hero-title').textContent = '상태를 불러오지 못했습니다';
-    document.getElementById('hero-icon').replaceChildren(icon('alert', 'ico ico--sm'));
-    document.getElementById('hero-updated').textContent = '잠시 후 자동으로 다시 시도합니다.';
+    const status = document.getElementById('load-status');
+    status.textContent = view.svc
+      ? '최신 상태를 불러오지 못했습니다. 아래는 마지막으로 받은 화면이며, 잠시 후 자동으로 다시 시도합니다.'
+      : '상태를 불러오지 못했습니다. 잠시 후 자동으로 다시 시도합니다.';
+    status.classList.add('is-error');
   }
 }
 
-// 소개 띠의 '실제 점검 상태 보기': 이동은 링크(#services-panel)가 하고, 여기서는 상태 필터를 '전체'로 맞춥니다.
-// (이전에 고른 상태 필터가 남아 있으면 카드가 안 보일 수 있어서. 검색어는 입력칸에 보이므로 그대로 둡니다.)
-document.getElementById('goto-real').addEventListener('click', () => {
-  view.filter = 'all';
-  if (view.data) {
-    renderFilters(view.data);
-    renderServices(view.data);
-  }
-});
-
 document.getElementById('search').addEventListener('input', (e) => {
   view.query = e.target.value;
-  if (view.data) renderServices(view.data);
+  if (view.svc) renderServiceRows(view.svc);
 });
-
-// 팝업 닫기: ✕ 버튼, 바깥(어두운 배경) 클릭, Esc(브라우저 기본)
-document.getElementById('detail-close').addEventListener('click', closeDetail);
-dialog().addEventListener('click', (e) => {
-  // 배경을 누르면 클릭 대상이 <dialog> 자신이 됨 (안쪽 상자를 누르면 그 안의 요소가 대상)
-  if (e.target === e.currentTarget) closeDetail();
-});
-dialog().addEventListener('close', onDetailClosed);
 
 load();
 setInterval(load, REFRESH_MS); // 점검 회차와 별개로 60초마다도 새로 불러옴 (계획 작업·알림 변화 반영)

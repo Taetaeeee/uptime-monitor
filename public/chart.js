@@ -161,3 +161,109 @@ function statusStrip({ points, xMin, xMax, label }) {
   }
   return svg;
 }
+
+// ─────────────────────────────────────────────
+// 대시보드용 작은 그래프 (S2)
+// ─────────────────────────────────────────────
+
+/**
+ * 날짜 축 여러 줄 선 그래프 (점검·서비스마다 한 줄).
+ * 색은 CSS 클래스 chart__series--1~4가 정합니다 (밝은/어두운 화면에서 다르게 하려고 SVG에 색을 박지 않음).
+ * 값이 없는 날(null)은 0으로 그리지 않고 선을 끊습니다.
+ * @param {object} o
+ * @param {Array<{name:string, points:Array<{day:string, v:number|null}>}>} o.series
+ * @param {string} o.unit     y축 단위
+ * @param {number} [o.yMin]   y축 최솟값 (기본 0). 가동률처럼 위쪽에 몰린 값은 95 등으로 올려서 차이를 보이게
+ * @param {number} [o.yMax]   y축 최댓값 (없으면 값에 맞춰 올림)
+ * @param {string} o.label    화면 낭독기용 설명
+ * @param {string[]} [o.classes] 줄마다 색 클래스 (없으면 chart__series--1~4)
+ * @param {{w?:number,h?:number,l?:number}} [o.box]
+ */
+function multiLineChart(o) {
+  const { w, h, l, r, t, b } = { ...BOX, h: 150, ...(o.box ?? {}) };
+  const iw = w - l - r;
+  const ih = h - t - b;
+  const days = o.series[0]?.points.map((p) => p.day) ?? [];
+  const values = o.series.flatMap((s) => s.points.map((p) => p.v)).filter((v) => v !== null && v !== undefined);
+  const yMin = o.yMin ?? 0;
+  const yMax = o.yMax ?? niceMax(Math.max(...values, 1) * 1.15);
+  const x = (i) => l + (days.length > 1 ? (i / (days.length - 1)) * iw : iw / 2);
+  // yMin보다 낮은 값은 바닥에 붙입니다 (축을 넘어 그림 밖으로 나가지 않게)
+  const y = (v) => t + ih - ((Math.min(Math.max(v, yMin), yMax) - yMin) / Math.max(1e-9, yMax - yMin)) * ih;
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, class: 'chart', role: 'img', 'aria-label': o.label });
+  // 눈금선은 바닥·가운데·위 3개만 (작은 칸에서 덜 복잡하게)
+  for (let i = 0; i <= 2; i += 1) {
+    const v = yMin + ((yMax - yMin) * i) / 2;
+    svg.append(svgEl('line', { x1: l, x2: w - r, y1: y(v), y2: y(v), class: `chart__grid${i ? ' chart__grid--dash' : ''}` }));
+    const label = svgEl('text', { x: l - 6, y: y(v) + 4, class: 'chart__axis', 'text-anchor': 'end' });
+    label.textContent = `${Math.round(v * 10) / 10}${o.unit}`;
+    svg.append(label);
+  }
+  if (days.length) {
+    for (const [i, anchor] of [[0, 'start'], [days.length - 1, 'end']]) {
+      const label = svgEl('text', { x: x(i), y: h - 6, class: 'chart__axis', 'text-anchor': anchor });
+      label.textContent = days[i].slice(5).replace('-', '/');
+      svg.append(label);
+    }
+  }
+
+  o.series.forEach((s, k) => {
+    // o.classes로 줄마다 색 클래스를 정할 수 있음 (예: HTTP는 파랑·보라, DNS는 청록·주황 — 시안과 같은 색 짝)
+    const cls = o.classes?.[k] ?? `chart__series--${(k % 4) + 1}`;
+    let d = '';
+    let open = false;
+    s.points.forEach((p, i) => {
+      if (p.v === null || p.v === undefined) { open = false; return; }
+      d += `${open ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)} `;
+      open = true;
+    });
+    if (d) svg.append(svgEl('path', { d: d.trim(), class: `chart__mline ${cls}` }));
+    s.points.forEach((p, i) => {
+      if (p.v === null || p.v === undefined) return;
+      svg.append(svgEl('circle', { cx: x(i), cy: y(p.v), r: 2.2, class: `chart__mdot ${cls}` }));
+      svg.append(svgEl('circle', { cx: x(i), cy: y(p.v), r: 6, class: 'chart__hit' }, `${p.day} · ${s.name} ${p.v}${o.unit}`));
+    });
+  });
+  return svg;
+}
+
+/**
+ * 날짜별 개수 막대 (최근 장애 수). 0인 날은 막대를 그리지 않습니다.
+ * @param {object} o
+ * @param {string[]} o.days
+ * @param {number[]} o.values
+ * @param {string} o.label
+ */
+function dayBarChart(o) {
+  const { w, h, l, r, t, b } = { ...BOX, h: 110, ...(o.box ?? {}) };
+  const iw = w - l - r;
+  const ih = h - t - b;
+  const max = Math.max(2, ...o.values);
+  const bw = iw / Math.max(1, o.values.length);
+  const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, class: 'chart', role: 'img', 'aria-label': o.label });
+  for (const v of [0, max]) {
+    const yy = t + ih - (v / max) * ih;
+    svg.append(svgEl('line', { x1: l, x2: w - r, y1: yy, y2: yy, class: 'chart__grid' }));
+    const label = svgEl('text', { x: l - 6, y: yy + 4, class: 'chart__axis', 'text-anchor': 'end' });
+    label.textContent = String(v);
+    svg.append(label);
+  }
+  o.values.forEach((v, i) => {
+    const tip = `${o.days[i]} · 장애 ${v}건`;
+    if (v > 0) {
+      const bh = (v / max) * ih;
+      svg.append(svgEl('rect', { x: l + i * bw + 1, y: t + ih - bh, width: Math.max(2, bw - 2), height: bh, rx: 1, class: 'chart__fail' }, tip));
+    } else {
+      svg.append(svgEl('rect', { x: l + i * bw, y: t, width: bw, height: ih, class: 'chart__hitbar' }, tip));
+    }
+  });
+  if (o.days.length) {
+    for (const [i, anchor, xx] of [[0, 'start', l], [o.days.length - 1, 'end', w - r]]) {
+      const label = svgEl('text', { x: xx, y: h - 6, class: 'chart__axis', 'text-anchor': anchor });
+      label.textContent = o.days[i].slice(5).replace('-', '/');
+      svg.append(label);
+    }
+  }
+  return svg;
+}
