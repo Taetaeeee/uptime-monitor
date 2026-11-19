@@ -104,7 +104,7 @@
      (테스트 자료는 test/fixtures, 평가용 파서는 scripts/evaluate-rules/datasets.mjs로 이전) · C4 문서  ← 완료(커밋 전)
    - C5 테스트·배포·라이브 확인  ← 완료 (2026-11-19, 브랜치 chore/real-services-only, 깨끗한 worktree에서 배포. main 병합·푸시 완료)
    - 다음: 우리 실제 서비스 추가 + 서비스 묶음 모델(0015 services, monitors.service_id) → 14단계
-14. 서비스 묶음 구조 + 대시보드 새 디자인  ← 진행 중 (S1~S4 완료·배포, main 병합 b4d6438·5aaaa22·db4295c, Notion B-14)
+14. 서비스 묶음 구조 + 대시보드 새 디자인  ← 완료 (S1~S4 완료·배포, main 병합 b4d6438·5aaaa22·db4295c, 스크린샷 교체 2026-11-20, Notion B-14)
    - S1 0015(services·monitors.service_id·service_daily_stats), 회차 기준 서비스 가동률·상태 판정 순수 함수(src/service-status.js),
      Cron 서비스 집계, GET /api/services·/api/services/:key  ← 완료 (dc2c86c, 0015 원격 적용 → 배포·라이브 확인)
      서비스 가동률 = 묶인 점검이 모두 성공한 5분 회차의 비율. 점검은 id가 아니라 주소로 연결(로컬·원격 id가 다름).
@@ -118,7 +118,7 @@
      src/service-admin.js(주소 검사·서비스 키·점검 목록 순수 함수), POST /api/admin/services/preview·/api/admin/services,
      PATCH /api/admin/services/:key(끄기·다시 켜기), 대시보드 [+ 서비스 추가] 팝업(토큰은 저장하지 않고 닫을 때 지움).
      관리자 토큰 + 운영자 동의 필수, 공개 https 도메인만, 켜진 서비스 10개까지. 실제 서비스 추가는 사용자가 직접 함
-   - 남음: README 스크린샷 교체(새 화면으로)
+   - README 스크린샷 교체  ← 완료 (2026-11-20, 라이브 화면 8장. 옛 status-dark/light·detail-replay 삭제, 장애 #41 훈련 화면은 유지)
 15. 오래 가는 장애 메일 알림  ← 완료 (2026-11-20, 85e15de → main 병합 39454a7, Notion B-15)
    - 0016 service_escalations, src/escalation.js(판단·문구 순수 함수), escalation-run.js(Cron, 보낸 뒤에 기록 → 실패하면 다음 회차 재시도),
      channels/email.js(Resend), POST /api/admin/alerts/test(시험 메일). 서비스 단위 15분 1통 + 복구 1통, 반복 없음
