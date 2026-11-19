@@ -757,3 +757,55 @@ export async function setServiceActive(db, key, active) {
   ]);
   return svc.meta.changes;
 }
+
+// ─────────────────────────────────────────────
+// 오래 가는 장애 메일 알림 (15단계, 0016)
+// ─────────────────────────────────────────────
+
+/**
+ * 메일 판단에 필요한 지금 상태를 한 번에 읽는다 (서비스·점검·장애 수가 적어 전체 조회).
+ *   services        켜진 서비스와 그 서비스의 켜진 점검 id
+ *   openIncidents   열린 장애 (점검 이름·첫 실패·원인)
+ *   openEscalations 메일을 보냈고 아직 복구 메일 전인 구간
+ */
+export async function getEscalationState(db) {
+  const [svc, inc, esc] = await Promise.all([
+    db.prepare(
+      `SELECT s.id, s.service_key, s.name, m.id AS monitor_id
+         FROM services s
+         JOIN monitors m ON m.service_id = s.id AND m.is_active = 1
+        WHERE s.is_active = 1
+        ORDER BY s.sort_order, s.id, m.id`
+    ).all(),
+    db.prepare(
+      `SELECT i.monitor_id, m.name AS monitor_name, i.started_at, i.cause
+         FROM incidents i
+         JOIN monitors m ON m.id = i.monitor_id
+        WHERE i.resolved_at IS NULL`
+    ).all(),
+    db.prepare('SELECT id, service_id, started_at FROM service_escalations WHERE resolved_at IS NULL').all(),
+  ]);
+  const services = new Map();
+  for (const r of svc.results) {
+    if (!services.has(r.id)) services.set(r.id, { id: r.id, key: r.service_key, name: r.name, monitorIds: [] });
+    services.get(r.id).monitorIds.push(r.monitor_id);
+  }
+  return {
+    services: [...services.values()],
+    openIncidents: inc.results.map((r) => ({ monitorId: r.monitor_id, monitorName: r.monitor_name, startedAt: r.started_at, cause: r.cause })),
+    openEscalations: esc.results.map((r) => ({ id: r.id, serviceId: r.service_id, startedAt: r.started_at })),
+  };
+}
+
+/** 장애 메일을 보낸 뒤 구간 기록 (보내기에 성공한 뒤에만 부름) */
+export async function insertEscalation(db, serviceId, startedAt, escalatedAt) {
+  await db
+    .prepare(`INSERT INTO service_escalations (service_id, started_at, escalated_at, source) VALUES (?1, ?2, ?3, 'real')`)
+    .bind(serviceId, startedAt, escalatedAt)
+    .run();
+}
+
+/** 복구 메일을 보낸 뒤 구간 닫기 */
+export async function resolveEscalation(db, id, resolvedAt) {
+  await db.prepare('UPDATE service_escalations SET resolved_at = ?1 WHERE id = ?2 AND resolved_at IS NULL').bind(resolvedAt, id).run();
+}

@@ -28,7 +28,7 @@
 - **무엇:** 서비스를 5분마다 점검해 장애를 감지·기록하고, 가동률과 장애 이력을 공개 상태 페이지·월간 보고서로 보여 주는 운영 도구. Cloudflare Workers + D1, 화면은 빌드 도구 없는 HTML/JS, 내부 점검은 Python 에이전트.
 - **실제로 돌고 있는 것:** 내가 운영하는 사이트(고쳐라!)와 팀이 만든 채팅(Keychats)을 5분마다 실제 점검하고, 장애 훈련으로 "장애 → 알림 → 복구 → 사후 보고서" 흐름을 실제 환경에서 확인했습니다.
 - **가짜 데이터:** 배포본에는 없습니다. 가짜 데이터는 테스트 고정 자료(`test/fixtures/`)와 로컬 시험용 에이전트 시뮬레이터에만 있고, 실제가 아닌 기록이 섞이면 화면이 '실제 아님'으로 따로 표시합니다.
-- **검증:** 판정·계산 로직을 순수 함수로 분리해 JS 445개·Python 22개 테스트를 두었습니다(2026-11-20 로컬 확인). 푸시마다 CI(Windows·Ubuntu)에서 다시 실행합니다. 판정 규칙의 성능은 설계에 쓰지 않은 데이터로 따로 측정했습니다(서버 지표에서 탐지율 44.7%, 오탐 시계열당 하루 0.81건). 이 수치가 이 서비스의 HTTP 점검 성능은 아니라는 점까지 [적어 두었습니다](#판정-규칙-성능-측정).
+- **검증:** 판정·계산 로직을 순수 함수로 분리해 JS 455개·Python 22개 테스트를 두었습니다(2026-11-20 로컬 확인). 푸시마다 CI(Windows·Ubuntu)에서 다시 실행합니다. 판정 규칙의 성능은 설계에 쓰지 않은 데이터로 따로 측정했습니다(서버 지표에서 탐지율 44.7%, 오탐 시계열당 하루 0.81건). 이 수치가 이 서비스의 HTTP 점검 성능은 아니라는 점까지 [적어 두었습니다](#판정-규칙-성능-측정).
 - **한계:** 에이전트 무응답 감지는 대상마다 켜야 하고 아직 켠 대상이 없음, 점검 정밀도 5분, 도메인 만료는 판정 로직만 ([전체 한계](#알려진-한계와-다음-과제)).
 
 ## 화면
@@ -50,6 +50,7 @@
 | 외부 점검 | Cloudflare Worker 예약 실행(Cron, 5분)으로 HTTP 상태 코드·응답 시간·키워드, DNS(DNS-over-HTTPS로 이름 풀림·기대값) 점검. 도메인 만료는 판정 로직만 ([한계](#알려진-한계와-다음-과제) 참고) |
 | 내부 점검 | Windows PC의 Python 에이전트가 ping·TCP 포트·SSL 만료·디스크·서비스 상태를 측정해 API로 보고 (바깥으로만 연결) |
 | 장애 판정 | 2회 연속 실패 → 장애, 1회 성공 → 복구. 상태가 바뀔 때만 알림 기록 |
+| 오래 가는 장애 메일 | 서비스의 장애 구간(묶인 점검 중 하나라도 장애)이 **첫 실패부터 15분**을 넘으면 메일 1통, 복구되면 1통. 서비스당 구간마다 1번(점검 3개가 함께 죽어도 1통), 반복 알림 없음, 발송이 실패하면 다음 회차에 다시 시도. 짧은 장애는 화면 기록만 ([설정](#장애-메일-설정)) |
 | 장애 이력·보고서 | 장애 1건마다 첫 실패·판정·복구 시각, 감지 시간(MTTD)·복구 시간(MTTR), 사후 보고서 5항목 |
 | 계획 작업 | 미리 등록한 작업 시간의 점검은 장애로 보지 않고 가동률에서 제외 |
 | 대시보드 (`/`) | 왼쪽 메뉴(대시보드·서비스·장애 이력·월간 보고서, 아래에 운영 근거). 요약 3칸(전체 서비스·정상·부분 장애/장애), **서비스 줄**(서비스 상태·30일 가동률·최근 점검·세부 점검 칩 — 칩을 누르면 그 점검의 상세 팝업), 최근 알림(안에서 스크롤), 운영 지표 요약(HTTP·DNS 일평균 응답, 최근 30일 장애 수, 서비스 일 가동률 — 칸을 누르면 크게 보는 팝업), "다음 점검 MM:SS"(점검은 5분마다, 화면은 **60초마다** 새로 불러옴 — 실시간 감시가 아님) |
@@ -92,7 +93,7 @@ flowchart LR
 - 화면: 빌드 도구 없는 HTML/CSS/JS
 - 판정·계산 로직은 순수 함수로 분리해 `node --test`로 테스트
 - 에이전트: Python 3 표준 라이브러리만 사용
-- 테스트: JS 445개·Python 22개 (외부 접속·원본 데이터 없이 CI에서도 돌아감, 2026-11-19 로컬 확인)
+- 테스트: JS 455개·Python 22개 (외부 접속·원본 데이터 없이 CI에서도 돌아감, 2026-11-19 로컬 확인)
 
 ## 주요 설계 판단
 
@@ -284,9 +285,10 @@ src/            Worker 코드
   stale.js        에이전트 무응답 판정(순수 함수)   stale-run.js  Cron 무응답 실행 → record.js
   service-status.js  서비스 상태 판정·회차 단위 가동률 (순수 함수, 0015)
   service-admin.js   서비스 추가 입력 검사·서비스 키·점검 목록 (순수 함수, S4)
+  escalation.js      오래 가는 장애 메일 판단·문구 (순수 함수)   escalation-run.js  Cron 메일 실행   channels/email.js  메일 채널
 public/         대시보드(index·app·dashboard-model·dashboard.css), 서비스 상세(service·service-detail), 서비스 점검 카드(services), 장애 이력(incidents), 운영 근거(evidence),
                 점검 상세 팝업(detail.js), 장애 상세, 월간 보고서 (HTML/CSS/JS)
-migrations/     D1 스키마 (0001 ~ 0015; 0008~0010 재생 출처·설정·단위(기능은 삭제, 이력으로 남김), 0011 사내 메신저 점검 등록, 0012 장애 훈련 대상(삭제됨), 0013 무응답 감시 기준, 0014 AI 조사 기록, 0015 서비스 묶음)
+migrations/     D1 스키마 (0001 ~ 0016; 0008~0010 재생 출처·설정·단위(기능은 삭제, 이력으로 남김), 0011 사내 메신저 점검 등록, 0012 장애 훈련 대상(삭제됨), 0013 무응답 감시 기준, 0014 AI 조사 기록, 0015 서비스 묶음, 0016 장애 메일 기록)
 docs/           장애 훈련 PDF(drills/), README용 스크린샷(screenshots/), 판정 규칙 성능 측정 결과(evaluation/), 이력서 문장·면접 Q&A·검토자 안내(portfolio/)
 scripts/        evaluate-rules/ (판정 규칙 성능 측정), purge-fake-data/ (2026-11-19 가짜 데이터 삭제 SQL·확인 조회)
 agent/          Python 에이전트 + 시뮬레이터 시나리오 + 테스트
@@ -300,7 +302,7 @@ test/           node --test (가짜 D1: Node 내장 SQLite에 실제 마이그�
 ### 테스트
 ```powershell
 npm.cmd install
-npm.cmd test                                     # JS 445개
+npm.cmd test                                     # JS 455개
 python -m unittest discover -s agent\tests       # Python 22개
 ```
 
@@ -308,7 +310,7 @@ python -m unittest discover -s agent\tests       # Python 22개
 ```powershell
 npx.cmd wrangler login                           # 계정 인증 (직접)
 npx.cmd wrangler d1 create status-monitor-db     # 나온 database_id를 wrangler.jsonc에
-npm.cmd run db:migrate:remote                    # 마이그레이션 0001 ~ 0015
+npm.cmd run db:migrate:remote                    # 마이그레이션 0001 ~ 0016
 npx.cmd wrangler secret put AGENT_API_KEY        # 에이전트 키 (직접 생성)
 npx.cmd wrangler secret put ADMIN_TOKEN          # 관리자 토큰 (에이전트 키와 다른 값)
 npm.cmd run deploy
@@ -355,6 +357,17 @@ Invoke-RestMethod -Method Delete -Uri "$b/api/admin/maintenance/<작업 번호>"
 ```
 시각에는 반드시 시간대(`+09:00` 또는 `Z`)를 붙입니다. 없으면 거부합니다(한국 시간/UTC 혼동 방지).
 
+### 장애 메일 설정
+
+메일은 발송 API(Resend)로 보냅니다. 계정 만들기·API 키 발급은 직접 하고, 키와 받는 주소는 **wrangler secret으로만** 넣습니다(코드·저장소에 없음). 둘 중 하나라도 없으면 메일 기능만 꺼지고 점검은 그대로 동작합니다.
+```powershell
+npx.cmd wrangler secret put RESEND_API_KEY                  # 발송 API 키
+npx.cmd wrangler secret put ALERT_EMAIL_TO                  # 받는 주소
+npx.cmd wrangler d1 migrations apply status-monitor-db --remote   # 0016 (메일 보낸 기록 표)
+Invoke-RestMethod -Method Post -Uri "$b/api/admin/alerts/test" -Headers $h   # 시험 메일 1통 → {ok: true}
+```
+도메인 없이 쓰므로 Resend 기본 발신 주소(`onboarding@resend.dev`)는 **Resend 가입 메일 주소로만** 보낼 수 있습니다(Resend 문서 "403 Error Using resend.dev Domain", 2026-11-20 확인). 그래서 `ALERT_EMAIL_TO`는 가입 메일 주소로 넣고, 받는 사람은 운영자 한 명입니다. 무료 플랜은 월 3,000통·하루 100통(요금 페이지, 2026-11-20 확인)이고, 이 기능은 15분 넘는 장애 1번에 2통만 씁니다. 다른 사람에게도 보내려면 도메인을 사서 Resend에 인증해야 합니다. 메일 안의 '서비스 상세' 링크는 `wrangler.jsonc`의 공개 변수 `SITE_URL`을 씁니다.
+
 ### 서비스 추가 · 끄기
 
 대시보드의 **[+ 서비스 추가]**에서 사이트 주소를 넣고 [미리 점검] → [추가]를 누르면 서비스 1개와 점검(HTTP·DNS, 선택한 상태 확인 주소)이 만들어지고 다음 5분 회차부터 점검합니다. 관리자 토큰이 필요하고(입력칸에만 두고 저장하지 않음), "내가 운영하거나 운영자 동의를 받은 서비스" 확인이 없으면 서버가 거부합니다. 끄기는 화면 버튼 없이 API로 합니다(삭제 대신 끄기 — 기록은 남음).
@@ -380,6 +393,7 @@ Invoke-RestMethod -Method Patch -Uri "$b/api/admin/services/<서비스 키>" -He
 | `POST /api/agent/report` | 에이전트 키 | 에이전트 측정값 보고 (중복 회차는 건너뜀) |
 | `PUT /api/admin/incidents/:id/report` | 관리자 토큰 | 보고서 작성·수정 |
 | `POST /api/admin/maintenance` · `DELETE /api/admin/maintenance/:id` | 관리자 토큰 | 계획 작업 등록·취소 |
+| `POST /api/admin/alerts/test` | 관리자 토큰 | 시험 메일 1통 (설정이 없으면 503, 받는 주소는 응답에 넣지 않음) |
 | `POST /api/admin/services/preview` | 관리자 토큰 | 서비스 추가 미리 점검: 주소 검사 + 점검을 한 번씩 실행한 결과 (저장 안 함) |
 | `POST /api/admin/services` · `PATCH /api/admin/services/:key` | 관리자 토큰 | 서비스 + 점검 추가 (운영자 동의 필수) / 끄기·다시 켜기 |
 
