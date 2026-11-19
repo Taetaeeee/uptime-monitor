@@ -22,6 +22,12 @@
     "directory": "./public"
   },
 
+  // 공개 변수 (비밀 값 아님): 장애 메일 안의 '서비스 상세' 링크에 쓰는 이 사이트 주소 (README에도 공개된 주소)
+  // 메일 발송 키·받는 주소는 여기 두지 않고 wrangler secret으로만 넣습니다 (RESEND_API_KEY, ALERT_EMAIL_TO)
+  "vars": {
+    "SITE_URL": "https://status-monitor.nalzzoaleph26.workers.dev"
+  },
+
   "d1_databases": [
     {
       // 코드에서 env.DB 로 접근하는 이름

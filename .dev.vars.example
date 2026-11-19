@@ -24,3 +24,11 @@ RCA_DAILY_USD_LIMIT=
 RCA_RUN_USD_LIMIT=
 # 실제 점검을 허용할 내 서비스 호스트만 쉼표로 구분. 등록된 real·활성 HTTP 대상과 교집합.
 RCA_ALLOWED_HOSTS=
+
+# 오래 가는 장애 메일 (15단계) — 둘 중 하나라도 비어 있으면 메일 기능만 꺼집니다.
+#   배포본: npx.cmd wrangler secret put RESEND_API_KEY / npx.cmd wrangler secret put ALERT_EMAIL_TO
+RESEND_API_KEY=
+# 도메인이 없으면 Resend 가입 메일 주소만 받을 수 있음
+ALERT_EMAIL_TO=
+# 보내는 주소 (선택). 비우면 Resend 기본 발신 주소
+ALERT_EMAIL_FROM=

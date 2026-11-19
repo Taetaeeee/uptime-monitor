@@ -8,7 +8,7 @@
 //          GET  /api/monitors/:id/history?hours=24 → 상세 팝업 그래프용 최근 기록 (api.js)
 //          GET  /api/services, /api/services/:key → 서비스 묶음 목록·상세 (api.js + service-status.js, 0015)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
-//          [Cron] 실제 점검 뒤에 에이전트 무응답 감지(stale-run.js)도 같은 회차에 실행
+//          [Cron] 실제 점검 뒤에 에이전트 무응답 감지(stale-run.js), 오래 가는 장애 메일(escalation-run.js)도 같은 회차에 실행
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
 // ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
 // (공개 데이터셋 재생은 2026-11-19 가짜 데이터 정리 때 실행 경로를 없앴습니다. 판정 순수 함수 replay.js는
@@ -34,6 +34,7 @@ import { isValidMonth, kstMonthOf } from './report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
 import { runStaleCheck } from './stale-run.js';
+import { runEscalation } from './escalation-run.js';
 import { handleRca } from './rca-api.js';
 
 /**
@@ -149,6 +150,13 @@ export default {
       await runStaleCheck(env.DB, runTime);
     } catch (err) {
       console.error(`[무응답] ${toCheckSlot(runTime)} 실패:`, err);
+    }
+
+    // 오래 가는 장애 메일 (15단계): 기록이 모두 끝난 뒤에 판단. 메일 설정이 없으면 바로 끝나고, 실패해도 점검 기록에는 영향 없음
+    try {
+      await runEscalation(env, runTime);
+    } catch (err) {
+      console.error(`[메일] ${toCheckSlot(runTime)} 실패:`, err);
     }
   },
 

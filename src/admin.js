@@ -6,6 +6,7 @@
 //   POST   /api/admin/services/preview       '+ 서비스 추가' 미리 점검: 주소 검사 + 1회 접속 결과 (저장 안 함, S4)
 //   POST   /api/admin/services               서비스 + 점검(HTTP·DNS·선택한 상태 확인) 만들기 (S4)
 //   PATCH  /api/admin/services/:key          { isActive: false|true } 서비스 끄기·다시 켜기 (삭제 대신 끄기, S4)
+//   POST   /api/admin/alerts/test            시험 메일 1통 (장애를 기다리지 않고 메일 설정 확인, 15단계)
 //
 // 인증: Authorization: Bearer <ADMIN_TOKEN>  (wrangler secret, 에이전트 키와 별개)
 // 보고서·계획 작업은 PowerShell의 Invoke-RestMethod 등으로 호출해요. 서비스 추가만 대시보드 팝업이 있습니다(토큰은 저장하지 않음).
@@ -27,6 +28,7 @@ import { observe } from './checker.js';
 import { observeDns } from './dns.js';
 import { judgeCheck, judgeDns } from './judge.js';
 import { REASON_TEXT } from './notify.js';
+import { isEmailConfigured, sendEmail } from './channels/email.js';
 
 const PREVIEW_TIMEOUT_MS = 8_000; // 미리 점검은 사람이 기다리므로 Cron(10초)보다 조금 짧게
 
@@ -186,6 +188,26 @@ export async function handleAdmin(request, env, url, deps = {}) {
     await insertServiceWithMonitors(env.DB, { key, name: v.value.name, description: v.value.description, homeUrl: v.value.homeUrl, sortOrder }, monitors, toIsoSeconds(now));
     console.log(`[관리자] 서비스 추가 ${key} (${v.value.host}), 점검 ${monitors.length}개`);
     return json({ ok: true, key, name: v.value.name, checks: monitors.map((m) => ({ name: m.name, kind: m.kind })) }, 201);
+  }
+
+  // ── 시험 메일 (15단계) ──
+  // 받는 주소는 응답에 넣지 않습니다 (개인 정보). 성공·실패만 돌려줘요.
+  if (path === '/api/admin/alerts/test') {
+    if (method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+    if (!isEmailConfigured(env)) return json({ error: 'email_not_configured' }, 503);
+    try {
+      await sendEmail({
+        subject: '[Uptime Monitor] 시험 메일',
+        text: `메일 알림 설정이 동작합니다.
+보낸 시각(UTC): ${toIsoSeconds(now)}
+장애가 15분 넘게 계속되면 이 주소로 장애 메일과 복구 메일이 옵니다.`,
+      }, env, deps);
+      console.log('[관리자] 시험 메일 보냄');
+      return json({ ok: true });
+    } catch (err) {
+      console.error(`[관리자] 시험 메일 실패: ${err?.message ?? err}`);
+      return json({ error: 'email_send_failed' }, 502);
+    }
   }
 
   // ── 서비스 끄기·다시 켜기 ──
