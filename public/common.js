@@ -157,6 +157,7 @@ const ICONS = {
     ['path', { d: 'M9 18c-4.51 2-5-2-7-2' }],
   ],
   arrowRight: [['path', { d: 'M5 12h14' }], ['path', { d: 'm12 5 7 7-7 7' }]],
+  plus: [['path', { d: 'M12 5v14' }], ['path', { d: 'M5 12h14' }]], // 서비스 추가 버튼
   // 서비스 아이콘 (대시보드 서비스 줄: 웹게임·채팅)
   game: [['rect', { x: 2, y: 7, width: 20, height: 11, rx: 4 }], ['path', { d: 'M7 11v4M5 13h4M16 12h.01M18 14h.01' }]],
   chat: [['path', { d: 'M4 5h16v11H9l-5 4z' }], ['path', { d: 'M8 10.5h.01M12 10.5h.01M16 10.5h.01' }]],

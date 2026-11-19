@@ -112,4 +112,8 @@
      새 페이지 services.html(점검별 카드)·incidents.html(장애 이력)·evidence.html(운영 근거), 점검 상세 팝업은 public/detail.js
    - S3 서비스 상세 화면 service.html?key=…(service-detail.js)  ← 완료 (4ff6e3c, 2026-11-20 배포·라이브 확인)
      /api/services에 homeUrl(공개 사이트 첫 화면 주소만) 공개 — 점검 주소는 계속 비공개. 새 서버 API 없이 기존 history API 재사용
-   - 남음: S4 '+ 서비스 추가'(관리자 토큰·운영자 동의 확인·https/공인 주소·개수 상한), README 스크린샷 교체
+   - S4 '+ 서비스 추가'  ← 완료(커밋 전, 브랜치 feat/add-service)
+     src/service-admin.js(주소 검사·서비스 키·점검 목록 순수 함수), POST /api/admin/services/preview·/api/admin/services,
+     PATCH /api/admin/services/:key(끄기·다시 켜기), 대시보드 [+ 서비스 추가] 팝업(토큰은 저장하지 않고 닫을 때 지움).
+     관리자 토큰 + 운영자 동의 필수, 공개 https 도메인만, 켜진 서비스 10개까지. 실제 서비스 추가는 사용자가 직접 함
+   - 남음: README 스크린샷 교체(새 화면으로)

@@ -713,3 +713,47 @@ export async function getResultsSince(db, monitorId, sinceIso) {
     source: r.source,
   }));
 }
+
+// ─────────────────────────────────────────────
+// '+ 서비스 추가' / 끄기 (S4, 관리자 API)
+// ─────────────────────────────────────────────
+
+/** 서비스 전체(꺼진 것 포함)의 키·대표 주소·켜짐 여부 — 키 겹침·중복 주소·개수 상한 확인용 (서비스 수가 적어 전체 조회) */
+export async function getServiceRows(db) {
+  const { results } = await db.prepare('SELECT service_key, home_url, is_active, sort_order FROM services').all();
+  return results.map((r) => ({ key: r.service_key, homeUrl: r.home_url, isActive: r.is_active === 1, sortOrder: r.sort_order }));
+}
+
+/**
+ * 서비스 1개와 점검들을 한 묶음(batch)으로 만든다: 중간에 실패하면 모두 취소되어 "점검 없는 서비스"가 남지 않음.
+ * 점검의 service_id는 같은 batch 안에서 키로 찾아 넣습니다 (먼저 넣은 서비스의 id를 따로 읽지 않아도 되게).
+ * 출처는 모두 real (실제 운영 서비스만 추가하는 기능)
+ */
+export async function insertServiceWithMonitors(db, svc, monitors, createdAt) {
+  const statements = [
+    db.prepare(
+      `INSERT INTO services (service_key, name, description, home_url, is_active, sort_order, source, created_at)
+       VALUES (?1, ?2, ?3, ?4, 1, ?5, 'real', ?6)`
+    ).bind(svc.key, svc.name, svc.description, svc.homeUrl, svc.sortOrder, createdAt),
+    ...monitors.map((m) =>
+      db.prepare(
+        `INSERT INTO monitors (name, kind, url, expected_status, keyword, max_response_ms, is_active, source, created_at, service_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 'real', ?7, (SELECT id FROM services WHERE service_key = ?8))`
+      ).bind(m.name, m.kind, m.url, m.expectedStatus, m.keyword, m.maxResponseMs, createdAt, svc.key)
+    ),
+  ];
+  await db.batch(statements);
+}
+
+/**
+ * 서비스와 그 점검을 켜거나 끈다 (삭제 대신 끄기: 기록은 남김).
+ * @returns {Promise<number>} 바뀐 서비스 수 (0이면 없는 키)
+ */
+export async function setServiceActive(db, key, active) {
+  const flag = active ? 1 : 0;
+  const [svc] = await db.batch([
+    db.prepare('UPDATE services SET is_active = ?1 WHERE service_key = ?2').bind(flag, key),
+    db.prepare('UPDATE monitors SET is_active = ?1 WHERE service_id = (SELECT id FROM services WHERE service_key = ?2)').bind(flag, key),
+  ]);
+  return svc.meta.changes;
+}

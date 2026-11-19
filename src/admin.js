@@ -3,9 +3,12 @@
 //   PUT    /api/admin/incidents/:id/report   보고서 항목 작성·수정 (보낸 항목만 바뀜)
 //   POST   /api/admin/maintenance            계획 작업 등록
 //   DELETE /api/admin/maintenance/:id        계획 작업 취소
+//   POST   /api/admin/services/preview       '+ 서비스 추가' 미리 점검: 주소 검사 + 1회 접속 결과 (저장 안 함, S4)
+//   POST   /api/admin/services               서비스 + 점검(HTTP·DNS·선택한 상태 확인) 만들기 (S4)
+//   PATCH  /api/admin/services/:key          { isActive: false|true } 서비스 끄기·다시 켜기 (삭제 대신 끄기, S4)
 //
 // 인증: Authorization: Bearer <ADMIN_TOKEN>  (wrangler secret, 에이전트 키와 별개)
-// 관리자 화면은 만들지 않았습니다. PowerShell의 Invoke-RestMethod 등으로 호출해요.
+// 보고서·계획 작업은 PowerShell의 Invoke-RestMethod 등으로 호출해요. 서비스 추가만 대시보드 팝업이 있습니다(토큰은 저장하지 않음).
 
 import { checkBearer } from './auth.js';
 import { validateIncidentReport, validateMaintenance } from './incident.js';
@@ -14,8 +17,47 @@ import {
   insertMaintenance,
   deleteMaintenance,
   getMonitorSource,
+  getServiceRows,
+  insertServiceWithMonitors,
+  setServiceActive,
 } from './db.js';
 import { toIsoSeconds } from './time.js';
+import { validateServiceInput, serviceKeyFor, buildMonitors, MAX_SERVICES } from './service-admin.js';
+import { observe } from './checker.js';
+import { observeDns } from './dns.js';
+import { judgeCheck, judgeDns } from './judge.js';
+import { REASON_TEXT } from './notify.js';
+
+const PREVIEW_TIMEOUT_MS = 8_000; // 미리 점검은 사람이 기다리므로 Cron(10초)보다 조금 짧게
+
+/** 같은 사이트인지 비교할 때 끝의 / 차이는 무시 (기존 고쳐라!는 'https://gochyeora.pages.dev'로 저장돼 있음) */
+const sameSite = (a, b) => (a ?? '').replace(/\/$/, '') === (b ?? '').replace(/\/$/, '');
+
+/**
+ * 미리 점검: 만들 점검을 저장하지 않고 한 번씩 실제로 돌려 본다 (Cron과 같은 측정·판정 함수).
+ * 실패해도 추가는 막지 않고 화면에 경고로 보여 줍니다 (아직 배포 전인 사이트를 먼저 등록할 수도 있어서).
+ */
+async function previewChecks(monitors, deps) {
+  const opts = { fetchFn: deps.fetchFn, timeoutMs: PREVIEW_TIMEOUT_MS };
+  return Promise.all(
+    monitors.map(async (m) => {
+      const isDns = m.kind === 'dns';
+      const obs = isDns ? await observeDns(m, opts) : await observe(m, opts);
+      const v = isDns ? judgeDns(m, obs) : judgeCheck(m, obs);
+      return {
+        name: m.name,
+        kind: m.kind,
+        isSuccess: v.isSuccess,
+        isSlow: v.isSlow,
+        statusCode: isDns ? null : obs.statusCode,
+        responseMs: obs.responseMs,
+        records: isDns ? obs.answers.length : null,
+        failureReason: v.failureReason,
+        failureText: v.failureReason ? REASON_TEXT[v.failureReason] ?? v.failureReason : null,
+      };
+    })
+  );
+}
 
 const MAX_BODY_BYTES = 16 * 1024;
 
@@ -105,6 +147,65 @@ export async function handleAdmin(request, env, url, deps = {}) {
     if (changed === 0) return json({ error: 'maintenance_not_found' }, 404);
     console.log(`[관리자] 계획 작업 ${id} 취소`);
     return json({ ok: true, id });
+  }
+
+  // ── 서비스 추가: 미리 점검 (저장 안 함) ──
+  const selfHost = url.host; // 이 Worker 자신의 주소는 점검 대상으로 받지 않음
+  if (path === '/api/admin/services/preview') {
+    if (method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+    const { body, error } = await readJson(request);
+    if (error) return error;
+    const v = validateServiceInput(body, { selfHost, requireConsent: false });
+    if (!v.ok) return json({ error: v.error }, 400);
+    const rows = await getServiceRows(env.DB);
+    const monitors = buildMonitors(v.value);
+    const checks = await previewChecks(monitors, deps);
+    return json({
+      ok: true,
+      proposed: { key: serviceKeyFor(v.value.host, rows.map((r) => r.key)), name: v.value.name, homeUrl: v.value.homeUrl },
+      alreadyExists: rows.some((r) => r.isActive && sameSite(r.homeUrl, v.value.homeUrl)),
+      activeCount: rows.filter((r) => r.isActive).length,
+      limit: MAX_SERVICES,
+      checks,
+    });
+  }
+
+  // ── 서비스 추가: 만들기 ──
+  if (path === '/api/admin/services') {
+    if (method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+    const { body, error } = await readJson(request);
+    if (error) return error;
+    const v = validateServiceInput(body, { selfHost, requireConsent: true });
+    if (!v.ok) return json({ error: v.error }, 400);
+    const rows = await getServiceRows(env.DB);
+    if (rows.some((r) => r.isActive && sameSite(r.homeUrl, v.value.homeUrl))) return json({ error: 'already_exists' }, 409);
+    if (rows.filter((r) => r.isActive).length >= MAX_SERVICES) return json({ error: 'limit_reached', limit: MAX_SERVICES }, 409);
+    const key = serviceKeyFor(v.value.host, rows.map((r) => r.key));
+    const sortOrder = Math.max(0, ...rows.map((r) => r.sortOrder ?? 0)) + 1; // 맨 뒤에 붙임
+    const monitors = buildMonitors(v.value);
+    await insertServiceWithMonitors(env.DB, { key, name: v.value.name, description: v.value.description, homeUrl: v.value.homeUrl, sortOrder }, monitors, toIsoSeconds(now));
+    console.log(`[관리자] 서비스 추가 ${key} (${v.value.host}), 점검 ${monitors.length}개`);
+    return json({ ok: true, key, name: v.value.name, checks: monitors.map((m) => ({ name: m.name, kind: m.kind })) }, 201);
+  }
+
+  // ── 서비스 끄기·다시 켜기 ──
+  m = path.match(/^\/api\/admin\/services\/([a-z0-9][a-z0-9-]{0,39})$/);
+  if (m) {
+    if (method !== 'PATCH') return json({ error: 'method_not_allowed' }, 405);
+    const { body, error } = await readJson(request);
+    if (error) return error;
+    if (typeof body?.isActive !== 'boolean') return json({ error: 'is_active_required' }, 400);
+    if (body.isActive) {
+      // 다시 켤 때도 상한을 지킴
+      const rows = await getServiceRows(env.DB);
+      const target = rows.find((r) => r.key === m[1]);
+      if (!target) return json({ error: 'service_not_found' }, 404);
+      if (!target.isActive && rows.filter((r) => r.isActive).length >= MAX_SERVICES) return json({ error: 'limit_reached', limit: MAX_SERVICES }, 409);
+    }
+    const changed = await setServiceActive(env.DB, m[1], body.isActive);
+    if (changed === 0) return json({ error: 'service_not_found' }, 404);
+    console.log(`[관리자] 서비스 ${m[1]} ${body.isActive ? '다시 켬' : '끔'}`);
+    return json({ ok: true, key: m[1], isActive: body.isActive });
   }
 
   return json({ error: 'not_found' }, 404);
