@@ -427,3 +427,155 @@ load();
 setInterval(load, REFRESH_MS); // 점검 회차와 별개로 60초마다도 새로 불러옴 (계획 작업·알림 변화 반영)
 setInterval(tickClock, 1000);
 tickClock();
+
+// ─────────────────────────────────────────────
+// 서비스 추가 (S4) — 주소 → [미리 점검] → [추가]
+// 관리자 API(POST /api/admin/services/preview, /api/admin/services)를 부릅니다. 판단(주소 검사·동의·중복·상한)은 서버가 하고,
+// 여기서는 결과를 사람이 읽을 문장으로 보여 주기만 합니다. 관리자 토큰은 입력칸에만 있고 어디에도 저장하지 않습니다.
+// ─────────────────────────────────────────────
+
+// 서버 오류 코드 → 화면 문구 (src/service-admin.js·src/admin.js의 코드와 같게)
+const ADD_ERROR_TEXT = {
+  url_required: '사이트 주소를 넣어 주세요.',
+  url_invalid: '주소 형식이 올바르지 않습니다.',
+  url_too_long: '주소가 너무 깁니다.',
+  https_only: 'https:// 로 시작하는 주소만 받습니다.',
+  credentials_not_allowed: '아이디·비밀번호가 들어간 주소는 받지 않습니다.',
+  port_not_allowed: '기본 포트(443)가 아닌 주소는 받지 않습니다.',
+  ip_not_allowed: 'IP 주소는 받지 않습니다. 도메인 이름을 넣어 주세요.',
+  host_invalid: '도메인 이름이 올바르지 않습니다 (예: my-app.pages.dev).',
+  host_not_public: '내부망·예약된 이름(localhost, .local, .test 등)은 받지 않습니다.',
+  self_not_allowed: '이 모니터 자신의 주소는 점검 대상으로 받지 않습니다.',
+  health_host_mismatch: '상태 확인 주소는 사이트 주소와 같은 사이트 안이어야 합니다.',
+  keyword_without_health: '응답 글자는 상태 확인 주소와 함께 넣어 주세요.',
+  name_invalid: '이름은 60자 이내로 넣어 주세요.',
+  description_invalid: '설명은 100자 이내로 넣어 주세요.',
+  keyword_invalid: '응답 글자는 100자 이내로 넣어 주세요.',
+  consent_required: '운영자 동의 확인에 체크해야 추가할 수 있습니다.',
+  already_exists: '이미 점검 중인 사이트입니다.',
+  limit_reached: '켜진 서비스가 상한에 이르렀습니다. 다른 서비스를 끈 뒤 추가해 주세요.',
+  unauthorized: '관리자 토큰이 맞지 않습니다.',
+  admin_api_disabled: '서버에 관리자 토큰이 등록되지 않아 추가할 수 없습니다.',
+};
+const addErrorText = (code) =>
+  ADD_ERROR_TEXT[code] ?? (code?.startsWith('health_') ? `상태 확인 주소: ${ADD_ERROR_TEXT[code.slice(7)] ?? code}` : `추가하지 못했습니다 (${code ?? '알 수 없는 오류'}).`);
+
+const addDialog = () => document.getElementById('add-dialog');
+const addForm = () => document.getElementById('add-form');
+
+/** 입력값 → 요청 본문 (빈 칸은 보내지 않음) */
+function addBody() {
+  const f = addForm();
+  const v = (n) => f.elements[n].value.trim();
+  const body = { url: v('url'), consent: f.elements.consent.checked };
+  for (const k of ['name', 'description', 'healthUrl', 'healthKeyword']) if (v(k)) body[k] = v(k);
+  return body;
+}
+
+async function addCall(path, body) {
+  const token = addForm().elements.token.value;
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+  let data = null;
+  try { data = await res.json(); } catch { /* 본문 없음 */ }
+  return { status: res.status, data };
+}
+
+/** 결과 칸에 문구(와 미리 점검 목록)를 보여 줌 */
+function addShow(tone, text, checks) {
+  const box = document.getElementById('add-result');
+  const nodes = [el('p', `addform__msg addform__msg--${tone}`, text)];
+  if (checks?.length) {
+    const ul = el('ul', 'addform__checks');
+    for (const c of checks) {
+      const li = el('li', c.isSuccess ? 'is-ok' : 'is-bad');
+      li.append(icon(c.isSuccess ? 'check' : 'x', 'ico ico--xs'));
+      const detail = c.kind === 'dns'
+        ? (c.isSuccess ? `레코드 ${c.records}개 · ${c.responseMs}ms` : c.failureText)
+        : (c.isSuccess ? `${c.statusCode} · ${c.responseMs}ms${c.isSlow ? ' (느림)' : ''}` : `${c.failureText}${c.statusCode ? ` (${c.statusCode})` : ''}`);
+      li.append(document.createTextNode(` ${c.name}: ${detail}`));
+      ul.append(li);
+    }
+    nodes.push(ul);
+  }
+  box.replaceChildren(...nodes);
+}
+
+function addBusy(on) {
+  for (const id of ['add-preview', 'add-submit']) document.getElementById(id).disabled = on;
+}
+
+async function addPreview() {
+  if (!addForm().elements.token.value) return addShow('bad', '관리자 토큰을 넣어 주세요.');
+  addBusy(true);
+  addShow('info', '한 번 접속해 보는 중… (저장하지 않음)');
+  try {
+    const { status, data } = await addCall('/api/admin/services/preview', addBody());
+    if (status !== 200) return addShow('bad', addErrorText(data?.error));
+    const name = addForm().elements.name;
+    if (!name.value.trim()) name.placeholder = `비우면 ${data.proposed.name}`;
+    const allOk = data.checks.every((c) => c.isSuccess);
+    let text = allOk ? '모두 정상입니다. [추가]를 누르면 다음 5분 회차부터 점검합니다.' : '실패한 점검이 있습니다. 주소를 확인해 주세요. 그대로 추가하면 장애로 기록될 수 있습니다.';
+    if (data.alreadyExists) text = ADD_ERROR_TEXT.already_exists;
+    else if (data.activeCount >= data.limit) text = ADD_ERROR_TEXT.limit_reached;
+    addShow(allOk && !data.alreadyExists && data.activeCount < data.limit ? 'ok' : 'warn', `${text} (서비스 키: ${data.proposed.key})`, data.checks);
+  } catch (err) {
+    console.error(err);
+    addShow('bad', '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  } finally {
+    addBusy(false);
+  }
+}
+
+async function addSubmit(e) {
+  e.preventDefault();
+  if (!addForm().elements.token.value) return addShow('bad', '관리자 토큰을 넣어 주세요.');
+  if (!addForm().elements.consent.checked) return addShow('bad', ADD_ERROR_TEXT.consent_required);
+  addBusy(true);
+  addShow('info', '추가하는 중…');
+  try {
+    const { status, data } = await addCall('/api/admin/services', addBody());
+    if (status !== 201) return addShow('bad', addErrorText(data?.error));
+    addShow('ok', `'${data.name}'을(를) 추가했습니다. 다음 5분 회차부터 점검합니다.`);
+    await load(); // 대시보드에 새 서비스 줄이 '확인 중'으로 나타남
+    addForm().elements.token.value = ''; // 다 쓴 토큰은 바로 지움
+    setTimeout(closeAdd, 1200);
+  } catch (err) {
+    console.error(err);
+    addShow('bad', '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  } finally {
+    addBusy(false);
+  }
+}
+
+document.getElementById('add-open').addEventListener('click', () => {
+  document.getElementById('add-result').replaceChildren();
+  addDialog().showModal();
+  addForm().elements.url.focus();
+});
+/** 입력(특히 관리자 토큰)을 모두 지움 — 브라우저 화면에 토큰이 남지 않게 */
+function clearAdd() {
+  addForm().reset();
+  addForm().elements.name.placeholder = '비우면 주소 이름';
+  document.getElementById('add-result').replaceChildren();
+}
+/**
+ * 닫기: 지우기를 'close' 이벤트에만 맡기지 않고 닫는 쪽에서 직접 합니다.
+ * (close 이벤트는 브라우저가 나중에 보내는 알림이라, 화면이 숨겨진 탭 등에서는 늦게 오는 것을 확인함 — 토큰 지우기를 늦추지 않으려고)
+ */
+function closeAdd() {
+  clearAdd();
+  if (addDialog().open) addDialog().close();
+  document.getElementById('add-open').focus({ preventScroll: true });
+}
+document.getElementById('add-close').addEventListener('click', closeAdd);
+addDialog().addEventListener('click', (e) => { if (e.target === e.currentTarget) closeAdd(); });
+// Esc로 닫을 때(cancel)도 바로 지움. close 이벤트에서도 한 번 더 지움(어느 길로 닫혀도 남지 않게)
+addDialog().addEventListener('cancel', clearAdd);
+addDialog().addEventListener('close', clearAdd);
+document.getElementById('add-preview').addEventListener('click', addPreview);
+addForm().addEventListener('submit', addSubmit);

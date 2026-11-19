@@ -274,6 +274,42 @@
 .pagebar__crumb a { color: var(--d-muted); font-weight: 600; }
 .pagebar__crumb a:hover { color: var(--d-text); }
 
+/* ── 서비스 추가 (S4): 버튼과 팝업 ── */
+.addbtn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font: inherit; font-weight: 600; font-size: 13px;
+  color: var(--d-info); background: transparent; border: 1px dashed var(--d-line2); cursor: pointer; }
+.addbtn:hover { border-color: var(--d-blue); border-style: solid; }
+.addbtn:focus-visible { outline: 2px solid var(--d-blue); outline-offset: 2px; }
+.modal--add { width: min(640px, calc(100vw - 32px)); }
+.modal--add .modal__box { background: var(--d-panel); border-color: var(--d-line2); }
+.modal--add .modal__title { color: var(--d-text); }
+.addform { display: grid; gap: 12px; }
+.addform__intro { margin: 0; color: var(--d-muted); font-size: 13px; }
+.addform__row { display: grid; gap: 4px; font-size: 12.5px; color: var(--d-muted); font-weight: 600; min-width: 0; }
+.addform__row small { font-weight: 500; color: var(--d-faint); margin-left: 4px; }
+.addform em, .addform__check em { font-style: normal; font-size: 11px; color: var(--d-warn-text); margin-left: 4px; }
+.addform input[type="url"], .addform input[type="text"], .addform input[type="password"] {
+  font: inherit; font-size: 14px; color: var(--d-text); background: var(--d-panel2); border: 1px solid var(--d-line2); border-radius: 9px; padding: 8px 10px; min-width: 0; }
+.addform input:focus { outline: none; border-color: var(--d-blue); }
+.addform__two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.addform__check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--d-text); }
+.addform__check input { width: 16px; height: 16px; accent-color: var(--d-blue); }
+.addform__result:empty { display: none; }
+.addform__msg { margin: 0; font-size: 13px; padding: 8px 10px; border-radius: 9px; }
+.addform__msg--ok { color: var(--d-good-text); background: var(--d-good-soft); }
+.addform__msg--warn { color: var(--d-warn-text); background: var(--d-warn-soft); }
+.addform__msg--bad { color: var(--d-bad-text); background: var(--d-bad-soft); }
+.addform__msg--info { color: var(--d-info-text); background: var(--d-blue-soft); }
+.addform__checks { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; color: var(--d-text); }
+.addform__checks li { display: flex; align-items: center; gap: 4px; }
+.addform__checks .is-ok .ico { color: var(--d-good); }
+.addform__checks .is-bad .ico { color: var(--d-bad); }
+.addform__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.btn2 { font: inherit; font-weight: 600; font-size: 13.5px; padding: 8px 16px; border-radius: 9px; cursor: pointer; color: var(--d-text); background: var(--d-panel2); border: 1px solid var(--d-line2); }
+.btn2:hover { border-color: var(--d-blue); }
+.btn2--primary { background: var(--d-blue); border-color: var(--d-blue); color: #fff; }
+.btn2:disabled { opacity: .55; cursor: wait; }
+@media (max-width: 560px) { .addform__two { grid-template-columns: minmax(0, 1fr); } }
+
 /* ── 서비스 상세 화면 (S3, 시안의 상세 화면 배치) ── */
 .sd-k { color: var(--d-muted); font-size: 12px; }
 .sd-v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--d-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

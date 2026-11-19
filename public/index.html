@@ -102,6 +102,8 @@
         <section class="svc-area" id="services-panel" aria-labelledby="services-title">
           <div class="svc-toolbar">
             <span class="pilltab" id="svc-count">전체</span>
+            <!-- 서비스 추가 (S4): 관리자만. 누르면 아래 add-dialog가 열림 -->
+            <button type="button" class="addbtn" id="add-open"><span data-icon="plus" data-icon-class="ico ico--sm"></span>서비스 추가</button>
             <label class="search">
               <span data-icon="search" data-icon-class="ico ico--sm"></span>
               <input id="search" type="search" placeholder="서비스 이름으로 검색 (예: 고쳐라!, Keychats)" aria-label="서비스 이름으로 검색" autocomplete="off">
@@ -130,6 +132,43 @@
       </footer>
     </main>
   </div>
+
+  <!-- 서비스 추가 팝업 (S4): 주소 → [미리 점검] → [추가]. 관리자 토큰이 필요하고, 토큰은 저장하지 않음(창을 닫으면 지움).
+       '내가 운영하거나 운영자 동의를 받은 서비스' 확인이 없으면 서버도 거부합니다 (CLAUDE.md: 남의 사이트는 점검하지 않는다) -->
+  <dialog id="add-dialog" class="modal modal--add" aria-labelledby="add-title">
+    <div class="modal__box">
+      <div class="modal__head">
+        <div class="modal__titlebox">
+          <span class="kind-ico" aria-hidden="true" data-icon="plus"></span>
+          <h2 class="modal__title" id="add-title">서비스 추가</h2>
+        </div>
+        <button type="button" class="modal__close" id="add-close" aria-label="닫기"><span data-icon="x-mark" data-icon-class="ico ico--sm"></span></button>
+      </div>
+      <form class="addform" id="add-form" novalidate>
+        <p class="addform__intro">사이트 주소를 넣으면 HTTP·DNS 점검이 함께 만들어지고, 다음 5분 회차부터 점검합니다.</p>
+        <label class="addform__row"><span>사이트 주소 <em>필수</em></span>
+          <input name="url" type="url" inputmode="url" placeholder="https://my-app.pages.dev" required autocomplete="off" spellcheck="false"></label>
+        <div class="addform__two">
+          <label class="addform__row"><span>이름</span><input name="name" type="text" maxlength="60" placeholder="비우면 주소 이름" autocomplete="off"></label>
+          <label class="addform__row"><span>설명</span><input name="description" type="text" maxlength="100" placeholder="예: 팀 프로젝트 (Vercel)" autocomplete="off"></label>
+        </div>
+        <div class="addform__two">
+          <label class="addform__row"><span>상태 확인 주소 <small>선택 · 같은 사이트 안</small></span>
+            <input name="healthUrl" type="url" inputmode="url" placeholder="https://my-app.pages.dev/api/health" autocomplete="off" spellcheck="false"></label>
+          <label class="addform__row"><span>응답에 있어야 할 글자 <small>선택</small></span>
+            <input name="healthKeyword" type="text" maxlength="100" placeholder='예: "ok"' autocomplete="off"></label>
+        </div>
+        <label class="addform__check"><input name="consent" type="checkbox"> 내가 운영하거나 운영자의 동의를 받은 서비스입니다 <em>필수</em></label>
+        <label class="addform__row"><span>관리자 토큰 <em>필수</em> <small>저장하지 않음</small></span>
+          <input name="token" type="password" autocomplete="new-password" spellcheck="false"></label>
+        <div class="addform__result" id="add-result" role="status" aria-live="polite"></div>
+        <div class="addform__actions">
+          <button type="button" class="btn2" id="add-preview">미리 점검</button>
+          <button type="submit" class="btn2 btn2--primary" id="add-submit">추가</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
 
   <!-- 운영 지표 확대 팝업: 오른쪽 '운영 지표 요약'의 칸을 누르면 같은 그래프를 크게 다시 그려 보여 줌 (app.js openMetric) -->
   <dialog id="metric-dialog" class="modal modal--metric" aria-labelledby="metric-title">
