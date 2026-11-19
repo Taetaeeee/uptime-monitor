@@ -101,4 +101,13 @@
    - C1 재생 실행 경로 제거 · C2 화면 재생·데모 표시·출처 필터 제거 · C3 seed·데이터 준비 스크립트 삭제
      (테스트 자료는 test/fixtures, 평가용 파서는 scripts/evaluate-rules/datasets.mjs로 이전) · C4 문서  ← 완료(커밋 전)
    - C5 테스트·배포·라이브 확인  ← 완료 (2026-11-19, 브랜치 chore/real-services-only, 깨끗한 worktree에서 배포. main 병합·푸시 완료)
-   - 다음: 우리 실제 서비스 추가 + 서비스 묶음 모델(0015 services, monitors.service_id)
+   - 다음: 우리 실제 서비스 추가 + 서비스 묶음 모델(0015 services, monitors.service_id) → 14단계
+14. 서비스 묶음 구조 + 대시보드 새 디자인  ← 진행 중 (S1·S2 완료·배포, 2026-11-19 main 병합 b4d6438, Notion B-14)
+   - S1 0015(services·monitors.service_id·service_daily_stats), 회차 기준 서비스 가동률·상태 판정 순수 함수(src/service-status.js),
+     Cron 서비스 집계, GET /api/services·/api/services/:key  ← 완료 (dc2c86c, 0015 원격 적용 → 배포·라이브 확인)
+     서비스 가동률 = 묶인 점검이 모두 성공한 5분 회차의 비율. 점검은 id가 아니라 주소로 연결(로컬·원격 id가 다름).
+     순서 주의: 새 코드가 monitors.service_id를 읽으므로 마이그레이션 먼저, 배포는 그 뒤
+   - S2 대시보드 새 디자인(사용자 시안 기준, AI 메뉴 제외)  ← 완료 (1ad3091·d87e560 배포·라이브 확인)
+     두 칸 격자(요약·제목·서비스 줄 | 최근 알림·운영 지표), 지표 확대 팝업, 점검 시간·고리 효과,
+     새 페이지 services.html(점검별 카드)·incidents.html(장애 이력)·evidence.html(운영 근거), 점검 상세 팝업은 public/detail.js
+   - 남음: S3 서비스 상세 화면, S4 '+ 서비스 추가'(관리자 토큰·운영자 동의 확인·https/공인 주소·개수 상한), README 스크린샷 교체
