@@ -123,3 +123,35 @@ test('mmss: 남은 시간은 항상 두 자리:두 자리', () => {
   assert.equal(M.mmss(0), '00:00');
   assert.equal(M.mmss(-5), '00:00');
 });
+
+// ── 서비스 상세 (S3) ──
+const pt = (checkedAt, isSuccess, extra = {}) => ({ checkedAt, isSuccess, isSlow: false, responseMs: isSuccess ? 100 : null, inMaintenance: false, ...extra });
+
+test('serviceUptimeFromHistories: 서버와 같은 회차 규칙 (한 점검만 실패해도 장애 회차, 계획 작업은 뺌, 내림)', () => {
+  const http = [pt('T1', true), pt('T2', true), pt('T3', true)];
+  const dns = [pt('T1', true), pt('T2', false), pt('T3', false, { inMaintenance: true })];
+  // T1 정상, T2 장애(dns 실패), T3 dns는 작업 중이라 빼고 http 성공 → 정상 → 2/3 = 66.66
+  assert.deepEqual(plain(M.serviceUptimeFromHistories([http, dns])), { totalSlots: 3, upSlots: 2, percent: 66.66 });
+  assert.equal(M.serviceUptimeFromHistories([[], []]).percent, null);
+});
+
+test('avgResponse: 성공한 점검만 평균, 없으면 null', () => {
+  assert.equal(M.avgResponse([pt('a', true, { responseMs: 100 }), pt('b', true, { responseMs: 201 }), pt('c', false)]), 151);
+  assert.equal(M.avgResponse([pt('a', false)]), null);
+  assert.equal(M.avgResponse([pt('a', true, { responseMs: 999, inMaintenance: true })]), null);
+});
+
+test('timeCells: 시각으로 칸을 나누고, 실패 > 느림 > 정상 > 작업 > 기록 없음', () => {
+  const from = '2026-11-19T00:00:00Z';
+  const to = '2026-11-19T01:00:00Z'; // 15분 칸 4개
+  const cells = M.timeCells([
+    pt('2026-11-19T00:00:00Z', true), pt('2026-11-19T00:05:00Z', false), // 칸0: 실패 포함
+    pt('2026-11-19T00:15:00Z', true, { isSlow: true }), pt('2026-11-19T00:20:00Z', true), // 칸1: 느림
+    // 칸2: 기록 없음
+    pt('2026-11-19T00:45:00Z', false, { inMaintenance: true }), // 칸3: 계획 작업뿐
+    pt('2026-11-19T01:00:00Z', false), // 구간 밖(끝은 포함 안 함)
+  ], from, to, 15);
+  assert.deepEqual(plain(cells.map((c) => [c.state, c.count, c.fails])), [['fail', 2, 1], ['slow', 2, 0], ['none', 0, 0], ['maint', 1, 0]]);
+  assert.equal(cells[0].start, '2026-11-19T00:00:00.000Z');
+  assert.equal(M.timeCells([], from, '2026-11-20T00:00:00Z', 15).length, 96); // 24시간 = 96칸
+});

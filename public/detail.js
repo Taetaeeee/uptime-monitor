@@ -74,6 +74,23 @@ function valueSpec(s) {
   return VALUE_KINDS[s.kind] ?? null;
 }
 
+// ── 서비스·점검 표시 공용 (대시보드 app.js · 서비스 상세 service-detail.js) ──
+const CHIP_TEXT = { up: '정상', down: '오류', slow: '지연', maintenance: '작업', paused: '대기', unknown: '확인 중' };
+const CHIP_ICON = { up: 'check', down: 'x', slow: 'clock', maintenance: 'wrench', paused: 'pause', unknown: 'help' };
+// 서비스 아이콘: 지금은 서비스 키로 고릅니다. 모르는 서비스(나중에 '+ 서비스 추가'로 생길 것)는 지구본
+const SERVICE_ICON = { gochyeora: 'game', keychats: 'chat' };
+
+// 한국 시각 'HH:MM' (최근 점검 칸: "17:40 · 5분 전")
+const kstHm = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });
+
+/** 상태 알약 (시안 모양: 꽉 찬 옅은 배경 + 굵은 글자). 문구·아이콘은 common.js STATE_META를 그대로 씀 */
+function serviceStatePill(state) {
+  const meta = STATE_META[state] ?? STATE_META.unknown;
+  const pill = el('span', `state state--${STATE_META[state] ? state : 'unknown'}`);
+  pill.append(icon(meta.icon, 'ico'), document.createTextNode(meta.text));
+  return pill;
+}
+
 // 상세 팝업의 화면 상태 (페이지 스크립트의 view와 따로 둠)
 const detailView = {
   data: null, // /api/status 응답 (점검 목록·최근 장애)
@@ -89,6 +106,7 @@ const detailView = {
 const dialog = () => document.getElementById('detail-dialog');
 
 function select(id) {
+  if (!detailView.data) return; // /api/status를 아직 못 받았으면 열지 않음 (다음 자동 갱신 뒤 다시 누르면 열림)
   detailView.selectedId = id;
   renderDetail(detailView.data);
   const d = dialog();

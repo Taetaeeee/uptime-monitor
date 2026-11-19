@@ -349,11 +349,15 @@ export async function upsertServiceDailyStats(db, stats, updatedAt, source = 're
   );
 }
 
-/** 켜진 서비스 목록 (정렬 순서대로). 공개용이라 대표 주소(home_url)는 조회하지 않습니다. */
+/**
+ * 켜진 서비스 목록 (정렬 순서대로).
+ * 대표 주소(home_url)는 누구나 여는 공개 사이트의 첫 화면 주소라 함께 돌려줍니다 (S3 상세 화면의 '사이트 열기' 링크).
+ * 점검 주소(DB 상태 확인 주소·DNS 점검 주소)는 여기서 조회하지 않습니다.
+ */
 export async function getServices(db) {
   const { results } = await db
     .prepare(
-      `SELECT id, service_key, name, description, source
+      `SELECT id, service_key, name, description, source, home_url
          FROM services
         WHERE is_active = 1
         ORDER BY sort_order, id`
@@ -365,6 +369,7 @@ export async function getServices(db) {
     name: r.name,
     description: r.description,
     source: r.source,
+    homeUrl: r.home_url,
   }));
 }
 

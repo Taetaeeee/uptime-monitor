@@ -190,7 +190,7 @@ export const SERVICE_INCIDENT_LIMIT = 10;
 
 /**
  * 서비스 목록을 만든다. 서비스에 묶이지 않은 점검(예: 훈련 대상)은 여기 나오지 않습니다.
- * 공개 응답이라 서비스 대표 주소·점검 주소는 넣지 않습니다.
+ * 공개 응답에는 서비스 대표 주소(공개 사이트 첫 화면)만 넣고, 점검 주소(DB 상태 확인·DNS)는 넣지 않습니다.
  */
 export async function buildServices(db, now) {
   const { list, ...meta } = await collectServices(db, now);
@@ -267,6 +267,7 @@ async function collectServices(db, now) {
           name: svc.name,
           description: svc.description,
           source: svc.source,
+          homeUrl: svc.homeUrl, // 공개 사이트 첫 화면 주소 (점검 주소는 넣지 않음)
           state: serviceState(checks),
           lastCheckedAt: last,
           uptime30d: overallUptime(mine), // 모든 점검이 성공한 회차 비율
