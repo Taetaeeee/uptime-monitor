@@ -130,10 +130,11 @@
      GET /api/services/:key/analysis?days=7|30, 서비스 상세 화면 '점검 기록 분석' 칸
    - 순서 주의: 새 코드가 새 열을 쓰므로 0017 원격 적용 먼저, 배포는 그 뒤
    - 라이브 첫 회차에서 고쳐라! DNS 조회 오류 5회(한 번씩, 장애 판정 전)가 KST 0~1시 근처에 몰린 것이 처음 보임 — 원인은 미확인
-17. 첫 화면 변경 감지  ← 코드·테스트 완료, 0018 원격 적용(2026-11-20), 배포 전 (브랜치 feat/change-detect)
+17. 첫 화면 변경 감지  ← 완료 (2026-11-20, ab63e64 → main 병합 92db5ed, 0018 원격 적용·배포·라이브 확인, Notion B-17)
    - 사전 조사: 고쳐라!는 ETag 없음, 두 서비스 모두 반복 요청에서 본문 해시 같음 → 본문 SHA-256 지문
    - 0018(content_fingerprints·content_changes), src/fingerprint.js(nextFingerprint 순수 함수: 처음은 기준, 같은 새 지문 2회 연속이면 확정),
      src/change-run.js(Cron 점검 직후, 서비스 대표 주소의 성공한 HTTP 응답만, 본문은 저장 안 함, 같은 지문이면 쓰기 없음)
    - /api/services/:key에 changes·changesNoisy, /api/incidents/:id에 changesBefore(같은 서비스, 첫 실패 전 60분)
    - 화면: 서비스 상세 '최근 이벤트'에 장애와 변경을 시간순으로, 장애 상세 타임라인에 장애 직전 변경 (파란 점)
    - 순서 주의: 0018 원격 적용 먼저, 배포는 그 뒤. 첫 회차에는 기준 지문만 생기고 변경 0건이 정상
+   - 라이브 확인: 01:15 회차에 기준 지문 2개(고쳐라! 7,396 bytes, Keychats /chats 9,303 bytes), changes 0건. 실제 변경 기록은 서비스를 배포하면 확인
