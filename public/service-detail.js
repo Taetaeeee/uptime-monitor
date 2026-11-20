@@ -4,10 +4,12 @@
 //   ① 머리: 이름·설명·사이트 주소·상태·최근 점검·점검 주기·점검 항목
 //   ② 지표 4칸: 서비스 가동률(30일·24시간), 첫 화면 평균 응답(24시간), 장애(30일) — 어떤 서비스든 같은 4칸
 //   ③ 점검 카드: 점검마다 가용성·평균 응답·최근 값, 24시간 응답 시간 선, 15분 칸 성공/실패, 30일 일별 막대
-//   ④ 최근 이벤트: 이 서비스 점검들의 장애·복구 (누르면 사후 보고서)
+//   ④ 점검 기록 분석 (16단계): 실패 이유 분포 · p95 응답 시간 · 요일×시간 열지도 (7일/30일)
+//   ⑤ 최근 이벤트: 이 서비스 점검들의 장애·복구 (누르면 사후 보고서)
 //
-// 데이터 (새 서버 API 없음):
+// 데이터:
 //   /api/services/:key            서비스·묶인 점검·최근 장애
+//   /api/services/:key/analysis   점검 기록 분석 (Cron이 미리 계산한 일별 값, 16단계)
 //   /api/monitors/:id/history     점검마다 최근 24시간 기록 (점검 수만큼 요청, 60초 캐시)
 //   /api/status                   카드를 누르면 여는 점검 상세 팝업(detail.js)용
 // 계산은 dashboard-model.js(DashboardModel)의 순수 함수, 그래프는 chart.js, 공용 표시는 detail.js에 있습니다.
@@ -16,6 +18,7 @@ const REFRESH_MS = 60_000; // 60초마다 새로 고침 (API 캐시 시간과 �
 const HOURS = 24; // 그래프 기간 (기록 API는 최대 48시간)
 const CELL_MIN = 15; // 성공/실패 칸 1개 = 15분 → 24시간 96칸
 const INCIDENT_LIMIT = 10; // /api/services/:key가 주는 장애 수 (src/api.js SERVICE_INCIDENT_LIMIT)
+let period = 30; // 분석 기간 (7 또는 30일). 바꾸면 분석 칸만 다시 그림
 
 // 점검 이름 끝 괄호(칩 이름)로 고르는 부제목 — 무엇을 확인하는 점검인지
 const CHECK_SUB = { HTTP: '웹 접근', DNS: '도메인 이름 해석', DB: '데이터베이스 상태 확인 주소' };
@@ -187,7 +190,164 @@ function checkCard(c, h) {
   return card;
 }
 
-// ── ④ 최근 이벤트 ──
+// ── ④ 점검 기록 분석 (16단계) ──
+
+/** 칸 머리: 제목 + 작은 설명 */
+function panelHead(title, hint) {
+  const hd = el('div', 'an-panel__hd');
+  hd.append(el('h3', '', title));
+  if (hint) hd.append(el('span', 'an-hint', hint));
+  return hd;
+}
+
+/** 실패 이유 분포: 이유마다 가로 막대 (전체 실패 중 비율) + 어느 점검에서 났는지 */
+function failurePanel(a) {
+  const box = el('div', 'an-panel');
+  box.append(panelHead('실패 이유 분포', `최근 ${a.days}일 · 실패 ${a.failureTotal}회`));
+  if (a.failureTotal === 0) {
+    box.append(el('p', 'sd-empty', `최근 ${a.days}일 동안 실패한 점검이 없습니다.`));
+    return box;
+  }
+  const list = el('ul', 'an-fails');
+  for (const f of a.failures) {
+    const pct = Math.round((f.total / a.failureTotal) * 1000) / 10;
+    const li = el('li');
+    const top = el('div', 'an-fails__top');
+    top.append(el('b', '', f.text), el('span', 'an-fails__n', `${f.total}회 · ${pct}%`));
+    const track = el('div', 'an-fails__track');
+    track.setAttribute('role', 'img');
+    track.setAttribute('aria-label', `${f.text} ${f.total}회, 전체 실패의 ${pct}%`);
+    const fill = el('span', 'an-fails__fill');
+    fill.style.width = `${Math.max(2, pct)}%`; // 아주 작은 비율도 보이게 최소 2%
+    track.append(fill);
+    // 어느 점검에서 났는지 (칩 이름 + 횟수)
+    const who = el('div', 'an-hint', f.byCheck.map((c) => `${DashboardModel.chipLabel(c)} ${c.count}회`).join(' · '));
+    li.append(top, track, who);
+    list.append(li);
+  }
+  box.append(list);
+  return box;
+}
+
+/** p95 응답 시간: 점검마다 24시간 p95·평균 + 기간 일별 p95 선 */
+function p95Panel(a, histories) {
+  const box = el('div', 'an-panel');
+  box.append(panelHead('p95 응답 시간', '요청 100번 중 가장 느린 5번을 뺀 최댓값'));
+  const table = el('div', 'an-p95');
+  a.p95.forEach((c, i) => {
+    // 24시간 값은 화면이 이미 받은 기록(history)으로 정확히 계산 — 일별 값으로는 여러 날의 p95를 합칠 수 없어서
+    const pts = histories[i]?.points ?? [];
+    const p95 = DashboardModel.p95Response(pts);
+    const avg = DashboardModel.avgResponse(pts);
+    const row = el('div', 'an-p95__row');
+    row.append(
+      el('span', 'chip chip--static', DashboardModel.chipLabel(c)),
+      el('span', 'an-p95__v', p95 === null ? '-' : `${p95} ms`),
+      el('span', 'an-hint', avg === null ? '최근 24시간 기록 없음' : `최근 24시간 · 평균 ${avg} ms`),
+    );
+    table.append(row);
+  });
+  box.append(table);
+  const series = a.p95.map((s) => ({ name: DashboardModel.chipLabel(s), points: s.points.map((p) => ({ day: p.day, v: p.p95Ms })) }));
+  if (series.some((s) => s.points.some((p) => p.v !== null))) {
+    box.append(el('div', 'sd-subt', `일별 p95 (최근 ${a.days}일)`));
+    box.append(multiLineChart({ series, unit: 'ms', label: `최근 ${a.days}일 일별 p95 응답 시간`, box: { w: 560, h: 150, l: 52 } }));
+    const legend = el('div', 'an-legend');
+    series.forEach((s, k) => {
+      const item = el('span');
+      item.append(el('i', `an-legend__line chart__series--${(k % 4) + 1}`), document.createTextNode(s.name));
+      legend.append(item);
+    });
+    box.append(legend);
+  } else {
+    box.append(el('p', 'sd-empty', '일별 p95 기록이 아직 없습니다.'));
+  }
+  return box;
+}
+
+const HEAT_TEXT = { ok: '문제 없음', slow1: '느림 5% 미만', slow2: '느림 5% 이상', bad1: '실패 5% 미만', bad2: '실패 5% 이상', none: '기록 없음' };
+
+/** 요일 × 시간 열지도 (7줄 × 24칸, 한국 시각) */
+function heatPanel(a) {
+  const box = el('div', 'an-panel');
+  box.append(panelHead('시간대 열지도', `최근 ${a.days}일 · 요일 × 시간(KST) · 묶인 점검 전체`));
+  const grid = el('div', 'an-heat');
+  grid.setAttribute('role', 'img');
+  // 낭독기용 요약: 문제가 가장 많았던 칸 (실패를 느림보다 무겁게)
+  let worst = null;
+  a.heatmap.cells.forEach((row, d) => row.forEach((c, h) => {
+    const score = c.fail * 1000 + c.slow;
+    if (score > 0 && (!worst || score > worst.score)) worst = { d, h, c, score };
+  }));
+  grid.setAttribute('aria-label', worst
+    ? `요일·시간별 실패와 느림. 가장 많은 칸은 ${a.heatmap.weekdays[worst.d]}요일 ${worst.h}시 (실패 ${worst.c.fail}, 느림 ${worst.c.slow})`
+    : '요일·시간별 실패와 느림: 문제 없음');
+  grid.append(el('span', 'an-heat__corner'));
+  for (let h = 0; h < 24; h += 1) grid.append(el('span', 'an-heat__hour', h % 3 === 0 ? String(h) : ''));
+  a.heatmap.cells.forEach((row, d) => {
+    grid.append(el('span', 'an-heat__day', a.heatmap.weekdays[d]));
+    row.forEach((c, h) => {
+      const cell = el('i', `an-heat__cell an-heat__cell--${DashboardModel.heatLevel(c)}`);
+      cell.title = `${a.heatmap.weekdays[d]}요일 ${h}시 · ${c.total ? `점검 ${c.total}회, 실패 ${c.fail}, 느림 ${c.slow}` : '기록 없음'}`;
+      grid.append(cell);
+    });
+  });
+  box.append(grid);
+  const legend = el('div', 'an-legend');
+  for (const [level, text] of Object.entries(HEAT_TEXT)) {
+    const item = el('span');
+    item.append(el('i', `an-legend__sw an-heat__cell--${level}`), document.createTextNode(text));
+    legend.append(item);
+  }
+  box.append(legend);
+  return box;
+}
+
+/** 분석 칸 전체 (기간 버튼 포함). a가 null이면 불러오기 실패 안내 */
+function renderAnalysis(a, s, histories) {
+  const box = el('section', 'an');
+  box.id = 'an-root';
+  const hd = el('div', 'an__hd');
+  hd.append(el('h2', '', '점검 기록 분석'));
+  const seg = el('div', 'an-seg');
+  seg.setAttribute('role', 'group');
+  seg.setAttribute('aria-label', '분석 기간');
+  for (const d of [7, 30]) {
+    const b = el('button', '', `${d}일`);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(d === period));
+    b.addEventListener('click', () => {
+      if (period === d) return;
+      period = d;
+      loadAnalysis(s, histories);
+    });
+    seg.append(b);
+  }
+  hd.append(seg);
+  box.append(hd);
+  if (!a) {
+    box.append(el('p', 'sd-empty', '분석 값을 불러오지 못했습니다. 잠시 후 자동으로 다시 시도합니다.'));
+    return box;
+  }
+  if (a.coverage.pendingDays) {
+    // 0017 이전 날짜는 Cron이 회차마다 조금씩 채우므로, 그동안은 일부 날짜가 빠져 있다고 알려 줌
+    box.append(el('p', 'an-note', `지난 기록 중 ${a.coverage.pendingDays}건(점검·날짜)은 아직 분석 전이라 빠져 있습니다. 5분마다 조금씩 채워집니다.`));
+  }
+  const two = el('div', 'an-two');
+  two.append(failurePanel(a), p95Panel(a, histories));
+  box.append(two, heatPanel(a));
+  return box;
+}
+
+/** 분석 값만 다시 불러와 그 칸만 바꿈 (기간 버튼). 누른 버튼에 포커스를 돌려줌 */
+async function loadAnalysis(s, histories) {
+  const a = await fetchJson(`/api/services/${key}/analysis?days=${period}`, { cache: 'no-store' }).catch(() => null);
+  const next = renderAnalysis(a, s, histories);
+  document.getElementById('an-root')?.replaceWith(next);
+  next.querySelector('.an-seg [aria-pressed="true"]')?.focus();
+}
+
+// ── ⑤ 최근 이벤트 ──
 function renderEvents(incidents) {
   const box = el('section', 'sd-events');
   box.append(el('h2', '', '최근 이벤트'));
@@ -240,15 +400,20 @@ async function load() {
     const detail = await res.json();
     const s = detail.service;
     // 점검마다 24시간 기록 (하나가 실패해도 나머지는 그림 → allSettled)
-    const [histories, statusData] = await Promise.all([
+    // 분석은 따로 실패해도(null) 나머지 화면은 그림
+    const [histories, statusData, analysis] = await Promise.all([
       Promise.allSettled(s.checks.map((c) => fetchJson(`/api/monitors/${c.id}/history?hours=${HOURS}`, { cache: 'no-store' })))
         .then((rs) => rs.map((r) => (r.status === 'fulfilled' ? r.value : null))),
       fetchJson('/api/status', { cache: 'no-store' }).catch(() => null),
+      fetchJson(`/api/services/${key}/analysis?days=${period}`, { cache: 'no-store' }).catch(() => null),
     ]);
 
     const grid = el('div', 'sd-grid');
     grid.append(...s.checks.map((c, i) => checkCard(c, histories[i])));
-    root.replaceChildren(renderHead(s), renderStrip(s, histories, detail.incidents, detail.today), grid, renderEvents(detail.incidents));
+    root.replaceChildren(
+      renderHead(s), renderStrip(s, histories, detail.incidents, detail.today), grid,
+      renderAnalysis(analysis, s, histories), renderEvents(detail.incidents),
+    );
     if (statusData) refreshDetail(statusData); // 카드의 '자세히' 팝업(detail.js)용
     status.textContent = histories.some((h) => !h) ? '일부 점검의 기록을 불러오지 못했습니다.' : '';
     status.classList.toggle('is-error', histories.some((h) => !h));
