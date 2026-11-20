@@ -49,6 +49,10 @@ function renderTimeline(inc) {
     { at: inc.detectedAt, text: '연속 실패로 장애 판정', kind: 'down' },
   ];
   for (const n of inc.notifications) rows.push({ at: n.createdAt, text: `알림: ${n.message}`, kind: n.event });
+  // 장애 직전 변경 (17단계): 같은 서비스의 첫 화면이 첫 실패 전 60분 안에 바뀌었으면 단서로 보여 줌 ('원인'이라고 단정하지 않음)
+  for (const c of inc.changesBefore ?? []) {
+    rows.push({ at: c.firstSeenAt, text: `첫 화면 내용 바뀜 (${c.monitorName}, ${c.oldSize.toLocaleString('ko-KR')} → ${c.newSize.toLocaleString('ko-KR')} bytes) — 장애 ${inc.changeLookbackMin}분 전 안의 변경`, kind: 'change' });
+  }
   if (inc.resolvedAt) rows.push({ at: inc.resolvedAt, text: '정상 응답 확인 (복구)', kind: 'recovered' });
   // 같은 시각이면 위에 넣은 순서를 지키도록 안정 정렬
   rows.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));

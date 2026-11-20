@@ -383,6 +383,8 @@
 .sd-table a:hover { color: var(--d-info); text-decoration: underline; }
 .sd-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
 .sd-dot--bad { background: var(--d-bad); }
+.sd-dot--info { background: var(--d-info); }
+.sd-events__hint { margin: -4px 0 8px; font-size: 12px; color: var(--d-faint); }
 
 /* ── 아래쪽 목록(장애 이력·운영 근거)도 같은 카드 색으로 ── */
 .dash .panel { background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); box-shadow: none; }
