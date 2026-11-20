@@ -221,7 +221,7 @@ export async function insertNotification(db, n) {
 export async function getResultsInRange(db, monitorId, startUtc, endUtc) {
   const { results } = await db
     .prepare(
-      `SELECT checked_at, is_success, is_slow, response_ms, in_maintenance
+      `SELECT checked_at, is_success, is_slow, response_ms, in_maintenance, failure_reason
          FROM check_results
         WHERE monitor_id = ?1 AND checked_at >= ?2 AND checked_at < ?3`
     )
@@ -233,35 +233,100 @@ export async function getResultsInRange(db, monitorId, startUtc, endUtc) {
     isSlow: r.is_slow === 1,
     responseMs: r.response_ms,
     inMaintenance: r.in_maintenance === 1,
+    failureReason: r.failure_reason, // 실패 이유 분포(16단계, analysis.js)용
   }));
 }
 
 /**
  * 일별 집계를 저장한다 (있으면 덮어쓰기). source는 원본 점검 결과와 같은 출처를 넘겨받습니다.
+ * 분석 값(p95·시간대별·실패 이유, 0017)은 JSON 문자열로 함께 저장합니다.
  */
 export async function upsertDailyStats(db, stats, updatedAt, source = 'real') {
   if (stats.length === 0) return;
   const stmt = db.prepare(
     `INSERT INTO daily_stats
        (monitor_id, day, total_checks, success_checks, slow_checks, avg_response_ms, source, updated_at,
-        maintenance_checks)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7, ?9)
+        maintenance_checks, p95_response_ms, hourly, failures)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, ?7, ?9, ?10, ?11, ?12)
      ON CONFLICT (monitor_id, day) DO UPDATE SET
        total_checks       = excluded.total_checks,
        success_checks     = excluded.success_checks,
        slow_checks        = excluded.slow_checks,
        avg_response_ms    = excluded.avg_response_ms,
        updated_at         = excluded.updated_at,
-       maintenance_checks = excluded.maintenance_checks`
+       maintenance_checks = excluded.maintenance_checks,
+       p95_response_ms    = excluded.p95_response_ms,
+       hourly             = excluded.hourly,
+       failures           = excluded.failures`
   );
   await db.batch(
     stats.map((s) =>
       stmt.bind(
         s.monitorId, s.day, s.totalChecks, s.successChecks, s.slowChecks, s.avgResponseMs, updatedAt, source,
-        s.maintenanceChecks ?? 0
+        s.maintenanceChecks ?? 0,
+        s.p95ResponseMs ?? null,
+        s.hourly ? JSON.stringify(s.hourly) : null,
+        s.failures ? JSON.stringify(s.failures) : null
       )
     )
   );
+}
+
+/**
+ * 분석 값(0017)이 아직 비어 있는 일별 집계 — 최근 날부터 limit개.
+ * Cron이 회차마다 조금씩 원본에서 다시 계산해 채웁니다 (과거 기록 채우기).
+ */
+export async function getDailyStatsMissingAnalysis(db, limit) {
+  const { results } = await db
+    .prepare(
+      `SELECT monitor_id, day
+         FROM daily_stats
+        WHERE hourly IS NULL
+        ORDER BY day DESC, monitor_id
+        LIMIT ?1`
+    )
+    .bind(limit)
+    .all();
+  return results.map((r) => ({ monitorId: r.monitor_id, day: r.day }));
+}
+
+/** 일별 집계의 분석 열만 채운다 (가동률 숫자는 건드리지 않음) */
+export async function updateDailyAnalysis(db, items) {
+  if (items.length === 0) return;
+  const stmt = db.prepare(
+    `UPDATE daily_stats
+        SET p95_response_ms = ?3, hourly = ?4, failures = ?5
+      WHERE monitor_id = ?1 AND day = ?2`
+  );
+  await db.batch(
+    items.map((s) => stmt.bind(s.monitorId, s.day, s.p95ResponseMs ?? null, JSON.stringify(s.hourly), JSON.stringify(s.failures)))
+  );
+}
+
+/**
+ * 점검들의 fromDay(KST, 포함) 이후 일별 집계 + 분석 열 (서비스 상세 분석, 16단계)
+ * 점검당 하루 1행이라 30일이면 점검당 30행만 읽습니다.
+ */
+export async function getAnalysisStats(db, monitorIds, fromDay) {
+  if (monitorIds.length === 0) return [];
+  // 점검 id는 서버가 DB에서 읽은 정수라 바인딩 자리표(?)만 개수대로 만듭니다 (값을 SQL 문자열에 넣지 않음)
+  const marks = monitorIds.map((_, i) => `?${i + 2}`).join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT monitor_id, day, avg_response_ms, p95_response_ms, hourly, failures
+         FROM daily_stats
+        WHERE day >= ?1 AND monitor_id IN (${marks})`
+    )
+    .bind(fromDay, ...monitorIds)
+    .all();
+  return results.map((r) => ({
+    monitorId: r.monitor_id,
+    day: r.day,
+    avgResponseMs: r.avg_response_ms,
+    p95ResponseMs: r.p95_response_ms,
+    hourly: r.hourly,
+    failures: r.failures,
+  }));
 }
 
 // ─────────────────────────────────────────────

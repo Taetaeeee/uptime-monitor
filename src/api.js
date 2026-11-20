@@ -19,7 +19,9 @@ import {
   getServices,
   getServiceDailyStatsSince,
   getServiceIncidents,
+  getAnalysisStats,
 } from './db.js';
+import { buildAnalysis, parseJsonOr } from './analysis.js';
 import { serviceState, toDailyShape } from './service-status.js';
 import { SLA_TARGET, monthRange, kstMonthOf, summarizeMonth } from './report.js';
 import { toKstDay, addDays, buildDailyBars, overallUptime } from './aggregate.js';
@@ -276,6 +278,28 @@ async function collectServices(db, now) {
         },
       };
     }),
+  };
+}
+
+/**
+ * /api/services/:key/analysis 응답 본문 (16단계). 없거나 내린 서비스면 null.
+ * 실패 이유 분포 · 점검별 일별 p95 · 요일×시간 열지도. 값은 Cron이 미리 계산해 둔 daily_stats 분석 열에서 읽습니다.
+ * 점검 주소(url)는 내려주지 않습니다 (다른 공개 API와 같은 원칙).
+ */
+export async function buildServiceAnalysis(db, key, days, now) {
+  const today = toKstDay(toIsoSeconds(now));
+  const service = (await getServices(db)).find((s) => s.key === key);
+  if (!service) return null;
+  const checks = (await getStatusMonitors(db))
+    .filter((m) => m.serviceId === service.id)
+    .map((m) => ({ id: m.id, name: m.name, kind: m.kind }));
+  const raw = await getAnalysisStats(db, checks.map((c) => c.id), addDays(today, -(days - 1)));
+  const stats = raw.map((s) => ({ ...s, hourly: parseJsonOr(s.hourly), failures: parseJsonOr(s.failures, {}) }));
+  return {
+    generatedAt: toIsoSeconds(now),
+    service: { key: service.key, name: service.name },
+    checks,
+    ...buildAnalysis({ checks, stats, today, days, reasonText: REASON_TEXT }),
   };
 }
 

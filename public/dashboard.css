@@ -392,6 +392,50 @@
 .dash .incidents { grid-template-columns: minmax(0, 1fr); }   /* 반 폭 칸에서는 한 줄씩 */
 .dash .site-footer { padding-bottom: 32px; border-top-color: var(--d-line); }
 
+/* ── 서비스 상세: 점검 기록 분석 (16단계) ── */
+.an { padding: 14px 18px 16px; margin-bottom: 14px; background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); }
+.an__hd { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.an__hd h2 { margin: 0; font-size: 16px; color: var(--d-text); }
+.an-seg { margin-left: auto; display: inline-flex; border: 1px solid var(--d-line2); border-radius: 8px; overflow: hidden; }
+.an-seg button { font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 12px; background: none; border: 0; color: var(--d-muted); cursor: pointer; }
+.an-seg button + button { border-left: 1px solid var(--d-line2); }
+.an-seg button[aria-pressed="true"] { background: var(--d-blue-soft); color: var(--d-nav-on); }
+.an-seg button:focus-visible { outline: 2px solid var(--d-blue); outline-offset: -2px; }
+.an-note { margin: 0 0 10px; font-size: 12px; color: var(--d-warn-text); }
+.an-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.an-panel { min-width: 0; padding: 12px 14px; border: 1px solid var(--d-line); border-radius: 10px; background: var(--d-panel2); }
+.an-panel__hd { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.an-panel__hd h3 { margin: 0; font-size: 14px; color: var(--d-text); }
+.an-hint { font-size: 11.5px; color: var(--d-faint); }
+.an-panel .chart { width: 100%; height: auto; display: block; }
+/* 실패 이유: 가로 막대 */
+.an-fails { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.an-fails__top { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.an-fails__top b { color: var(--d-text); font-weight: 600; }
+.an-fails__n { color: var(--d-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.an-fails__track { height: 8px; margin: 4px 0 3px; border-radius: 4px; background: var(--d-line); overflow: hidden; }
+.an-fails__fill { display: block; height: 100%; border-radius: 4px; background: var(--d-bad); }
+/* p95: 점검별 한 줄 */
+.an-p95 { display: grid; gap: 6px; margin-bottom: 4px; }
+.an-p95__row { display: grid; grid-template-columns: 64px 84px minmax(0, 1fr); align-items: center; gap: 8px; }
+.an-p95__row .chip { justify-content: center; }
+.an-p95__v { font-weight: 800; font-size: 16px; color: var(--d-text); font-variant-numeric: tabular-nums; }
+.an-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 11.5px; color: var(--d-muted); }
+.an-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.an-legend__line { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.an-legend__sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; }
+/* 열지도: 요일 이름 칸 + 24시간 칸 */
+.an-heat { display: grid; grid-template-columns: 22px repeat(24, minmax(0, 1fr)); gap: 3px; align-items: center; }
+.an-heat__hour { font-size: 10.5px; color: var(--d-faint); text-align: left; font-variant-numeric: tabular-nums; }
+.an-heat__day { font-size: 11.5px; color: var(--d-muted); }
+.an-heat__cell { display: block; height: 18px; border-radius: 3px; }
+.an-heat__cell--none { background: var(--d-line); opacity: .6; }
+.an-heat__cell--ok { background: var(--d-good); opacity: .35; }
+.an-heat__cell--slow1 { background: var(--d-warn); opacity: .5; }
+.an-heat__cell--slow2 { background: var(--d-warn); }
+.an-heat__cell--bad1 { background: var(--d-bad); opacity: .6; }
+.an-heat__cell--bad2 { background: var(--d-bad); }
+
 /* ── 좁은 화면 (시안과 같은 기준: 1180px에서 한 칸, 760px에서 메뉴가 위로) ── */
 @media (max-width: 1180px) {
   .dash-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stats" "alerts" "head" "list" "metrics"; }
@@ -402,6 +446,7 @@
   .sd-head { grid-template-columns: 54px minmax(0, 1fr) auto; }
   .sd-sep { grid-column: 2 / -1; border-left: 0; padding-left: 0; }
   .sd-grid { grid-template-columns: minmax(0, 1fr); }
+  .an-two { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
@@ -432,4 +477,9 @@
   .sd-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; }
   .sd-stat:nth-child(3) { border-left: 0; }
   .sd-table th:nth-child(2), .sd-table td:nth-child(2) { display: none; }
+  /* 휴대폰: 열지도 칸이 좁아지므로 간격·높이를 줄임 (24칸이 가로 스크롤 없이 들어가게) */
+  .an { padding: 12px; }
+  .an-heat { grid-template-columns: 18px repeat(24, minmax(0, 1fr)); gap: 1px; }
+  .an-heat__cell { height: 14px; border-radius: 2px; }
+  .an-heat__hour { font-size: 9px; }
 }

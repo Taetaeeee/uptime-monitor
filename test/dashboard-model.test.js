@@ -155,3 +155,30 @@ test('timeCells: 시각으로 칸을 나누고, 실패 > 느림 > 정상 > 작�
   assert.equal(cells[0].start, '2026-11-19T00:00:00.000Z');
   assert.equal(M.timeCells([], from, '2026-11-20T00:00:00Z', 15).length, 96); // 24시간 = 96칸
 });
+
+// ── 16단계: 점검 기록 분석 화면 ──
+
+test('percentile: 서버(src/analysis.js)와 같은 결과', async () => {
+  const server = await import('../src/analysis.js');
+  const cases = [[], [42], [300, 100, 200], Array.from({ length: 37 }, (_, i) => (i * 7919) % 101), [null, 5, NaN, 1]];
+  for (const xs of cases) {
+    for (const p of [50, 95, 99]) assert.equal(M.percentile(xs, p), server.percentile(xs, p), `${JSON.stringify(xs)} p${p}`);
+  }
+});
+
+test('p95Response: 성공한 점검만, 계획 작업 중 제외', () => {
+  const pt = (ms, isSuccess = true, inMaintenance = false) => ({ responseMs: ms, isSuccess, inMaintenance });
+  const pts = [...Array.from({ length: 19 }, () => pt(100)), pt(900), pt(null, false), pt(5000, true, true)];
+  assert.equal(M.p95Response(pts), 100); // 20개 중 19번째
+  assert.equal(M.p95Response([pt(null, false)]), null);
+});
+
+test('heatLevel: 실패가 느림보다 먼저, 5% 경계', () => {
+  assert.equal(M.heatLevel({ total: 0, fail: 0, slow: 0 }), 'none');
+  assert.equal(M.heatLevel(undefined), 'none');
+  assert.equal(M.heatLevel({ total: 100, fail: 0, slow: 0 }), 'ok');
+  assert.equal(M.heatLevel({ total: 100, fail: 0, slow: 4 }), 'slow1');
+  assert.equal(M.heatLevel({ total: 100, fail: 0, slow: 5 }), 'slow2');
+  assert.equal(M.heatLevel({ total: 100, fail: 1, slow: 50 }), 'bad1');
+  assert.equal(M.heatLevel({ total: 100, fail: 5, slow: 0 }), 'bad2');
+});

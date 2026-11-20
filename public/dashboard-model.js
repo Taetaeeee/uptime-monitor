@@ -206,7 +206,34 @@
     }));
   }
 
+  /**
+   * 백분위수 (nearest-rank): 정렬 후 ceil(p% × n)번째 값. 서버 src/analysis.js의 percentile과 같은 규칙입니다.
+   * (화면은 빌드 도구 없는 일반 스크립트라 서버 모듈을 불러올 수 없어서 같은 규칙을 한 번 더 둡니다 — 테스트로 결과를 맞춤)
+   */
+  function percentile(values, p) {
+    const xs = values.filter((v) => typeof v === 'number' && Number.isFinite(v)).sort((a, b) => a - b);
+    if (xs.length === 0) return null;
+    return xs[Math.max(1, Math.ceil((p / 100) * xs.length)) - 1];
+  }
+
+  /** 최근 기록의 p95 응답 시간 — 성공한 점검만, 계획 작업 중 제외 (평균과 같은 대상) */
+  function p95Response(points) {
+    return percentile(points.filter((p) => p.isSuccess && !p.inMaintenance).map((p) => p.responseMs), 95);
+  }
+
+  /**
+   * 열지도 칸 색 단계 — 실패가 느림보다 먼저 (실패 1번이 느림 여러 번보다 중요)
+   *   none: 기록 없음 · ok: 문제 없음 · slow1/slow2: 느림 5% 미만/이상 · bad1/bad2: 실패 5% 미만/이상
+   */
+  function heatLevel(cell) {
+    if (!cell || !cell.total) return 'none';
+    if (cell.fail) return cell.fail / cell.total >= 0.05 ? 'bad2' : 'bad1';
+    if (cell.slow) return cell.slow / cell.total >= 0.05 ? 'slow2' : 'slow1';
+    return 'ok';
+  }
+
   root.DashboardModel = {
+    percentile, p95Response, heatLevel,
     serviceUptimeFromHistories, avgResponse, timeCells,
     kstDay, countByState, searchServices, chipLabel, chipState, lastDays, incidentsByDay, responseSeries, uptimeSeries, firstRecordedDay,
     chartStart, sliceSeries, mmss,

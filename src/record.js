@@ -16,8 +16,11 @@ import {
   getOpenIncidents,
   getActiveServiceMembers,
   upsertServiceDailyStats,
+  getDailyStatsMissingAnalysis,
+  updateDailyAnalysis,
 } from './db.js';
 import { summarizeSlots } from './service-status.js';
+import { analyzeDay, BACKFILL_PER_RUN } from './analysis.js';
 import { initialState, nextState, TRANSITION } from './state.js';
 import { dispatch } from './notify.js';
 import { logChannel } from './channels/log.js';
@@ -167,10 +170,18 @@ async function refreshDailyStats(db, monitorIds, checkedAt, source) {
       const rows = await getResultsInRange(db, monitorId, startUtc, endUtc);
       cache.set(`${monitorId}|${day}`, rows);
       if (rows.length === 0) continue; // 기록이 없는 날은 행을 만들지 않음 (화면에서 빈 칸)
-      stats.push({ monitorId, day, ...summarizeDay(rows) });
+      // 가동률 요약 + 분석 값(p95·시간대별·실패 이유, 16단계)을 같은 원본으로 함께 계산 → 추가 읽기 없음
+      stats.push({ monitorId, day, ...summarizeDay(rows), ...analyzeDay(rows) });
     }
   }
   await upsertDailyStats(db, stats, checkedAt, source);
+
+  // 0017 이전 날짜의 분석 값 채우기: 서비스 집계와 마찬가지로 실패해도 이번 회차 기록에는 영향 없음
+  try {
+    await backfillAnalysis(db);
+  } catch (err) {
+    console.error(`[분석 값 채우기 실패] ${checkedAt}:`, err);
+  }
 
   // 서비스 집계는 대상 집계와 따로 잡습니다: 서비스 쪽이 실패해도 대상 집계는 이미 저장됐으니까요.
   try {
@@ -178,6 +189,28 @@ async function refreshDailyStats(db, monitorIds, checkedAt, source) {
   } catch (err) {
     console.error(`[서비스 집계 실패] ${checkedAt}:`, err);
   }
+}
+
+/**
+ * 분석 값이 비어 있는 과거 일별 집계를 회차마다 BACKFILL_PER_RUN개씩 원본에서 다시 계산해 채운다. (16단계)
+ *
+ * 왜 마이그레이션 SQL로 한 번에 채우지 않나?
+ *   p95는 SQL로 구하려면 윈도 함수가 필요한데 D1 지원 여부가 공식 문서에 없고,
+ *   같은 규칙을 SQL과 JS 두 곳에 쓰면 어긋날 수 있어서 순수 함수(analyzeDay) 하나로 계산합니다.
+ * 한 회차에 조금씩만 하는 이유: 원본은 점검·날짜당 288행이라, 한꺼번에 하면 한 회차의 D1 읽기가 커져요.
+ *   다 채우고 나면 조회 1번(빈 결과)만 남습니다.
+ */
+export async function backfillAnalysis(db, limit = BACKFILL_PER_RUN) {
+  const missing = await getDailyStatsMissingAnalysis(db, limit);
+  const items = [];
+  for (const { monitorId, day } of missing) {
+    const { startUtc, endUtc } = kstDayRange(day);
+    const rows = await getResultsInRange(db, monitorId, startUtc, endUtc);
+    // 원본이 없어도(지운 기록) 빈 분석 값을 저장해서, 같은 날을 계속 다시 고르지 않게 합니다
+    items.push({ monitorId, day, ...analyzeDay(rows) });
+  }
+  await updateDailyAnalysis(db, items);
+  return items.length;
 }
 
 /**

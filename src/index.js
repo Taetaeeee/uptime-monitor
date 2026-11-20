@@ -7,6 +7,7 @@
 //          GET  /api/reports/monthly?month=YYYY-MM → 월간 가용성 보고서 (api.js + report.js)
 //          GET  /api/monitors/:id/history?hours=24 → 상세 팝업 그래프용 최근 기록 (api.js)
 //          GET  /api/services, /api/services/:key → 서비스 묶음 목록·상세 (api.js + service-status.js, 0015)
+//          GET  /api/services/:key/analysis?days=30 → 실패 이유 분포·일별 p95·시간대 열지도 (api.js + analysis.js, 0017)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
 //          [Cron] 실제 점검 뒤에 에이전트 무응답 감지(stale-run.js), 오래 가는 장애 메일(escalation-run.js)도 같은 회차에 실행
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
@@ -27,9 +28,11 @@ import {
   buildMonitorHistory,
   buildServices,
   buildServiceDetail,
+  buildServiceAnalysis,
   HISTORY_DEFAULT_HOURS,
   HISTORY_MAX_HOURS,
 } from './api.js';
+import { ANALYSIS_DAYS } from './analysis.js';
 import { isValidMonth, kstMonthOf } from './report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
@@ -179,6 +182,23 @@ export default {
       } catch (err) {
         console.error('[API 오류] /api/status:', err);
         // 내부 오류 내용은 공개 응답에 넣지 않습니다 (로그에만 남김)
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    // 서비스 점검 기록 분석 (공개, 16단계) — ?days=7 또는 30 (기본 30)
+    const analysisMatch = url.pathname.match(/^\/api\/services\/([a-z0-9][a-z0-9-]{0,39})\/analysis$/);
+    if (analysisMatch) {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+      const days = Number(url.searchParams.get('days') ?? '30');
+      if (!ANALYSIS_DAYS.includes(days)) return json({ error: 'invalid_days' }, 400);
+      try {
+        const body = await buildServiceAnalysis(env.DB, analysisMatch[1], days, new Date());
+        if (!body) return json({ error: 'not_found' }, 404);
+        // 값이 Cron(5분)마다 바뀌므로 다른 공개 API처럼 60초 캐시
+        return json(body, 200, { 'cache-control': 'public, max-age=60' });
+      } catch (err) {
+        console.error('[API 오류] /api/services/:key/analysis:', err);
         return json({ error: 'internal_error' }, 500);
       }
     }
