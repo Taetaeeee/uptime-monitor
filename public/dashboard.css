@@ -286,6 +286,8 @@
 .addform__intro { margin: 0; color: var(--d-muted); font-size: 13px; }
 .addform__row { display: grid; gap: 4px; font-size: 12.5px; color: var(--d-muted); font-weight: 600; min-width: 0; }
 .addform__row small { font-weight: 500; color: var(--d-faint); margin-left: 4px; }
+/* hidden 속성이 위의 display: grid에 덮이지 않게 (19단계 '알림 받을 메일' 칸은 기능이 꺼져 있으면 숨김) */
+.addform__row[hidden] { display: none; }
 .addform em, .addform__check em { font-style: normal; font-size: 11px; color: var(--d-warn-text); margin-left: 4px; }
 .addform input[type="url"], .addform input[type="text"], .addform input[type="password"] {
   font: inherit; font-size: 14px; color: var(--d-text); background: var(--d-panel2); border: 1px solid var(--d-line2); border-radius: 9px; padding: 8px 10px; min-width: 0; }

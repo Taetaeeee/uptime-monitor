@@ -341,3 +341,11 @@ test('공개 /api/services는 켜짐 여부만 알려 주고, 기본은 false', 
   assert.equal(JSON.parse(on).subscribersEnabled, true);
   assert.ok(!on.includes('reason') && !on.includes('@'), '이유·주소는 공개하지 않음');
 });
+
+test('화면: 알림 메일 칸은 기본 hidden이고, CSS가 hidden을 덮어쓰지 않음 (라이브에서 display:grid에 덮인 것을 고침)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<label class="addform__row" id="add-email-row" hidden>/);
+  const css = readFileSync(new URL('../public/dashboard.css', import.meta.url), 'utf8');
+  assert.match(css, /\.addform__row\[hidden\]\s*\{\s*display:\s*none;\s*\}/);
+});
