@@ -387,6 +387,8 @@ async function load() {
     ]);
     view.svc = svc;
     view.data = data;
+    // 서비스 추가 팝업의 '알림 받을 메일' 칸: 수신자 기능이 켜져 있을 때만 보임 (19단계, 기본은 꺼짐)
+    document.getElementById('add-email-row').hidden = svc.subscribersEnabled !== true;
     view.lastLoadedAt = Date.now();
     // 다음 점검 회차가 끝난 직후(+25초)에 다시 불러오도록 예약 → 새 점검 결과가 바로 보임
     view.nextReloadAt = nextRunAt(Date.now()) + FETCH_AFTER_MS;
@@ -456,6 +458,10 @@ const ADD_ERROR_TEXT = {
   limit_reached: '켜진 서비스가 상한에 이르렀습니다. 다른 서비스를 끈 뒤 추가해 주세요.',
   unauthorized: '관리자 토큰이 맞지 않습니다.',
   admin_api_disabled: '서버에 관리자 토큰이 등록되지 않아 추가할 수 없습니다.',
+  // 알림 받을 메일 (19단계)
+  email_invalid: '메일 주소 형식이 올바르지 않습니다.',
+  email_too_long: '메일 주소가 너무 깁니다.',
+  subscribers_disabled: '장애 알림 수신 기능이 꺼져 있어 메일은 등록할 수 없습니다.',
 };
 const addErrorText = (code) =>
   ADD_ERROR_TEXT[code] ?? (code?.startsWith('health_') ? `상태 확인 주소: ${ADD_ERROR_TEXT[code.slice(7)] ?? code}` : `추가하지 못했습니다 (${code ?? '알 수 없는 오류'}).`);
@@ -469,6 +475,8 @@ function addBody() {
   const v = (n) => f.elements[n].value.trim();
   const body = { url: v('url'), consent: f.elements.consent.checked };
   for (const k of ['name', 'description', 'healthUrl', 'healthKeyword']) if (v(k)) body[k] = v(k);
+  // 알림 받을 메일 (19단계): 칸이 보일 때(기능이 켜져 있을 때)만 보냄
+  if (!document.getElementById('add-email-row').hidden && v('alertEmail')) body.alertEmail = v('alertEmail');
   return body;
 }
 
@@ -540,10 +548,15 @@ async function addSubmit(e) {
   try {
     const { status, data } = await addCall('/api/admin/services', addBody());
     if (status !== 201) return addShow('bad', addErrorText(data?.error));
-    addShow('ok', `'${data.name}'을(를) 추가했습니다. 다음 5분 회차부터 점검합니다.`);
+    // 알림 메일을 함께 넣었으면 확인 메일 결과도 알려 줌 (주소는 다시 보여 주지 않음)
+    const sub = data.subscriber;
+    const subText = !sub ? '' : sub.confirmSent ? ' 알림 메일 주소로 확인 메일을 보냈습니다 — [받기]를 눌러야 등록됩니다.'
+      : sub.status === 'active' ? ' 그 메일 주소는 이미 알림을 받고 있습니다.'
+      : ' 다만 확인 메일을 보내지 못했습니다 (관리자 API로 다시 보낼 수 있습니다).';
+    addShow(sub && !sub.confirmSent && sub.status !== 'active' ? 'bad' : 'ok', `'${data.name}'을(를) 추가했습니다. 다음 5분 회차부터 점검합니다.${subText}`);
     await load(); // 대시보드에 새 서비스 줄이 '확인 중'으로 나타남
     addForm().elements.token.value = ''; // 다 쓴 토큰은 바로 지움
-    setTimeout(closeAdd, 1200);
+    setTimeout(closeAdd, sub ? 4000 : 1200); // 확인 메일 안내가 있으면 읽을 시간을 조금 더
   } catch (err) {
     console.error(err);
     addShow('bad', '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');

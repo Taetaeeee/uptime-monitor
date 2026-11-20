@@ -23,14 +23,22 @@ export function isEmailConfigured(env) {
  * @param {{subject:string, text:string}} mail
  * @param {object} env   { RESEND_API_KEY, ALERT_EMAIL_TO, ALERT_EMAIL_FROM? }
  * @param {object} [deps] { fetchFn } 테스트용
+ * @param {object} [opts] 19단계 수신자용
+ * @param {string} [opts.to]       받는 주소 (없으면 운영자 ALERT_EMAIL_TO). 한 통에 한 사람 — 다른 수신자 주소가 서로 보이지 않게
+ * @param {string} [opts.unsubscribeUrl]  그만 받기 링크 → 메일 프로그램의 '구독 취소' 버튼용 헤더(List-Unsubscribe)
  */
-export async function sendEmail(mail, env, deps = {}) {
+export async function sendEmail(mail, env, deps = {}, opts = {}) {
   if (!isEmailConfigured(env)) throw new Error('email_not_configured');
   const fetchFn = deps.fetchFn ?? fetch;
+  const payload = { from: env.ALERT_EMAIL_FROM || DEFAULT_FROM, to: [opts.to ?? env.ALERT_EMAIL_TO], subject: mail.subject, text: mail.text };
+  if (opts.unsubscribeUrl) {
+    // 메일 프로그램이 이 주소로 POST 한 번 보내면 바로 그만 받기 (RFC 8058 '한 번에 구독 취소')
+    payload.headers = { 'List-Unsubscribe': `<${opts.unsubscribeUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
+  }
   const res = await fetchFn(RESEND_URL, {
     method: 'POST',
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ from: env.ALERT_EMAIL_FROM || DEFAULT_FROM, to: [env.ALERT_EMAIL_TO], subject: mail.subject, text: mail.text }),
+    body: JSON.stringify(payload),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   // 응답 본문은 로그에 남기지 않습니다 (주소 등 개인 정보가 들어 있을 수 있어서) — 상태 코드만

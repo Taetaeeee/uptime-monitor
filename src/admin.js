@@ -7,6 +7,9 @@
 //   POST   /api/admin/services               서비스 + 점검(HTTP·DNS·선택한 상태 확인) 만들기 (S4)
 //   PATCH  /api/admin/services/:key          { isActive: false|true } 서비스 끄기·다시 켜기 (삭제 대신 끄기, S4)
 //   POST   /api/admin/alerts/test            시험 메일 1통 (장애를 기다리지 않고 메일 설정 확인, 15단계)
+//   GET    /api/admin/subscribers            서비스별 수신자 목록 (주소는 가림, 19단계 — 기본은 꺼짐)
+//   POST   /api/admin/services/:key/subscribers   { email } 수신자 초대 → 확인 메일 (켜져 있을 때만)
+//   DELETE /api/admin/subscribers/:id        수신자 삭제 (주소도 지움)
 //
 // 인증: Authorization: Bearer <ADMIN_TOKEN>  (wrangler secret, 에이전트 키와 별개)
 // 보고서·계획 작업은 PowerShell의 Invoke-RestMethod 등으로 호출해요. 서비스 추가만 대시보드 팝업이 있습니다(토큰은 저장하지 않음).
@@ -21,7 +24,13 @@ import {
   getServiceRows,
   insertServiceWithMonitors,
   setServiceActive,
+  getServices,
+  listSubscribers,
+  getSubscriber,
+  deleteSubscriber,
 } from './db.js';
+import { subscribersStatus, normalizeEmail, maskEmail } from './subscribers.js';
+import { inviteSubscriber } from './subscribe-api.js';
 import { toIsoSeconds } from './time.js';
 import { validateServiceInput, serviceKeyFor, buildMonitors, MAX_SERVICES } from './service-admin.js';
 import { observe } from './checker.js';
@@ -179,6 +188,13 @@ export async function handleAdmin(request, env, url, deps = {}) {
     if (error) return error;
     const v = validateServiceInput(body, { selfHost, requireConsent: true });
     if (!v.ok) return json({ error: v.error }, 400);
+    // 알림 받을 메일 (19단계, 선택): 기능이 꺼져 있으면 받지 않음. 서비스를 만들기 전에 먼저 검사해서 반쯤 만들어지는 일이 없게
+    const alertEmail = typeof body.alertEmail === 'string' ? body.alertEmail.trim() : '';
+    if (alertEmail) {
+      if (!subscribersStatus(env).enabled) return json({ error: 'subscribers_disabled' }, 400);
+      const e = normalizeEmail(alertEmail);
+      if (!e.ok) return json({ error: e.error }, 400);
+    }
     const rows = await getServiceRows(env.DB);
     if (rows.some((r) => r.isActive && sameSite(r.homeUrl, v.value.homeUrl))) return json({ error: 'already_exists' }, 409);
     if (rows.filter((r) => r.isActive).length >= MAX_SERVICES) return json({ error: 'limit_reached', limit: MAX_SERVICES }, 409);
@@ -187,7 +203,13 @@ export async function handleAdmin(request, env, url, deps = {}) {
     const monitors = buildMonitors(v.value);
     await insertServiceWithMonitors(env.DB, { key, name: v.value.name, description: v.value.description, homeUrl: v.value.homeUrl, sortOrder }, monitors, toIsoSeconds(now));
     console.log(`[관리자] 서비스 추가 ${key} (${v.value.host}), 점검 ${monitors.length}개`);
-    return json({ ok: true, key, name: v.value.name, checks: monitors.map((m) => ({ name: m.name, kind: m.kind })) }, 201);
+    let subscriber = null;
+    if (alertEmail) {
+      const svc = (await getServices(env.DB)).find((s) => s.key === key);
+      const r = await inviteSubscriber(env, svc, alertEmail, now, deps);
+      subscriber = { status: r.status, ...r.body }; // 서비스는 이미 만들어졌으므로 수신자 결과만 따로 알려 줌
+    }
+    return json({ ok: true, key, name: v.value.name, checks: monitors.map((m) => ({ name: m.name, kind: m.kind })), ...(subscriber ? { subscriber } : {}) }, 201);
   }
 
   // ── 시험 메일 (15단계) ──
@@ -228,6 +250,35 @@ export async function handleAdmin(request, env, url, deps = {}) {
     if (changed === 0) return json({ error: 'service_not_found' }, 404);
     console.log(`[관리자] 서비스 ${m[1]} ${body.isActive ? '다시 켬' : '끔'}`);
     return json({ ok: true, key: m[1], isActive: body.isActive });
+  }
+
+  // ── 서비스별 수신자 (19단계, 기본은 꺼짐) ──
+  if (path === '/api/admin/subscribers') {
+    if (method !== 'GET') return json({ error: 'method_not_allowed' }, 405);
+    const st = subscribersStatus(env);
+    const items = (await listSubscribers(env.DB)).map((s) => ({
+      id: s.id, serviceKey: s.serviceKey, serviceName: s.serviceName, email: maskEmail(s.email), status: s.status, createdAt: s.createdAt, confirmedAt: s.confirmedAt,
+    }));
+    return json({ enabled: st.enabled, reason: st.reason, items });
+  }
+  m = path.match(/^\/api\/admin\/services\/([a-z0-9][a-z0-9-]{0,39})\/subscribers$/);
+  if (m) {
+    if (method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+    const { body, error } = await readJson(request);
+    if (error) return error;
+    const svc = (await getServices(env.DB)).find((s) => s.key === m[1]);
+    if (!svc) return json({ error: 'service_not_found' }, 404);
+    const r = await inviteSubscriber(env, svc, body.email, now, deps);
+    return json(r.body, r.status);
+  }
+  m = path.match(/^\/api\/admin\/subscribers\/([1-9]\d{0,9})$/);
+  if (m) {
+    if (method !== 'DELETE') return json({ error: 'method_not_allowed' }, 405);
+    const sub = await getSubscriber(env.DB, Number(m[1]));
+    if (!sub) return json({ error: 'not_found' }, 404);
+    await deleteSubscriber(env.DB, sub.id);
+    console.log(`[관리자] 수신자 #${sub.id} 삭제`);
+    return json({ ok: true, id: sub.id });
   }
 
   return json({ error: 'not_found' }, 404);

@@ -9,6 +9,7 @@
 //          GET  /api/services, /api/services/:key → 서비스 묶음 목록·상세 (api.js + service-status.js, 0015)
 //          GET  /api/services/:key/analysis?days=30 → 실패 이유 분포·일별 p95·시간대 열지도 (api.js + analysis.js, 0017)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
+//          /subscribe/confirm·unsubscribe → 장애 알림 수신 확인·그만 받기 페이지 (subscribe-api.js, 19단계, 기본은 꺼짐)
 //          [Cron] 점검 직후 첫 화면 변경 감지(change-run.js, 받은 본문의 지문만), 그 뒤 에이전트 무응답 감지(stale-run.js), 오래 가는 장애 메일(escalation-run.js)도 같은 회차에 실행
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
 // ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
@@ -36,6 +37,8 @@ import { ANALYSIS_DAYS } from './analysis.js';
 import { isValidMonth, kstMonthOf } from './report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
+import { handleSubscribePage } from './subscribe-api.js';
+import { subscribersStatus } from './subscribers.js';
 import { runStaleCheck } from './stale-run.js';
 import { runEscalation } from './escalation-run.js';
 import { runContentChanges } from './change-run.js';
@@ -225,6 +228,8 @@ export default {
         const key = serviceMatch[1];
         const body = key ? await buildServiceDetail(env.DB, key, new Date()) : await buildServices(env.DB, new Date());
         if (!body) return json({ error: 'not_found' }, 404);
+        // 서비스 추가 팝업이 '알림 받을 메일' 칸을 보일지 정할 때 씀 (켜짐 여부만, 이유·설정 값은 넣지 않음)
+        if (!key) body.subscribersEnabled = subscribersStatus(env).enabled;
         return json(body, 200, { 'cache-control': 'public, max-age=60' });
       } catch (err) {
         console.error('[API 오류] /api/services:', err);
@@ -275,6 +280,16 @@ export default {
       } catch (err) {
         console.error('[API 오류] /api/reports/monthly:', err);
         return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    // 장애 알림 수신 확인·그만 받기 페이지 (19단계, 메일 속 링크) — 토큰 확인은 subscribe-api.js 안에서
+    if (url.pathname === '/subscribe/confirm' || url.pathname === '/subscribe/unsubscribe') {
+      try {
+        return await handleSubscribePage(request, env, url);
+      } catch (err) {
+        console.error('[API 오류] 수신 확인 페이지:', err);
+        return new Response('일시적인 오류입니다. 잠시 후 다시 시도해 주세요.', { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } });
       }
     }
 

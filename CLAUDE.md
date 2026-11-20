@@ -138,3 +138,11 @@
    - 화면: 서비스 상세 '최근 이벤트'에 장애와 변경을 시간순으로, 장애 상세 타임라인에 장애 직전 변경 (파란 점)
    - 순서 주의: 0018 원격 적용 먼저, 배포는 그 뒤. 첫 회차에는 기준 지문만 생기고 변경 0건이 정상
    - 라이브 확인: 01:15 회차에 기준 지문 2개(고쳐라! 7,396 bytes, Keychats /chats 9,303 bytes), changes 0건. 실제 변경 기록은 서비스를 배포하면 확인
+18. (보관) 보낼 메일함 + n8n(Gmail) 발송 경로 — 완성했지만 배포하지 않고 브랜치 wip/n8n-outbox에 보관 (PC가 늘 켜져 있어야 해서,
+    도메인 + Resend 방향으로 바꿈). Resend는 is-a.dev 같은 무료 하위 도메인을 거부("free public domains")함을 확인
+19. 서비스별 장애 메일 수신자 — 틀만, 기본은 꺼짐  ← 코드·테스트 완료, 0019 원격 적용(2026-11-20), 배포 전 (브랜치 feat/subscribers)
+   - 아직 아무에게서도 메일 주소를 받지 않음 → 꺼진 채 배포. 켜는 순서는 docs/subscribers.md (도메인 구매·Resend 인증·규칙 4 변경 포함)
+   - 0019(service_subscribers, alert_deliveries, service_escalations에 메일 문구 열), src/subscribers.js(켜짐 조건·주소 검사·가리기·HMAC 링크 토큰·발송 고르기),
+     subscriber-run.js(수신자에게 한 사람씩, 받는 사람별 기록·재시도, 7일 지난 대기 주소 정리), subscribe-api.js(확인·그만 받기 페이지: GET은 버튼만, POST로 처리)
+   - 켜짐 조건: SUBSCRIBERS_ENABLED=1 + 내 도메인 ALERT_EMAIL_FROM(resend.dev면 거부) + SUBSCRIBE_SECRET + SITE_URL
+   - 개인정보: 주소는 D1에만, 공개 API·로그·응답엔 가린 형태만, 토큰은 저장 안 함(HMAC), 그만 받기 = 주소 삭제. 서비스당 5명·전체 20명
