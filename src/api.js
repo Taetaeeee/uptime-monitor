@@ -20,7 +20,11 @@ import {
   getServiceDailyStatsSince,
   getServiceIncidents,
   getAnalysisStats,
+  getRecentChanges,
+  getChangesBetween,
+  getSiblingMonitorIds,
 } from './db.js';
+import { changeView, isNoisy } from './fingerprint.js';
 import { buildAnalysis, parseJsonOr } from './analysis.js';
 import { serviceState, toDailyShape } from './service-status.js';
 import { SLA_TARGET, monthRange, kstMonthOf, summarizeMonth } from './report.js';
@@ -117,13 +121,25 @@ export async function buildIncidentDetail(db, id, now) {
   if (!incident) return null;
   const endIso = incident.resolvedAt ?? toIsoSeconds(now);
   const notifications = await getNotificationsBetween(db, incident.monitorId, incident.startedAt, endIso);
+  // 장애 직전 변경 (17단계): 같은 서비스의 첫 화면이 첫 실패 전 60분 안에 바뀌었으면 함께 보여 줌.
+  // "원인"이라고 단정하지 않고, 원인을 찾을 때 먼저 볼 단서로만 제시합니다.
+  const from = toIsoSeconds(new Date(Date.parse(incident.startedAt) - CHANGE_LOOKBACK_MIN * 60_000));
+  const siblings = await getSiblingMonitorIds(db, incident.monitorId);
+  const changesBefore = (await getChangesBetween(db, siblings, from, incident.startedAt)).map(changeView);
   return {
     ...incident,
     causeText: causeText(incident.cause),
     ...incidentMetrics(incident, now),
     notifications,
+    changeLookbackMin: CHANGE_LOOKBACK_MIN,
+    changesBefore,
   };
 }
+
+// 장애 상세에서 "장애 직전 변경"으로 볼 범위 (분)
+export const CHANGE_LOOKBACK_MIN = 60;
+// 서비스 상세의 최근 변경 수
+export const SERVICE_CHANGE_LIMIT = 10;
 
 // 보고서에서 출처를 묶는 순서: 실제 → 공개 데이터 재생 → 시뮬레이터 → 데모
 // (대상이 없는 출처는 아래에서 걸러지므로, 재생 대상이 아직 없는 동안 응답은 바뀌지 않습니다)
@@ -204,10 +220,16 @@ export async function buildServiceDetail(db, key, now) {
   const { list, ...meta } = await collectServices(db, now);
   const found = list.find((x) => x.view.key === key);
   if (!found) return null;
-  const incidents = await getServiceIncidents(db, found.id, SERVICE_INCIDENT_LIMIT);
+  const [incidents, changes] = await Promise.all([
+    getServiceIncidents(db, found.id, SERVICE_INCIDENT_LIMIT),
+    getRecentChanges(db, found.view.checks.map((c) => c.id), SERVICE_CHANGE_LIMIT),
+  ]);
   return {
     ...meta,
     service: found.view,
+    // 첫 화면 변경 (17단계, 최신 순). noisy: 24시간에 자주 바뀌면 동적 내용일 수 있다는 안내용
+    changes: changes.map(changeView),
+    changesNoisy: isNoisy(changes, now),
     incidents: incidents.map((i) => ({
       id: i.id,
       monitorName: i.monitorName,

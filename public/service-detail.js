@@ -5,7 +5,7 @@
 //   ② 지표 4칸: 서비스 가동률(30일·24시간), 첫 화면 평균 응답(24시간), 장애(30일) — 어떤 서비스든 같은 4칸
 //   ③ 점검 카드: 점검마다 가용성·평균 응답·최근 값, 24시간 응답 시간 선, 15분 칸 성공/실패, 30일 일별 막대
 //   ④ 점검 기록 분석 (16단계): 실패 이유 분포 · p95 응답 시간 · 요일×시간 열지도 (7일/30일)
-//   ⑤ 최근 이벤트: 이 서비스 점검들의 장애·복구 (누르면 사후 보고서)
+//   ⑤ 최근 이벤트: 이 서비스 점검들의 장애·복구(누르면 사후 보고서)와 첫 화면 내용 변경(17단계)을 시간순으로
 //
 // 데이터:
 //   /api/services/:key            서비스·묶인 점검·최근 장애
@@ -347,35 +347,61 @@ async function loadAnalysis(s, histories) {
   next.querySelector('.an-seg [aria-pressed="true"]')?.focus();
 }
 
-// ── ⑤ 최근 이벤트 ──
-function renderEvents(incidents) {
+// ── ⑤ 최근 이벤트: 장애와 첫 화면 변경(17단계)을 시간순으로 함께 ──
+// 같은 표에 두는 이유: "장애 직전에 뭔가 바뀌었나?"를 한눈에 보려고요 (변경 관리의 첫 질문)
+
+const fmtBytes = (n) => `${Number(n).toLocaleString('ko-KR')}`;
+
+function incidentRow(i) {
+  const tr = el('tr');
+  const kind = el('td');
+  kind.append(el('span', 'sd-dot sd-dot--bad'), document.createTextNode(' 장애'));
+  const what = el('td');
+  const a = el('a', '', `${i.monitorName}: ${i.causeText ?? '원인 미상'} (${formatMinutes(i.durationMinutes)})`);
+  a.href = `/incident.html?id=${encodeURIComponent(i.id)}`; // 사후 보고서
+  what.append(a);
+  const result = el('td', i.ongoing ? 'sd-v--bad' : '', i.ongoing ? '진행 중' : `복구됨 (${formatKst(i.resolvedAt)})${i.hasReport ? ' · 보고서 있음' : ''}`);
+  tr.append(el('td', '', formatKst(i.startedAt)), kind, what, result);
+  return tr;
+}
+
+function changeRow(c) {
+  const tr = el('tr');
+  const kind = el('td');
+  kind.append(el('span', 'sd-dot sd-dot--info'), document.createTextNode(' 내용 바뀜'));
+  const diff = c.newSize - c.oldSize;
+  const what = el('td', '', `${c.monitorName}: 첫 화면 내용이 바뀜 (${fmtBytes(c.oldSize)} → ${fmtBytes(c.newSize)} bytes, ${diff >= 0 ? '+' : ''}${fmtBytes(diff)})`);
+  what.title = `지문 ${c.oldHash}… → ${c.newHash}… (본문 SHA-256 앞 8자리). 배포 등으로 바뀐 것으로 보이지만 원인은 알 수 없음`;
+  // 처음 본 회차가 '바뀐 시각', 2회 연속 확인한 회차가 '확정'
+  tr.append(el('td', '', formatKst(c.firstSeenAt)), kind, what, el('td', '', `확정 ${kstHm.format(new Date(c.confirmedAt))} (2회 연속 확인)`));
+  return tr;
+}
+
+function renderEvents(incidents, changes = [], noisy = false) {
   const box = el('section', 'sd-events');
   box.append(el('h2', '', '최근 이벤트'));
+  box.append(el('p', 'sd-events__hint', '장애와 첫 화면 내용 변경(배포 등)을 시간순으로 함께 보여 줍니다. 변경은 5분 점검에서 같은 새 내용을 2회 연속 볼 때 기록합니다.'));
+  if (noisy) {
+    box.append(el('p', 'an-note', '최근 24시간에 첫 화면이 자주 바뀌었습니다. 매번 달라지는 동적 내용이 섞여 있을 수 있어, 변경 기록을 배포로 보기 어렵습니다.'));
+  }
   const table = el('table', 'sd-table');
   const thead = el('thead');
   const hr = el('tr');
-  for (const h of ['발생 시각 (KST)', '구분', '내용', '결과']) hr.append(el('th', '', h));
+  for (const h of ['시각 (KST)', '구분', '내용', '결과']) hr.append(el('th', '', h));
   thead.append(hr);
   const tbody = el('tbody');
-  if (incidents.length === 0) {
+  const rows = [
+    ...incidents.map((i) => ({ at: i.startedAt, node: () => incidentRow(i) })),
+    ...changes.map((c) => ({ at: c.firstSeenAt, node: () => changeRow(c) })),
+  ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)); // 최신이 위
+  if (rows.length === 0) {
     const tr = el('tr');
-    const td = el('td', 'sd-empty', '최근 장애·복구 기록이 없습니다.');
+    const td = el('td', 'sd-empty', '최근 장애·복구·내용 변경 기록이 없습니다.');
     td.colSpan = 4;
     tr.append(td);
     tbody.append(tr);
   }
-  for (const i of incidents) {
-    const tr = el('tr');
-    const kind = el('td');
-    kind.append(el('span', 'sd-dot sd-dot--bad'), document.createTextNode(' 장애'));
-    const what = el('td');
-    const a = el('a', '', `${i.monitorName}: ${i.causeText ?? '원인 미상'} (${formatMinutes(i.durationMinutes)})`);
-    a.href = `/incident.html?id=${encodeURIComponent(i.id)}`; // 사후 보고서
-    what.append(a);
-    const result = el('td', i.ongoing ? 'sd-v--bad' : '', i.ongoing ? '진행 중' : `복구됨 (${formatKst(i.resolvedAt)})${i.hasReport ? ' · 보고서 있음' : ''}`);
-    tr.append(el('td', '', formatKst(i.startedAt)), kind, what, result);
-    tbody.append(tr);
-  }
+  for (const r of rows) tbody.append(r.node());
   table.append(thead, tbody);
   box.append(table);
   return box;
@@ -412,7 +438,7 @@ async function load() {
     grid.append(...s.checks.map((c, i) => checkCard(c, histories[i])));
     root.replaceChildren(
       renderHead(s), renderStrip(s, histories, detail.incidents, detail.today), grid,
-      renderAnalysis(analysis, s, histories), renderEvents(detail.incidents),
+      renderAnalysis(analysis, s, histories), renderEvents(detail.incidents, detail.changes ?? [], detail.changesNoisy),
     );
     if (statusData) refreshDetail(statusData); // 카드의 '자세히' 팝업(detail.js)용
     status.textContent = histories.some((h) => !h) ? '일부 점검의 기록을 불러오지 못했습니다.' : '';

@@ -874,3 +874,145 @@ export async function insertEscalation(db, serviceId, startedAt, escalatedAt) {
 export async function resolveEscalation(db, id, resolvedAt) {
   await db.prepare('UPDATE service_escalations SET resolved_at = ?1 WHERE id = ?2 AND resolved_at IS NULL').bind(resolvedAt, id).run();
 }
+
+// ─────────────────────────────────────────────
+// 첫 화면 변경 감지 (17단계, 0018)
+// ─────────────────────────────────────────────
+
+/**
+ * 변경 감지 대상: 켜진 서비스의 대표 주소(home_url)를 보는 HTTP 점검.
+ * 끝의 / 차이는 무시합니다 (고쳐라!는 'https://gochyeora.pages.dev', Keychats는 '.../'로 저장돼 있어서).
+ */
+export async function getHomePageMonitorIds(db) {
+  const { results } = await db
+    .prepare(
+      `SELECT m.id
+         FROM monitors m
+         JOIN services s ON s.id = m.service_id
+        WHERE s.is_active = 1 AND m.is_active = 1 AND m.kind = 'http'
+          AND s.home_url IS NOT NULL
+          AND rtrim(m.url, '/') = rtrim(s.home_url, '/')`
+    )
+    .all();
+  return results.map((r) => r.id);
+}
+
+/** 점검들의 지문 상태 → Map(monitorId → 상태) */
+export async function getFingerprints(db, monitorIds) {
+  if (monitorIds.length === 0) return new Map();
+  const marks = monitorIds.map((_, i) => `?${i + 1}`).join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT monitor_id, hash, size_bytes, since, candidate_hash, candidate_size, candidate_since, candidate_count
+         FROM content_fingerprints
+        WHERE monitor_id IN (${marks})`
+    )
+    .bind(...monitorIds)
+    .all();
+  return new Map(
+    results.map((r) => [
+      r.monitor_id,
+      {
+        hash: r.hash,
+        sizeBytes: r.size_bytes,
+        since: r.since,
+        candidateHash: r.candidate_hash,
+        candidateSize: r.candidate_size,
+        candidateSince: r.candidate_since,
+        candidateCount: r.candidate_count,
+      },
+    ])
+  );
+}
+
+/**
+ * 지문 상태 저장 + 확정된 변경 기록을 한 batch로 (상태만 바뀌고 기록이 빠지는 일이 없게)
+ * @param {Array<{monitorId:number, state:object, change:object|null}>} items  저장할 것(dirty)만
+ */
+export async function saveFingerprints(db, items, updatedAt, source = 'real') {
+  if (items.length === 0) return;
+  const upsert = db.prepare(
+    `INSERT INTO content_fingerprints
+       (monitor_id, hash, size_bytes, since, candidate_hash, candidate_size, candidate_since, candidate_count, updated_at, source)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+     ON CONFLICT (monitor_id) DO UPDATE SET
+       hash = excluded.hash, size_bytes = excluded.size_bytes, since = excluded.since,
+       candidate_hash = excluded.candidate_hash, candidate_size = excluded.candidate_size,
+       candidate_since = excluded.candidate_since, candidate_count = excluded.candidate_count,
+       updated_at = excluded.updated_at`
+  );
+  const insertChange = db.prepare(
+    `INSERT INTO content_changes (monitor_id, first_seen_at, confirmed_at, old_hash, new_hash, old_size, new_size, source)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+  );
+  const stmts = [];
+  for (const { monitorId, state: s, change: c } of items) {
+    stmts.push(upsert.bind(monitorId, s.hash, s.sizeBytes, s.since, s.candidateHash, s.candidateSize, s.candidateSince, s.candidateCount, updatedAt, source));
+    if (c) stmts.push(insertChange.bind(monitorId, c.firstSeenAt, c.confirmedAt, c.oldHash, c.newHash, c.oldSize, c.newSize, source));
+  }
+  await db.batch(stmts);
+}
+
+function toChange(r) {
+  return {
+    id: r.id,
+    monitorId: r.monitor_id,
+    monitorName: r.monitor_name,
+    firstSeenAt: r.first_seen_at,
+    confirmedAt: r.confirmed_at,
+    oldHash: r.old_hash,
+    newHash: r.new_hash,
+    oldSize: r.old_size,
+    newSize: r.new_size,
+    source: r.source,
+  };
+}
+
+/** 점검들의 최근 변경 N건 (최신 순) */
+export async function getRecentChanges(db, monitorIds, limit) {
+  if (monitorIds.length === 0) return [];
+  const marks = monitorIds.map((_, i) => `?${i + 2}`).join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT c.*, m.name AS monitor_name
+         FROM content_changes c
+         JOIN monitors m ON m.id = c.monitor_id
+        WHERE c.monitor_id IN (${marks})
+        ORDER BY c.first_seen_at DESC, c.id DESC
+        LIMIT ?1`
+    )
+    .bind(limit, ...monitorIds)
+    .all();
+  return results.map(toChange);
+}
+
+/** 점검들의 [fromIso, toIso] 사이 변경 (오래된 순) — 장애 직전 변경 찾기용 */
+export async function getChangesBetween(db, monitorIds, fromIso, toIso) {
+  if (monitorIds.length === 0) return [];
+  const marks = monitorIds.map((_, i) => `?${i + 3}`).join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT c.*, m.name AS monitor_name
+         FROM content_changes c
+         JOIN monitors m ON m.id = c.monitor_id
+        WHERE c.monitor_id IN (${marks}) AND c.first_seen_at >= ?1 AND c.first_seen_at <= ?2
+        ORDER BY c.first_seen_at, c.id`
+    )
+    .bind(fromIso, toIso, ...monitorIds)
+    .all();
+  return results.map(toChange);
+}
+
+/** 점검이 속한 서비스의 모든 점검 id (같은 서비스의 첫 화면 변경을 장애 상세에 보여 주려고) */
+export async function getSiblingMonitorIds(db, monitorId) {
+  const { results } = await db
+    .prepare(
+      `SELECT m2.id
+         FROM monitors m1
+         JOIN monitors m2 ON m2.service_id = m1.service_id
+        WHERE m1.id = ?1 AND m1.service_id IS NOT NULL`
+    )
+    .bind(monitorId)
+    .all();
+  return results.length ? results.map((r) => r.id) : [monitorId];
+}

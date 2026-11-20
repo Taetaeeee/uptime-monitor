@@ -9,7 +9,7 @@
 //          GET  /api/services, /api/services/:key → 서비스 묶음 목록·상세 (api.js + service-status.js, 0015)
 //          GET  /api/services/:key/analysis?days=30 → 실패 이유 분포·일별 p95·시간대 열지도 (api.js + analysis.js, 0017)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
-//          [Cron] 실제 점검 뒤에 에이전트 무응답 감지(stale-run.js), 오래 가는 장애 메일(escalation-run.js)도 같은 회차에 실행
+//          [Cron] 점검 직후 첫 화면 변경 감지(change-run.js, 받은 본문의 지문만), 그 뒤 에이전트 무응답 감지(stale-run.js), 오래 가는 장애 메일(escalation-run.js)도 같은 회차에 실행
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
 // ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
 // (공개 데이터셋 재생은 2026-11-19 가짜 데이터 정리 때 실행 경로를 없앴습니다. 판정 순수 함수 replay.js는
@@ -38,6 +38,7 @@ import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
 import { runStaleCheck } from './stale-run.js';
 import { runEscalation } from './escalation-run.js';
+import { runContentChanges } from './change-run.js';
 import { handleRca } from './rca-api.js';
 
 /**
@@ -128,6 +129,18 @@ export async function runChecks(env, runTime, deps = {}) {
     label,
     channels: deps.channels,
   });
+
+  // 첫 화면 변경 감지 (17단계): 이미 받은 본문으로 지문만 계산 (요청이 늘지 않음).
+  // 기록이 모두 저장된 뒤에 하고, 실패해도 점검 기록에는 영향 없음
+  try {
+    const pages = settled
+      .map((outcome, i) => ({ outcome, monitor: monitors[i], row: rows[i] }))
+      .filter(({ outcome, monitor }) => monitor.kind === 'http' && outcome.status === 'fulfilled')
+      .map(({ outcome, monitor, row }) => ({ monitorId: monitor.id, isSuccess: row.isSuccess, body: outcome.value.body }));
+    await runContentChanges(env.DB, pages, checkedAt);
+  } catch (err) {
+    console.error(`[변경 감지 실패] ${label}:`, err);
+  }
 
   return rows;
 }
