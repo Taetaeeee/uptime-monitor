@@ -862,17 +862,148 @@ export async function getEscalationState(db) {
   };
 }
 
-/** 장애 메일을 보낸 뒤 구간 기록 (보내기에 성공한 뒤에만 부름) */
-export async function insertEscalation(db, serviceId, startedAt, escalatedAt) {
+/**
+ * 장애 메일을 보낸 뒤 구간 기록 (보내기에 성공한 뒤에만 부름)
+ * mail: 운영자에게 보낸 문구 — 수신자(19단계)에게 같은 문구를 보내고, 실패하면 다음 회차에 같은 문구로 다시 보내려고 남김
+ */
+export async function insertEscalation(db, serviceId, startedAt, escalatedAt, mail = null) {
   await db
-    .prepare(`INSERT INTO service_escalations (service_id, started_at, escalated_at, source) VALUES (?1, ?2, ?3, 'real')`)
-    .bind(serviceId, startedAt, escalatedAt)
+    .prepare(
+      `INSERT INTO service_escalations (service_id, started_at, escalated_at, escalation_subject, escalation_body, source)
+       VALUES (?1, ?2, ?3, ?4, ?5, 'real')`
+    )
+    .bind(serviceId, startedAt, escalatedAt, mail?.subject ?? null, mail?.text ?? null)
     .run();
 }
 
-/** 복구 메일을 보낸 뒤 구간 닫기 */
-export async function resolveEscalation(db, id, resolvedAt) {
-  await db.prepare('UPDATE service_escalations SET resolved_at = ?1 WHERE id = ?2 AND resolved_at IS NULL').bind(resolvedAt, id).run();
+/** 복구 메일을 보낸 뒤 구간 닫기 (+ 복구 문구, 위와 같은 이유) */
+export async function resolveEscalation(db, id, resolvedAt, mail = null) {
+  await db
+    .prepare('UPDATE service_escalations SET resolved_at = ?1, recovery_subject = ?3, recovery_body = ?4 WHERE id = ?2 AND resolved_at IS NULL')
+    .bind(resolvedAt, id, mail?.subject ?? null, mail?.text ?? null)
+    .run();
+}
+
+// ─────────────────────────────────────────────
+// 서비스별 수신자 (19단계, 0019) — 기본은 꺼짐
+// ─────────────────────────────────────────────
+
+const toSubscriber = (r) => ({
+  id: r.id,
+  serviceId: r.service_id,
+  serviceKey: r.service_key,
+  serviceName: r.service_name,
+  email: r.email,
+  status: r.status,
+  createdAt: r.created_at,
+  confirmedAt: r.confirmed_at,
+});
+
+const SUB_SELECT = `SELECT ss.*, s.service_key, s.name AS service_name
+                      FROM service_subscribers ss JOIN services s ON s.id = ss.service_id`;
+
+/** 수신자 1명 (서비스 이름 포함). 없으면 null */
+export async function getSubscriber(db, id) {
+  const r = await db.prepare(`${SUB_SELECT} WHERE ss.id = ?1`).bind(id).first();
+  return r ? toSubscriber(r) : null;
+}
+
+/** 전체 수신자 (관리자 목록용 — 주소는 부르는 쪽에서 가림) */
+export async function listSubscribers(db) {
+  const { results } = await db.prepare(`${SUB_SELECT} ORDER BY s.sort_order, ss.id`).all();
+  return results.map(toSubscriber);
+}
+
+/** 서비스별·전체 수신자 수 (대기 + 활성) */
+export async function countSubscribers(db, serviceId) {
+  const r = await db
+    .prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN service_id = ?1 THEN 1 ELSE 0 END) AS mine FROM service_subscribers')
+    .bind(serviceId)
+    .first();
+  return { total: r?.total ?? 0, mine: r?.mine ?? 0 };
+}
+
+/**
+ * 수신자 추가 (확인 전 'pending'). 이미 있으면:
+ *   pending → 추가 시각만 새로 (확인 메일을 다시 보내기 위해 — 예전 링크는 더 이상 맞지 않음)
+ *   active  → 그대로 두고 알려 줌
+ * @returns {Promise<{sub:object, existed:'pending'|'active'|null}>}
+ */
+export async function addSubscriber(db, serviceId, email, createdAt) {
+  const prev = await db.prepare('SELECT id, status FROM service_subscribers WHERE service_id = ?1 AND email = ?2').bind(serviceId, email).first();
+  if (prev?.status === 'active') return { sub: await getSubscriber(db, prev.id), existed: 'active' };
+  if (prev) {
+    await db.prepare('UPDATE service_subscribers SET created_at = ?2 WHERE id = ?1').bind(prev.id, createdAt).run();
+    return { sub: await getSubscriber(db, prev.id), existed: 'pending' };
+  }
+  const r = await db
+    .prepare(`INSERT INTO service_subscribers (service_id, email, status, created_at, source) VALUES (?1, ?2, 'pending', ?3, 'real')`)
+    .bind(serviceId, email, createdAt)
+    .run();
+  return { sub: await getSubscriber(db, r.meta.last_row_id), existed: null };
+}
+
+/** [받기]를 눌렀을 때 */
+export async function activateSubscriber(db, id, at) {
+  await db.prepare(`UPDATE service_subscribers SET status = 'active', confirmed_at = ?2 WHERE id = ?1 AND status = 'pending'`).bind(id, at).run();
+}
+
+/** 그만 받기·관리자 삭제: 발송 기록과 주소를 함께 지움 (주소를 남겨 두지 않음) */
+export async function deleteSubscriber(db, id) {
+  await db.batch([
+    db.prepare('DELETE FROM alert_deliveries WHERE subscriber_id = ?1').bind(id),
+    db.prepare('DELETE FROM service_subscribers WHERE id = ?1').bind(id),
+  ]);
+}
+
+/** 확인하지 않고 7일이 지난 대기 수신자 지우기 */
+export async function deleteExpiredPending(db, cutoffIso) {
+  const { results } = await db.prepare(`SELECT id FROM service_subscribers WHERE status = 'pending' AND created_at < ?1`).bind(cutoffIso).all();
+  for (const r of results) await deleteSubscriber(db, r.id);
+  return results.length;
+}
+
+/**
+ * 수신자 발송 판단에 필요한 것: 열린 구간 + sinceIso 이후 복구된 구간(문구 포함), 활성 수신자, 그 구간들의 발송 기록
+ */
+export async function getDeliveryState(db, sinceIso) {
+  const { results: escs } = await db
+    .prepare(
+      `SELECT id, service_id, resolved_at, escalation_subject, escalation_body, recovery_subject, recovery_body
+         FROM service_escalations
+        WHERE resolved_at IS NULL OR resolved_at >= ?1`
+    )
+    .bind(sinceIso)
+    .all();
+  if (escs.length === 0) return { escalations: [], subscribers: [], deliveries: [] };
+  const [subs, dels] = await Promise.all([
+    db.prepare(`${SUB_SELECT} WHERE ss.status = 'active'`).all(),
+    db
+      .prepare(`SELECT escalation_id, subscriber_id, kind FROM alert_deliveries WHERE escalation_id IN (${escs.map((_, i) => `?${i + 1}`).join(', ')})`)
+      .bind(...escs.map((e) => e.id))
+      .all(),
+  ]);
+  return {
+    escalations: escs.map((e) => ({
+      id: e.id,
+      serviceId: e.service_id,
+      resolvedAt: e.resolved_at,
+      escalationSubject: e.escalation_subject,
+      escalationBody: e.escalation_body,
+      recoverySubject: e.recovery_subject,
+      recoveryBody: e.recovery_body,
+    })),
+    subscribers: subs.results.map(toSubscriber),
+    deliveries: dels.results.map((d) => ({ escalationId: d.escalation_id, subscriberId: d.subscriber_id, kind: d.kind })),
+  };
+}
+
+/** 수신자 1명에게 보냈음 (같은 구간·사람·종류는 한 번만) */
+export async function insertDelivery(db, escalationId, subscriberId, kind, sentAt) {
+  await db
+    .prepare('INSERT OR IGNORE INTO alert_deliveries (escalation_id, subscriber_id, kind, sent_at) VALUES (?1, ?2, ?3, ?4)')
+    .bind(escalationId, subscriberId, kind, sentAt)
+    .run();
 }
 
 // ─────────────────────────────────────────────
