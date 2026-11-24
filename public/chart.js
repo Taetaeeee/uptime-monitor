@@ -267,3 +267,145 @@ function dayBarChart(o) {
   }
   return svg;
 }
+
+// ─────────────────────────────────────────────
+// 서비스가 10개가 넘어도 읽히는 운영 지표 (서비스별 고유색 · 순위 막대 · 서비스별 미니 그래프)
+// 색은 dashboard.css의 --sc-1 ~ --sc-10 (어두운/밝은 화면 각각)이 정하고, 여기서는 번호만 클래스로 붙입니다.
+// ─────────────────────────────────────────────
+
+/** 서비스 고유색 클래스: { n: 3, dashed: false } → 'sc-3' (10개를 넘어 색을 다시 쓰면 ' sc-dash'로 점선). 색 정보가 없으면 회색 'sc-0' */
+function colorClass(c) {
+  return c ? `sc-${c.n}${c.dashed ? ' sc-dash' : ''}` : 'sc-0';
+}
+
+/**
+ * 가로 막대 순위: 한 줄 = 서비스(점검) 하나. 이름이 막대 바로 옆에 붙어서 범례가 필요 없습니다.
+ * 색만으로 구별하지 않게 값도 글자로 함께 적습니다 (색을 못 보는 사람·화면 낭독기도 읽을 수 있게).
+ * @param {object} o
+ * @param {Array<{name:string, value:number|null, color?:{n:number,dashed:boolean}}>} o.rows  위에서부터 그릴 순서
+ * @param {number} o.max     막대 100%에 해당하는 값 (전체 중 최댓값 — 작은 칸과 팝업에서 같은 비율로 보이게)
+ * @param {string} o.unit    값 뒤에 붙일 단위 (ms)
+ */
+function barRank(o) {
+  const list = el('ol', 'brank');
+  for (const r of o.rows) {
+    const li = el('li', 'brank__row');
+    const name = el('span', 'brank__name', r.name);
+    name.title = r.name; // 이름이 길어 잘렸을 때 전체를 볼 수 있게
+    const track = el('span', 'brank__track');
+    track.setAttribute('aria-hidden', 'true'); // 값은 글자로 읽히므로 막대는 장식
+    const fill = el('i', `brank__fill ${colorClass(r.color)}`);
+    const has = r.value !== null && r.value !== undefined && o.max > 0;
+    fill.style.width = has ? `${Math.max(3, Math.round((r.value / o.max) * 100))}%` : '0';
+    track.append(fill);
+    li.append(name, track, el('b', 'brank__val', has ? `${r.value.toLocaleString('ko-KR')}${o.unit}` : '기록 없음'));
+    list.append(li);
+  }
+  return list;
+}
+
+/** 줄 자료의 가장 최근 값 (null 건너뜀) */
+function seriesLastValue(points) {
+  for (let i = points.length - 1; i >= 0; i -= 1) {
+    const v = points[i].v;
+    if (v !== null && v !== undefined) return v;
+  }
+  return null;
+}
+
+/**
+ * 서비스별 미니 그래프 격자: 서비스마다 자기 칸·자기 색. 줄 10개가 겹치지 않아서 하나하나 읽을 수 있습니다.
+ * 세로축은 칸마다 따로 잡습니다(응답 시간) — 서비스끼리 값 크기가 달라도 각자의 변화가 보이게.
+ * 가동률처럼 같은 눈금으로 비교해야 하면 yMin·yMax를 넘기면 모든 칸이 같은 눈금을 씁니다.
+ * @param {object} o
+ * @param {Array<{name:string, key?:string, points:Array<{day:string, v:number|null}>}>} o.series
+ * @param {(s:object)=>({n:number,dashed:boolean}|undefined)} o.colorOf
+ * @param {string} o.unit, o.label
+ * @param {number} [o.yMin], [o.yMax]
+ */
+function seriesGrid(o) {
+  const grid = el('div', 'sgrid');
+  for (const s of o.series) {
+    const color = o.colorOf(s);
+    const cell = el('div', 'sgrid__cell');
+    const head = el('div', 'sgrid__head');
+    head.append(el('i', `sgrid__dot ${colorClass(color)}`), el('span', 'sgrid__name', s.name));
+    head.querySelector('.sgrid__name').title = s.name;
+    const latest = seriesLastValue(s.points);
+    head.append(el('b', 'sgrid__val', latest === null ? '기록 없음' : `${latest.toLocaleString('ko-KR')}${o.unit}`));
+    cell.append(
+      head,
+      multiLineChart({
+        series: [s], classes: [colorClass(color)], unit: o.unit, yMin: o.yMin, yMax: o.yMax,
+        label: `${s.name} ${o.label}`, box: { w: 300, h: 110, l: 40 },
+      })
+    );
+    grid.append(cell);
+  }
+  return grid;
+}
+
+/**
+ * 겹쳐 보기: 한 그래프에 줄을 모두 그리고, 범례 버튼으로 줄을 켜고 끕니다 (눌린 상태는 aria-pressed).
+ * 꺼진 서비스 목록(hidden: Set<number>)은 호출한 쪽이 들고 있어서, 60초마다 다시 그려도 고른 상태가 유지됩니다.
+ * @param {object} o  seriesGrid의 o에 더해: hidden(Set), box
+ */
+function seriesOverlay(o) {
+  const wrap = el('div', 'soverlay');
+  const chartBox = el('div');
+  const legend = el('div', 'mlegend mlegend--btn');
+  const draw = () => {
+    const shown = o.series.map((s, i) => ({ s, i })).filter(({ i }) => !o.hidden.has(i));
+    chartBox.replaceChildren(
+      shown.length
+        ? multiLineChart({
+            series: shown.map((x) => x.s), classes: shown.map((x) => colorClass(o.colorOf(x.s))), unit: o.unit,
+            yMin: o.yMin, yMax: o.yMax, label: o.label, box: o.box,
+          })
+        : el('p', 'sd-empty', '아래에서 보고 싶은 서비스를 눌러 주세요.')
+    );
+  };
+  o.series.forEach((s, i) => {
+    const btn = el('button', 'mleg-btn');
+    btn.type = 'button';
+    btn.setAttribute('aria-pressed', String(!o.hidden.has(i)));
+    btn.append(el('i', colorClass(o.colorOf(s))), document.createTextNode(s.name));
+    btn.addEventListener('click', () => {
+      if (o.hidden.has(i)) o.hidden.delete(i);
+      else o.hidden.add(i);
+      btn.setAttribute('aria-pressed', String(!o.hidden.has(i)));
+      draw();
+    });
+    legend.append(btn);
+  });
+  draw();
+  wrap.append(chartBox, legend);
+  return wrap;
+}
+
+/**
+ * 탭 묶음: [{ label, build() }] — 고른 탭만 그립니다. 고른 탭 번호는 호출한 쪽이 기억합니다(onPick).
+ * 60초마다 팝업을 다시 그려도 보던 탭으로 돌아오게 하려는 것입니다.
+ */
+function metricTabs(panels, selected = 0, onPick = () => {}) {
+  const wrap = el('div', 'mtabs');
+  const bar = el('div', 'mtabs__bar');
+  bar.setAttribute('role', 'tablist');
+  const body = el('div', 'mtabs__body');
+  const buttons = panels.map((p, i) => {
+    const b = el('button', 'mtab', p.label);
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.addEventListener('click', () => show(i));
+    bar.append(b);
+    return b;
+  });
+  function show(i) {
+    buttons.forEach((b, k) => b.setAttribute('aria-selected', String(k === i)));
+    body.replaceChildren(panels[i].build());
+    onPick(i);
+  }
+  show(Math.min(selected, panels.length - 1));
+  wrap.append(bar, body);
+  return wrap;
+}

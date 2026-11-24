@@ -182,3 +182,69 @@ test('heatLevel: 실패가 느림보다 먼저, 5% 경계', () => {
   assert.equal(M.heatLevel({ total: 100, fail: 1, slow: 50 }), 'bad1');
   assert.equal(M.heatLevel({ total: 100, fail: 5, slow: 0 }), 'bad2');
 });
+
+// ── 서비스가 10개가 넘어도 읽히는 운영 지표 (색·순위·예외 우선) ──
+
+test('serviceColors: 서비스 순서대로 1번부터, 10개를 넘으면 색을 다시 쓰고 점선 표시', () => {
+  const services = Array.from({ length: 12 }, (_, i) => ({ key: `s${i + 1}` }));
+  const colors = plain(M.serviceColors(services));
+  assert.deepEqual(colors.s1, { n: 1, dashed: false });
+  assert.deepEqual(colors.s10, { n: 10, dashed: false });
+  assert.deepEqual(colors.s11, { n: 1, dashed: true }); // 11번째는 1번 색 + 점선
+  assert.deepEqual(colors.s12, { n: 2, dashed: true });
+  assert.equal(M.SERIES_COLORS, 10);
+  assert.deepEqual(plain(M.serviceColors([])), {});
+  // 같은 순서면 같은 색 (60초마다 새로 그려도 색이 바뀌지 않음)
+  assert.deepEqual(plain(M.serviceColors(services)), colors);
+});
+
+test('rankByLatest: 느린 순, 값 없는 점검은 맨 아래, 같으면 원래 순서, 상위 N과 나머지 수', () => {
+  const s = (name, latest) => ({ name, latest });
+  const r = M.rankByLatest([s('a', 100), s('b', null), s('c', 300), s('d', 100), s('e', 50), s('f', 700)], 3);
+  assert.deepEqual(plain(r.ranked.map((x) => x.name)), ['f', 'c', 'a', 'd', 'e', 'b']); // a와 d는 같은 100 → 입력 순서
+  assert.deepEqual(plain(r.top.map((x) => x.name)), ['f', 'c', 'a']);
+  assert.equal(r.rest, 3);
+  assert.equal(r.max, 700); // 막대 길이 기준은 전체 중 최댓값 (작은 칸과 팝업에서 같은 비율)
+
+  // 전부 값이 없으면 max 0, 개수가 limit 이하면 rest 0
+  const none = M.rankByLatest([s('x', null), s('y', undefined)], 5);
+  assert.equal(none.max, 0);
+  assert.equal(none.rest, 0);
+  assert.deepEqual(plain(none.top.map((x) => x.name)), ['x', 'y']);
+  assert.equal(M.rankByLatest([], 5).top.length, 0);
+});
+
+test('splitUptimeByException: 100% 아래로 내려간 서비스만 선으로, 기록 없음은 100%로 세지 않음', () => {
+  const day = (d, uptime, total = 288) => ({ day: d, uptime, total });
+  const services = [
+    { key: 'a', name: 'A', daily: [day('d1', 100), day('d2', 100)] }, // 계속 100%
+    { key: 'b', name: 'B', daily: [day('d1', 99.4), day('d2', 100)] }, // 하루 내려감
+    { key: 'c', name: 'C', daily: [day('d1', null, 0), day('d2', null, 0)] }, // 기록 없음
+    { key: 'd', name: 'D', daily: [day('d1', 100), day('d2', 97.5)] }, // 더 많이 내려감
+  ];
+  const r = plain(M.splitUptimeByException(services, 0, 5));
+  assert.deepEqual(r.dipped.map((x) => [x.key, x.min]), [['d', 97.5], ['b', 99.4]]); // 가장 낮았던 값이 낮은 순
+  assert.equal(r.perfectCount, 1);
+  assert.equal(r.noDataCount, 1);
+  assert.equal(r.hidden, 0);
+  assert.deepEqual(r.dipped[1].points, [{ day: 'd1', v: 99.4 }, { day: 'd2', v: 100 }]);
+
+  // start 이후만 본다: d1의 99.4%는 그래프 구간 밖이라 B도 100%로 취급
+  const later = plain(M.splitUptimeByException(services, 1, 5));
+  assert.deepEqual(later.dipped.map((x) => x.key), ['d']);
+  assert.equal(later.perfectCount, 2); // A, B
+
+  // limit을 넘으면 가장 낮은 것부터 limit개만, 나머지는 hidden
+  const capped = plain(M.splitUptimeByException(services, 0, 1));
+  assert.deepEqual(capped.dipped.map((x) => x.key), ['d']);
+  assert.equal(capped.hidden, 1);
+
+  // 서비스가 없으면 전부 0
+  assert.deepEqual(plain(M.splitUptimeByException([], 0, 5)), { dipped: [], hidden: 0, perfectCount: 0, noDataCount: 0 });
+});
+
+test('responseSeries·uptimeSeries: 서비스 key를 함께 줘서 고유색을 찾을 수 있다', () => {
+  const services = [{ key: 'k1', name: 'K', checks: [{ name: 'K 웹', kind: 'http', daily: [{ day: 'a', avgResponseMs: 10 }] }], daily: [{ day: 'a', uptime: 99 }] }];
+  assert.equal(M.responseSeries(services, 'http').series[0].key, 'k1');
+  assert.equal(M.uptimeSeries(services)[0].key, 'k1');
+});
