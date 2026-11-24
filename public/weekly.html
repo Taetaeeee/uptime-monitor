@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <!-- 테마를 화면을 그리기 전에 정함 (깜빡임 방지). index.html과 같은 규칙 -->
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search).get('theme');
+        var t = q === 'light' || q === 'dark' ? q : localStorage.getItem('um-theme');
+        if (t === 'light') document.documentElement.dataset.theme = 'light';
+      } catch (e) {}
+    })();
+  </script>
+  <title>주간 점검 보고서 · Uptime Monitor</title>
+  <meta name="description" content="서비스 하나의 한 주(월~일) 가동률·장애·응답 시간·배포 추정을 요약한 주간 점검 보고서">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/dashboard.css">
+  <link rel="stylesheet" href="/weekly.css">
+</head>
+<body class="dash">
+  <!-- 주간 점검 보고서 (20단계): /weekly.html?key=keychats&week=2026-11-16 (week는 월요일 날짜, 없으면 방금 끝난 주).
+       서비스 상세 화면의 '주간 보고서' 링크로 들어옵니다. weekly.js가 /api/services/:key/weekly 를 불러와 채웁니다.
+       왼쪽 메뉴는 service.html과 같은 마크업 (메뉴를 바꿀 때 함께 고치는 페이지 목록: index·services·service·incidents·evidence·weekly) -->
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+  <div class="shell">
+    <aside class="side" aria-label="사이트 메뉴">
+      <a class="side__brand" href="/">
+        <span class="brand__logo" data-icon="activity"></span>
+        <span>
+          <span class="brand__name">Uptime Monitor</span>
+          <span class="brand__sub">서비스 상태 진단</span>
+        </span>
+      </a>
+      <nav class="side__nav" aria-label="주요 메뉴">
+        <a href="/"><span data-icon="layers" data-icon-class="ico ico--sm"></span>대시보드</a>
+        <a href="/services.html" aria-current="page"><span data-icon="globe" data-icon-class="ico ico--sm"></span>서비스</a>
+        <a href="/incidents.html"><span data-icon="alert" data-icon-class="ico ico--sm"></span>장애 이력</a>
+        <a href="/report.html"><span data-icon="report" data-icon-class="ico ico--sm"></span>월간 보고서</a>
+      </nav>
+      <a class="side__minor" href="/evidence.html"><span data-icon="shield" data-icon-class="ico ico--xs"></span>운영 근거</a>
+      <div class="side__foot">
+        <a href="https://github.com/Taetaeeee/uptime-monitor" rel="noopener"><span data-icon="github" data-icon-class="ico ico--sm"></span>GitHub</a>
+        <button type="button" class="theme-switch" id="theme-switch" role="switch" aria-checked="false" aria-label="밝은 화면">
+          <span class="theme-switch__track" aria-hidden="true">
+            <span class="theme-switch__icon theme-switch__icon--moon" data-icon="moon" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__icon theme-switch__icon--sun" data-icon="sun" data-icon-class="ico ico--xs"></span>
+            <span class="theme-switch__thumb"></span>
+          </span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <div class="pagebar no-print">
+        <span class="pagebar__crumb"><a href="/">대시보드</a> <span aria-hidden="true">›</span> <a id="crumb-service" href="/services.html">서비스</a> <span aria-hidden="true">›</span> <span>주간 보고서</span></span>
+        <p class="load-status" id="load-status" role="status">보고서를 불러오는 중…</p>
+      </div>
+
+      <!-- weekly.js가 채움: 머리(서비스·기간·판정) → 지표 → 점검별 응답 시간 → 장애·변경 → 복사용 텍스트 -->
+      <div id="wk-root"></div>
+
+      <section class="an wk-terms" aria-labelledby="wk-terms-title">
+        <h2 id="wk-terms-title">용어와 계산 방법</h2>
+        <dl>
+          <dt>한 주</dt>
+          <dd>월요일 0시부터 일요일 24시까지(한국 시간). 주소에 주를 적지 않으면 방금 끝난 주를 보여 줍니다.</dd>
+          <dt>가동률</dt>
+          <dd>서비스에 묶인 점검이 모두 성공한 5분 회차 ÷ 전체 회차. 계획 작업 시간은 뺍니다. 소수 둘째 자리에서 내림하고, 전주와는 같은 방식으로 계산해 비교합니다.</dd>
+          <dt>장애 · 영향 시간</dt>
+          <dd>장애는 점검 단위 기록 수입니다. 같은 시간에 HTTP와 DNS가 함께 실패하면 2건이지만, 영향 시간은 겹친 구간을 한 번만 셉니다. 주를 넘는 장애는 이 주에 속한 부분만 셉니다.</dd>
+          <dt>응답 시간</dt>
+          <dd>점검별 성공한 점검의 평균(그날 성공 횟수로 가중)과 전주 대비 변화입니다. p95는 하루 단위로만 계산해 두기 때문에 '가장 느렸던 날의 p95'로 보여 줍니다. 비교는 이번 주·전주 모두 성공 점검이 500회 이상일 때만 하고, 전주보다 30% 이상 그리고 100ms 이상 느려질 때 '느려짐'으로 표시합니다.</dd>
+          <dt>배포 추정</dt>
+          <dd>서비스 첫 화면 내용이 바뀐 것을 같은 새 내용으로 2회 연속 확인한 횟수입니다. 배포 말고 화면 안의 시각·광고 같은 동적 내용 때문에 바뀔 수도 있어서 '추정'입니다.</dd>
+          <dt>판정</dt>
+          <dd>장애가 있었으면 '장애 있었음', 없고 느려짐이 있거나 느린 회차가 5% 이상이면 '주의', 나머지는 '이상 없음', 점검 기록이 없으면 '기록 없음'입니다. 기준 값은 초안이며 몇 주 지켜본 뒤 조정합니다.</dd>
+        </dl>
+      </section>
+
+      <footer class="site-footer">
+        <p>기록의 출처는 이 서비스를 5분마다 실제로 점검한 결과입니다. 점검은 서비스 소유자의 동의를 받은 서비스에만 합니다.</p>
+        <p class="muted" id="wk-updated"></p>
+      </footer>
+    </main>
+  </div>
+
+  <script src="/common.js" defer></script>
+  <script src="/weekly.js" defer></script>
+</body>
+</html>

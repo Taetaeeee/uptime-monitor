@@ -8,6 +8,7 @@
 //          GET  /api/monitors/:id/history?hours=24 → 상세 팝업 그래프용 최근 기록 (api.js)
 //          GET  /api/services, /api/services/:key → 서비스 묶음 목록·상세 (api.js + service-status.js, 0015)
 //          GET  /api/services/:key/analysis?days=30 → 실패 이유 분포·일별 p95·시간대 열지도 (api.js + analysis.js, 0017)
+//          GET  /api/services/:key/weekly?week=YYYY-MM-DD → 서비스 주간 점검 보고서 + 복사용 텍스트 (api.js + weekly-report.js, 20단계)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
 //          /subscribe/confirm·unsubscribe → 장애 알림 수신 확인·그만 받기 페이지 (subscribe-api.js, 19단계, 기본은 꺼짐)
 //          [Cron] 점검 직후 첫 화면 변경 감지(change-run.js, 받은 본문의 지문만), 그 뒤 에이전트 무응답 감지(stale-run.js), 오래 가는 장애 메일(escalation-run.js)도 같은 회차에 실행
@@ -30,11 +31,13 @@ import {
   buildServices,
   buildServiceDetail,
   buildServiceAnalysis,
+  buildWeeklyReport,
   HISTORY_DEFAULT_HOURS,
   HISTORY_MAX_HOURS,
 } from './api.js';
 import { ANALYSIS_DAYS } from './analysis.js';
 import { isValidMonth, kstMonthOf } from './report.js';
+import { isWeekStart, thisWeekStart, lastCompleteWeekStart } from './weekly-report.js';
 import { handleAgentReport } from './ingest.js';
 import { handleAdmin } from './admin.js';
 import { handleSubscribePage } from './subscribe-api.js';
@@ -215,6 +218,25 @@ export default {
         return json(body, 200, { 'cache-control': 'public, max-age=60' });
       } catch (err) {
         console.error('[API 오류] /api/services/:key/analysis:', err);
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
+
+    // 서비스 주간 점검 보고서 (공개, 20단계) — ?week=월요일 날짜(YYYY-MM-DD), 없으면 방금 끝난 주
+    // 월요일이 아니거나 아직 시작하지 않은 주는 거부해서, 이상한 값이 DB까지 가지 않게 합니다.
+    const weeklyMatch = url.pathname.match(/^\/api\/services\/([a-z0-9][a-z0-9-]{0,39})\/weekly$/);
+    if (weeklyMatch) {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+      const now = new Date();
+      const week = url.searchParams.get('week') ?? lastCompleteWeekStart(now);
+      if (!isWeekStart(week) || week > thisWeekStart(now)) return json({ error: 'invalid_week' }, 400);
+      try {
+        const body = await buildWeeklyReport(env.DB, weeklyMatch[1], week, now, env.SITE_URL ?? null);
+        if (!body) return json({ error: 'not_found' }, 404);
+        // 값이 Cron(5분)마다 바뀌므로 다른 공개 API처럼 60초 캐시
+        return json(body, 200, { 'cache-control': 'public, max-age=60' });
+      } catch (err) {
+        console.error('[API 오류] /api/services/:key/weekly:', err);
         return json({ error: 'internal_error' }, 500);
       }
     }
