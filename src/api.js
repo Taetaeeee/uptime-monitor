@@ -28,6 +28,7 @@ import { changeView, isNoisy } from './fingerprint.js';
 import { buildAnalysis, parseJsonOr } from './analysis.js';
 import { serviceState, toDailyShape } from './service-status.js';
 import { SLA_TARGET, monthRange, kstMonthOf, summarizeMonth } from './report.js';
+import { weekRange, summarizeWeek, renderWeeklyText, recentWeekStarts } from './weekly-report.js';
 import { toKstDay, addDays, buildDailyBars, overallUptime } from './aggregate.js';
 import { isInMaintenance, incidentMetrics } from './incident.js';
 import { REASON_TEXT } from './notify.js';
@@ -322,6 +323,72 @@ export async function buildServiceAnalysis(db, key, days, now) {
     service: { key: service.key, name: service.name },
     checks,
     ...buildAnalysis({ checks, stats, today, days, reasonText: REASON_TEXT }),
+  };
+}
+
+/**
+ * /api/services/:key/weekly 응답 본문 (20단계). 없거나 내린 서비스면 null.
+ * 서비스 1개의 한 주(월~일, 한국 시간) 요약 + 메신저·메일에 붙여 넣을 텍스트.
+ *
+ * 새 테이블 없이 기존 일별 집계에서 읽습니다 (전주 비교를 위해 14일 치).
+ *   - 가동률: service_daily_stats (묶인 점검이 모두 성공한 회차 기준)
+ *   - 응답 시간: 점검별 daily_stats (평균은 성공 점검 수로 가중, p95는 일별 값)
+ *   - 장애: incidents, 첫 화면 변경(배포 추정): content_changes
+ * 점검 주소(url)는 내려주지 않고, 소유자 이름·연락처도 이 응답에 없습니다 (저장하지도 않음).
+ *
+ * @param {string} startDay  주 시작 월요일 (검사는 호출하는 쪽에서: weekly-report.js isWeekStart)
+ * @param {string|null} [siteUrl]  이 사이트 주소 (복사용 텍스트의 '자세히' 링크용)
+ */
+export async function buildWeeklyReport(db, key, startDay, now, siteUrl = null) {
+  const service = (await getServices(db)).find((s) => s.key === key);
+  if (!service) return null;
+
+  const range = weekRange(startDay);
+  const today = toKstDay(toIsoSeconds(now));
+  const monitors = (await getStatusMonitors(db)).filter((m) => m.serviceId === service.id);
+  const ids = monitors.map((m) => m.id);
+
+  // 변경 조회의 끝은 '다음 주 월요일 0시 직전'까지: getChangesBetween이 끝 시각을 포함하므로,
+  // 정각(:00)에 찍힌 변경이 이번 주와 다음 주에 두 번 세어지지 않게 1초 앞에서 끊습니다.
+  const changesEnd = toIsoSeconds(new Date(Date.parse(range.endUtc) - 1000));
+
+  const [slotRows, dailyRows, analysisRows, incidentRows, changeRows] = await Promise.all([
+    getServiceDailyStatsSince(db, range.prevStartDay),
+    getDailyStatsBetween(db, range.prevStartDay, range.endDay),
+    getAnalysisStats(db, ids, range.prevStartDay),
+    getIncidentsOverlapping(db, range.startUtc, range.endUtc),
+    getChangesBetween(db, ids, range.startUtc, changesEnd),
+  ]);
+
+  const p95 = new Map(analysisRows.map((r) => [`${r.monitorId}|${r.day}`, r.p95ResponseMs]));
+  const nameOf = new Map(monitors.map((m) => [m.id, m.name]));
+  const idSet = new Set(ids);
+
+  const summary = summarizeWeek({
+    range,
+    today,
+    now,
+    slots: slotRows.filter((s) => s.serviceId === service.id && s.day <= range.endDay),
+    checks: monitors.map((m) => ({
+      id: m.id,
+      name: m.name,
+      kind: m.kind,
+      stats: dailyRows
+        .filter((s) => s.monitorId === m.id)
+        .map((s) => ({ ...s, p95ResponseMs: p95.get(`${m.id}|${s.day}`) ?? null })),
+    })),
+    incidents: incidentRows.filter((i) => idSet.has(i.monitorId)).map((i) => ({ ...i, monitorName: nameOf.get(i.monitorId) ?? null })),
+    changes: changeRows.map((c) => ({ firstSeenAt: c.firstSeenAt, monitorName: c.monitorName })),
+  });
+
+  const link = siteUrl ? `${siteUrl.replace(/\/$/, '')}/weekly.html?key=${encodeURIComponent(key)}&week=${startDay}` : null;
+  return {
+    generatedAt: toIsoSeconds(now),
+    service: { key: service.key, name: service.name, homeUrl: service.homeUrl },
+    week: startDay,
+    weeks: recentWeekStarts(now), // 화면의 주 선택 목록 (진행 중인 주부터)
+    summary: { ...summary, incidents: summary.incidents.map((i) => ({ ...i, causeText: causeText(i.cause) })) },
+    text: renderWeeklyText(service.name, summary, link),
   };
 }
 

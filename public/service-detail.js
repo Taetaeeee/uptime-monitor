@@ -67,6 +67,11 @@ function renderHead(s) {
     a.append(icon('arrowUpRight', 'ico ico--xs'));
     who.append(a);
   }
+  // 주간 점검 보고서 (20단계): 서비스 소유자에게 전달할 한 주 요약. 같은 사이트 안의 화면이라 새 탭으로 열지 않음
+  const weekly = el('a', 'sd-head__link', '주간 보고서');
+  weekly.href = `/weekly.html?key=${encodeURIComponent(s.key)}`;
+  weekly.append(icon('arrowRight', 'ico ico--xs'));
+  who.append(weekly);
 
   const last = el('div', 'sd-sep');
   const lastV = el('b', '', s.lastCheckedAt ? `${agoText(s.lastCheckedAt, Date.now()).replace(' 점검', '')} (${kstHm.format(new Date(s.lastCheckedAt))})` : '아직 기록 없음');

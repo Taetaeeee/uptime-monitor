@@ -333,6 +333,7 @@
 .sd-head__who h1 { margin: 0; font-size: 22px; color: var(--d-text); }
 .sd-head__link { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 13px; color: var(--d-info); }
 .sd-head__link:hover { text-decoration: underline; }
+.sd-head__link + .sd-head__link { margin-left: 14px; } /* 사이트 열기 · 주간 보고서 링크가 나란히 있을 때 */
 .sd-sep { border-left: 1px solid var(--d-line); padding-left: 18px; white-space: nowrap; }
 .sd-sep b { color: var(--d-text); font-variant-numeric: tabular-nums; }
 .chip--static { cursor: default; }
