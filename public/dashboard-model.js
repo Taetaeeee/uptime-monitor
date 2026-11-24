@@ -107,7 +107,8 @@
         const points = (c.daily ?? []).map((d) => ({ day: d.day, v: d.avgResponseMs }));
         // 가장 최근 일평균 (오늘 기록이 없으면 그 전 날)
         const last = [...points].reverse().find((p) => p.v !== null && p.v !== undefined);
-        series.push({ name: `${s.name} ${chipLabel(c)}`, service: s.name, latest: last ? last.v : null, points });
+        // key: 서비스 키 (서비스마다 정한 고유색을 찾는 데 씀)
+        series.push({ name: `${s.name} ${chipLabel(c)}`, service: s.name, key: s.key, latest: last ? last.v : null, points });
       }
     }
     const latest = series.map((x) => x.latest).filter((v) => v !== null);
@@ -121,7 +122,81 @@
 
   /** 서비스별 일 가동률 선 (서버가 회차 기준으로 계산한 service.daily를 그대로) */
   function uptimeSeries(services) {
-    return services.map((s) => ({ name: s.name, points: (s.daily ?? []).map((d) => ({ day: d.day, v: d.uptime })) }));
+    return services.map((s) => ({ name: s.name, key: s.key, points: (s.daily ?? []).map((d) => ({ day: d.day, v: d.uptime })) }));
+  }
+
+  // ─────────────────────────────────────────────
+  // 서비스가 10개가 넘어도 읽히는 운영 지표: 서비스별 고유색 · 순위 · 예외 우선
+  // ─────────────────────────────────────────────
+
+  const SERIES_COLORS = 10; // 서로 구별되는 고유색 개수 (색값은 dashboard.css의 --sc-1 ~ --sc-10)
+
+  /**
+   * 서비스마다 고유색 번호를 정한다. 서비스 목록 순서(서버의 sort_order, id)대로 1번부터.
+   * 10개를 넘으면 색을 다시 쓰되 dashed: true를 붙여서 선 모양(점선)으로 구별합니다.
+   * 한계: 서비스를 끄거나 중간에 끼워 넣으면 뒤 서비스의 색이 한 칸씩 밀립니다 (색 번호를 DB에 저장하지 않아서).
+   * @returns {Object<string, {n:number, dashed:boolean}>} 서비스 key → 색 번호(1~10)
+   */
+  function serviceColors(services) {
+    const out = {};
+    services.forEach((s, i) => {
+      out[s.key] = { n: (i % SERIES_COLORS) + 1, dashed: i >= SERIES_COLORS };
+    });
+    return out;
+  }
+
+  /**
+   * 응답 시간이 느린 순으로 줄 세우기 (가로 막대 순위용).
+   *   - 값이 없는 점검(latest null)은 맨 아래 ('기록 없음'으로 보이게). 값이 같으면 원래 순서 유지.
+   *   - top: 위에서 limit개, rest: 나머지 개수 ("외 N개"), max: 막대 길이의 기준 (전체 중 가장 큰 값)
+   *   막대 길이 기준을 전체에서 잡아야 작은 칸과 팝업에서 같은 값이 같은 비율로 보입니다.
+   */
+  function rankByLatest(series, limit) {
+    const withIndex = series.map((s, i) => ({ s, i }));
+    withIndex.sort((a, b) => {
+      const av = a.s.latest;
+      const bv = b.s.latest;
+      const an = av === null || av === undefined;
+      const bn = bv === null || bv === undefined;
+      if (an !== bn) return an ? 1 : -1;
+      if (an && bn) return a.i - b.i;
+      return bv - av || a.i - b.i;
+    });
+    const ranked = withIndex.map((x) => x.s);
+    const values = ranked.map((s) => s.latest).filter((v) => v !== null && v !== undefined);
+    return {
+      ranked,
+      top: ranked.slice(0, limit),
+      rest: Math.max(0, ranked.length - limit),
+      max: values.length ? Math.max(...values) : 0,
+    };
+  }
+
+  /**
+   * 일 가동률을 "예외 우선"으로 나눈다: 그래프 구간(start부터)에서 100% 아래로 내려간 날이 있는 서비스만 선으로 그립니다.
+   * 100%만 있는 서비스는 선이 전부 맨 위에 겹쳐서 읽을 수 없으므로 개수만 알려 줍니다.
+   *   - 기록이 하나도 없는 서비스는 '100%'가 아니라 noDataCount (모르는 것을 100%로 보이지 않게)
+   *   - dipped는 가장 낮았던 값이 낮은 순. limit개를 넘으면 hidden에 나머지 수
+   * @param {Array<{key:string, name:string, daily:Array<{day:string, uptime:number|null}>}>} services
+   * @param {number} start  sliceSeries와 같은 시작 위치
+   */
+  function splitUptimeByException(services, start, limit) {
+    const dipped = [];
+    let perfectCount = 0;
+    let noDataCount = 0;
+    for (const s of services) {
+      const points = (s.daily ?? []).slice(start).map((d) => ({ day: d.day, v: d.uptime }));
+      const values = points.map((p) => p.v).filter((v) => v !== null && v !== undefined);
+      if (values.length === 0) {
+        noDataCount += 1;
+        continue;
+      }
+      const min = Math.min(...values);
+      if (min < 100) dipped.push({ key: s.key, name: s.name, min, points });
+      else perfectCount += 1;
+    }
+    dipped.sort((a, b) => a.min - b.min); // 정렬은 안정적이라 값이 같으면 원래 순서
+    return { dipped: dipped.slice(0, limit), hidden: Math.max(0, dipped.length - limit), perfectCount, noDataCount };
   }
 
   /** 기록이 시작된 첫 날 (모든 서비스 중 가장 이른 날). 없으면 null */
@@ -237,5 +312,6 @@
     serviceUptimeFromHistories, avgResponse, timeCells,
     kstDay, countByState, searchServices, chipLabel, chipState, lastDays, incidentsByDay, responseSeries, uptimeSeries, firstRecordedDay,
     chartStart, sliceSeries, mmss,
+    SERIES_COLORS, serviceColors, rankByLatest, splitUptimeByException,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

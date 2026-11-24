@@ -16,6 +16,13 @@
   --d-violet: #a78bfa; --d-teal: #2dd4bf;
   --d-tag: rgba(148, 163, 184, .12);
   --d-r: 12px;
+  /* 서비스 고유색 10개 (운영 지표의 막대·그래프, 서비스 줄 아이콘). 순서는 서비스 목록 순서.
+     CIE Lab 거리(ΔE)가 가장 멀어지도록 계산해 고른 색이고 어두운 배경 대비는 모두 4.7:1 이상, 서로 간 최소 ΔE 27.8.
+     초록·노랑·주황 계열이 섞여 있어도 상태(정상·주의·장애)는 알약·테두리가 맡고 그래프 색은 상태를 뜻하지 않습니다.
+     0번은 색 정보가 없는 서비스용 회색 */
+  --sc-0: #94a3b8;
+  --sc-1: #4090da; --sc-2: #ee518e; --sc-3: #4be2ca; --sc-4: #df8af8; --sc-5: #ed956e;
+  --sc-6: #6384f7; --sc-7: #e98ec8; --sc-8: #dbcf4c; --sc-9: #6b984d; --sc-10: #a2893a;
   background: var(--d-bg);
   color: var(--d-text);
   font-size: 14px;
@@ -31,6 +38,11 @@
   --d-info: #2563eb; --d-info-text: #1d4ed8;
   --d-violet: #7c3aed; --d-teal: #0d9488;
   --d-tag: rgba(100, 116, 139, .12);
+  /* 서비스 고유색 (밝은 화면): 어두운 화면과 같은 색상(hue)에서 밝은 배경 대비 4.2:1 이상이 되게 어둡힌 값.
+     10번만 노랑·올리브가 비슷해져(ΔE 14) 회색으로 바꿈. 이 세트의 최소 ΔE는 계산으로 확인했지만 색각 이상 시뮬레이션은 하지 않았습니다 */
+  --sc-0: #64748b;
+  --sc-1: #1c7bc3; --sc-2: #d53879; --sc-3: #2a8476; --sc-4: #a655bf; --sc-5: #af6342;
+  --sc-6: #4970e0; --sc-7: #b05992; --sc-8: #807a01; --sc-9: #568339; --sc-10: #6d6d6d;
 }
 .dash .glow { display: none; }
 
@@ -246,17 +258,66 @@
 .chart__hitbar { fill: transparent; }
 .chart__hitbar:hover { fill: var(--chart-hit); }
 .dash .chart__fail { fill: var(--d-bad); }
-/* 줄 색: 기본 순서(1~4)와, 시안과 같은 짝을 고를 때 쓰는 이름 있는 색 */
-.chart__series--1, .chart__c--blue { stroke: var(--d-info); background: var(--d-info); }
-.chart__series--2, .chart__c--green { stroke: var(--d-good); background: var(--d-good); }
-.chart__series--3, .chart__c--amber { stroke: var(--d-warn); background: var(--d-warn); }
-.chart__series--4, .chart__c--violet { stroke: var(--d-violet); background: var(--d-violet); }
-.chart__c--teal { stroke: var(--d-teal); background: var(--d-teal); }
-.chart__mdot.chart__series--1, .chart__mdot.chart__c--blue { fill: var(--d-info); }
-.chart__mdot.chart__series--2, .chart__mdot.chart__c--green { fill: var(--d-good); }
-.chart__mdot.chart__series--3, .chart__mdot.chart__c--amber { fill: var(--d-warn); }
-.chart__mdot.chart__series--4, .chart__mdot.chart__c--violet { fill: var(--d-violet); }
-.chart__mdot.chart__c--teal { fill: var(--d-teal); }
+/* 줄 색 1: 서비스 상세의 점검별 선이 쓰는 순서 색(1~4) */
+.chart__series--1 { stroke: var(--d-info); background: var(--d-info); }
+.chart__series--2 { stroke: var(--d-good); background: var(--d-good); }
+.chart__series--3 { stroke: var(--d-warn); background: var(--d-warn); }
+.chart__series--4 { stroke: var(--d-violet); background: var(--d-violet); }
+.chart__mdot.chart__series--1 { fill: var(--d-info); }
+.chart__mdot.chart__series--2 { fill: var(--d-good); }
+.chart__mdot.chart__series--3 { fill: var(--d-warn); }
+.chart__mdot.chart__series--4 { fill: var(--d-violet); }
+
+/* 줄 색 2: 서비스 고유색. 클래스 sc-N이 --sc를 정하고, 줄·점·막대·범례가 그 값을 씁니다 (chart.js colorClass).
+   10개를 넘어 색을 다시 쓰는 서비스는 sc-dash가 붙어 선 모양(점선)으로 구별합니다 */
+.sc-0 { --sc: var(--sc-0); } .sc-1 { --sc: var(--sc-1); } .sc-2 { --sc: var(--sc-2); } .sc-3 { --sc: var(--sc-3); }
+.sc-4 { --sc: var(--sc-4); } .sc-5 { --sc: var(--sc-5); } .sc-6 { --sc: var(--sc-6); } .sc-7 { --sc: var(--sc-7); }
+.sc-8 { --sc: var(--sc-8); } .sc-9 { --sc: var(--sc-9); } .sc-10 { --sc: var(--sc-10); }
+.dash .chart__mline[class*="sc-"] { stroke: var(--sc); }
+.dash .chart__mline.sc-dash { stroke-dasharray: 5 3; }
+.dash .chart__mdot[class*="sc-"] { fill: var(--sc); }
+.mlegend i[class*="sc-"] { background: var(--sc); }
+.mlegend i.sc-dash, .sgrid__dot.sc-dash, .mleg-btn i.sc-dash { background: transparent; box-shadow: inset 0 0 0 2px var(--sc); }
+
+/* 서비스 줄 아이콘: 서비스 고유색으로 (먼저 글자색만, color-mix를 지원하는 브라우저에서는 배경·테두리도 옅게 칠함) */
+.svc__ico[class*="sc-"] { color: var(--sc); }
+.svc__ico[class*="sc-"] {
+  background: color-mix(in srgb, var(--sc) 16%, var(--d-panel2));
+  border-color: color-mix(in srgb, var(--sc) 45%, var(--d-line2));
+}
+
+/* ── 운영 지표: 가로 막대 순위 / 서비스별 미니 그래프 / 탭 / 겹쳐 보기 범례 ── */
+.brank { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.brank__row { display: grid; grid-template-columns: minmax(72px, 38%) minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; }
+.brank__name { color: var(--d-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brank__track { height: 8px; border-radius: 4px; background: var(--d-line); overflow: hidden; }
+.brank__fill { display: block; height: 100%; border-radius: 4px; background: var(--sc, var(--sc-0)); }
+.brank__fill.sc-dash { background: repeating-linear-gradient(90deg, var(--sc) 0 6px, transparent 6px 9px); }
+.brank__val { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; color: var(--d-text); font-weight: 600; }
+.mzoom .brank { gap: 9px; margin-top: 12px; }
+.mzoom .brank__row { font-size: 13px; grid-template-columns: minmax(120px, 30%) minmax(0, 1fr) auto; }
+.mbox__more { margin-top: 8px; font-size: 11.5px; color: var(--d-info-text); }
+.mbox__more--plain { color: var(--d-muted); }
+.mbox__empty { margin: 8px 0 0; font-size: 12px; color: var(--d-muted); }
+
+.sgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.sgrid__cell { padding: 8px 10px 4px; min-width: 0; background: var(--d-panel2); border: 1px solid var(--d-line); border-radius: 10px; }
+.sgrid__head { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.sgrid__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--sc, var(--sc-0)); flex: none; }
+.sgrid__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--d-text); font-weight: 600; }
+.sgrid__val { font-variant-numeric: tabular-nums; color: var(--d-muted); white-space: nowrap; }
+.sgrid .chart { margin-top: 2px; }
+
+.mtabs__bar { display: flex; gap: 4px; margin: 4px 0 10px; border-bottom: 1px solid var(--d-line); }
+.mtab { font: inherit; font-size: 13px; font-weight: 600; color: var(--d-muted); background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 12px; margin-bottom: -1px; cursor: pointer; }
+.mtab:hover { color: var(--d-text); }
+.mtab[aria-selected="true"] { color: var(--d-text); border-bottom-color: var(--d-blue); }
+.mtab:focus-visible, .mleg-btn:focus-visible { outline: 2px solid var(--d-blue); outline-offset: 2px; border-radius: 6px; }
+.mlegend--btn { gap: 6px; }
+.mleg-btn { font: inherit; font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; color: var(--d-text); background: var(--d-panel2); border: 1px solid var(--d-line2); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.mleg-btn i { width: 9px; height: 9px; border-radius: 50%; margin-right: 0; background: var(--sc, var(--sc-0)); }
+.mleg-btn[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+@media (max-width: 560px) { .sgrid { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── 서비스 페이지: 점검별 카드 (모양은 style.css의 .card, 색만 대시보드 팔레트로) ── */
 .dash .card { background: var(--d-panel); border-color: var(--d-line); }
