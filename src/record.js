@@ -148,18 +148,37 @@ export async function recordResults(db, p) {
   return { events };
 }
 
+// '어제' 집계를 다시 계산하는 회차 (KST HH:MM). 26단계 — D1 읽기 줄이기
+//   자정 직후 6회차(00:00~00:25): 어제 마지막 회차(23:55) 기록이 늦게 저장돼도 반영되게
+//   01:00: 그 30분이 모두 실패했을 때를 위한 안전용 1회
+// 자정이 지나면 어제 원본은 더 늘지 않으므로, 그 밖의 회차에 어제를 다시 읽는 것은 같은 결과를 위한 읽기 낭비였습니다
+// (점검 21개 × 어제 288행 × 하루 288회차 ≈ 하루 170만 행 — 무료 한도 500만의 3분의 1).
+export const YESTERDAY_REFRESH_KST = ['00:00', '00:05', '00:10', '00:15', '00:20', '00:25', '01:00'];
+
 /**
- * 대상별로 KST '어제'와 '오늘'의 일별 집계를 원본에서 다시 계산해 덮어쓴다.
+ * 이 회차에 '어제' 일별 집계도 다시 계산해야 하나 (순수 함수, 26단계)
+ * @param {string} checkedAt  회차 시각 (UTC ISO)
+ */
+export function shouldRefreshYesterday(checkedAt) {
+  const ms = Date.parse(checkedAt);
+  if (!Number.isFinite(ms)) return true; // 시각을 못 읽으면 예전처럼 어제도 (덜 읽는 것보다 틀리지 않는 쪽)
+  const hm = new Date(ms + 9 * 3600_000).toISOString().slice(11, 16); // KST로 옮긴 뒤 HH:MM
+  return YESTERDAY_REFRESH_KST.includes(hm);
+}
+
+/**
+ * 대상별로 KST '오늘'(자정 직후 몇 회차는 '어제'도)의 일별 집계를 원본에서 다시 계산해 덮어쓴다.
  *
  * 왜 매 회차 다시 계산하나?
  *   - 하루 288행 정도라 매번 다시 세도 부담이 거의 없고, 별도 Cron을 만들 필요가 없습니다.
  *   - "증가분만 더하기" 방식보다 단순하고, 중간에 한 번 실패해도 다음 회차에 저절로 바로잡혀요.
- * 왜 '어제'도?
- *   - 자정 직후 첫 회차에서 어제 마지막 회차(23:55)까지 빠짐없이 반영하기 위해서입니다.
+ *   - p95·시간대별 값은 그날 원본 전체가 있어야 계산할 수 있어서 증가분으로는 못 합니다.
+ * 왜 '어제'는 자정 직후에만?
+ *   - 자정 직후 회차에서 어제 마지막 회차(23:55)까지 반영하면 충분하고, 그 뒤로는 어제 원본이 바뀌지 않기 때문입니다 (26단계).
  */
 async function refreshDailyStats(db, monitorIds, checkedAt, source) {
   const today = toKstDay(checkedAt);
-  const days = [addDays(today, -1), today];
+  const days = shouldRefreshYesterday(checkedAt) ? [addDays(today, -1), today] : [today];
   const stats = [];
   // 읽은 원본을 서비스 집계에서 다시 쓰려고 보관합니다 ("대상id|날짜" → 결과 배열).
   // 같은 행을 두 번 읽지 않아서 D1 읽기 양이 늘지 않아요.
@@ -176,12 +195,9 @@ async function refreshDailyStats(db, monitorIds, checkedAt, source) {
   }
   await upsertDailyStats(db, stats, checkedAt, source);
 
-  // 0017 이전 날짜의 분석 값 채우기: 서비스 집계와 마찬가지로 실패해도 이번 회차 기록에는 영향 없음
-  try {
-    await backfillAnalysis(db);
-  } catch (err) {
-    console.error(`[분석 값 채우기 실패] ${checkedAt}:`, err);
-  }
+  // 0017 이전 날짜의 분석 값 채우기(backfillAnalysis)는 2026-11-25에 남은 날이 0이 되어 Cron에서 부르지 않습니다 (26단계).
+  // 확인 조회(WHERE hourly IS NULL)가 매 회차 일별 집계 표 전체를 훑어서, 표가 커질수록 읽기가 늘었기 때문입니다.
+  // 새 일별 집계는 만들 때 분석 값을 함께 계산하므로 빈 날이 다시 생기지 않습니다. 함수는 필요할 때 손으로 돌릴 수 있게 남김.
 
   // 서비스 집계는 대상 집계와 따로 잡습니다: 서비스 쪽이 실패해도 대상 집계는 이미 저장됐으니까요.
   try {
