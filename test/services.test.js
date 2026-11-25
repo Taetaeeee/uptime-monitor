@@ -272,3 +272,38 @@ test('일별 자료의 failed와 /api/status 장애 이력의 monitorId (23단�
   const status = await (await worker.fetch(new Request('https://example.test/api/status'), { DB: db })).json();
   assert.equal(status.incidents[0].monitorId, health.id); // 이름이 아니라 id로 서비스 줄의 점검과 맞출 수 있음
 });
+
+// ── 24단계: 서비스마다 나눠 가져오기 + 정확한 변경 수 ──
+
+test('recentChanges는 서비스당 최근 3건씩이라 배포가 잦은 서비스가 목록을 다 차지하지 않고, changeCounts는 24시간·7일을 정확히 센다', async () => {
+  const db = createFakeD1();
+  const now = new Date(Date.UTC(2026, 10, 25, 5, 0, 0));
+  const ago = (h) => new Date(now.getTime() - h * 3600_000).toISOString().replace(/\.\d+Z$/, 'Z');
+  const idOf = (url) => db.sqlite.prepare('SELECT id FROM monitors WHERE url = ?').get(url).id;
+  const add = (monitorId, at) =>
+    db.sqlite
+      .prepare("INSERT INTO content_changes (monitor_id, first_seen_at, confirmed_at, old_hash, new_hash, old_size, new_size, source) VALUES (?, ?, ?, 'a', 'b', 668, 668, 'real')")
+      .run(monitorId, at, at);
+  const g = idOf('https://gochyeora.pages.dev');
+  const k = idOf('https://keychats.vercel.app/');
+  // 고쳐라!: 11번 (24시간 안 7번: 1~7시간 전, 그 밖 4번: 30·50·70·100시간 전) + 8일 전 1번(7일 밖)
+  for (const h of [1, 2, 3, 4, 5, 6, 7, 30, 50, 70, 100]) add(g, ago(h));
+  add(g, ago(8 * 24));
+  // Keychats: 2번 (한참 전이라 전체 최신 20건 방식이었으면 밀리지 않았겠지만, 3건 제한에서도 둘 다 나와야 함)
+  add(k, ago(120));
+  add(k, ago(150));
+  // 24시간 경계: 정확히 24시간 전은 포함, 24시간 + 1초 전은 제외
+  const k2 = idOf('https://keychats.vercel.app/');
+  add(k2, new Date(now.getTime() - 24 * 3600_000).toISOString().replace(/\.\d+Z$/, 'Z'));
+  add(k2, new Date(now.getTime() - 24 * 3600_000 - 1000).toISOString().replace(/\.\d+Z$/, 'Z'));
+
+  const body = await buildServices(db, now);
+  const byKey = (key) => body.recentChanges.filter((c) => c.serviceKey === key);
+  assert.equal(byKey('gochyeora').length, 3); // 서비스당 3건
+  assert.deepEqual(byKey('gochyeora').map((c) => c.firstSeenAt), [ago(1), ago(2), ago(3)]); // 가장 최근 3건
+  assert.equal(byKey('keychats').length, 3); // 경계 2건 + 120시간 전 (150시간 전은 4번째라 빠짐)
+
+  const count = (key) => body.changeCounts.find((c) => c.serviceKey === key);
+  assert.deepEqual({ ...count('gochyeora') }, { serviceKey: 'gochyeora', day: 7, week: 11 }); // 8일 전은 7일 밖
+  assert.deepEqual({ ...count('keychats') }, { serviceKey: 'keychats', day: 1, week: 4 }); // 정확히 24시간 전만 하루 안
+});

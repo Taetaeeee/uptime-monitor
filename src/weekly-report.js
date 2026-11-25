@@ -19,7 +19,7 @@ export const SLOWDOWN_PERCENT = 30;        // 평균 응답이 전주보다 이�
 export const SLOWDOWN_MIN_MS = 100;        // ...그리고 늘어난 양이 이 값(ms) 이상일 때만 (50ms→70ms 같은 잡음 제외)
 export const MIN_TREND_SAMPLES = 500;      // 비교하려면 이번 주·전주 모두 성공 점검이 이만큼은 있어야 함 (5분 간격으로 약 이틀 치)
 export const SLOW_SLOT_WATCH_RATIO = 0.05; // 느린 회차가 전체의 5% 이상이면 '주의'
-export const NOISY_CHANGES_PER_WEEK = 14;  // 첫 화면이 이만큼 이상 바뀌면 배포가 아니라 동적 내용일 가능성을 안내
+export const NOISY_CHANGES_PER_WEEK = 14;  // 첫 화면이 이만큼 이상 바뀌면 '배포가 잦거나 동적 내용일 수 있음'을 안내 (24단계: 동적 내용이라고 단정하지 않음)
 export const CHANGE_LIST_LIMIT = 10;       // 보고서에 시각을 적어 줄 변경 수
 export const WEEK_CHOICES = 8;             // 화면의 주 선택 목록 길이
 
@@ -228,7 +228,8 @@ export function summarizeWeek({ range, today, now, slots, checks, incidents, cha
   }
   if (totalSlots > 0 && prevUptime === null) notes.push('전주 기록이 없어 전주와 비교하지 않았습니다.');
   if (changeCount >= NOISY_CHANGES_PER_WEEK) {
-    notes.push('첫 화면이 자주 바뀌었습니다. 배포가 아니라 화면에 시각·광고 같은 동적 내용이 있어서일 수 있습니다.');
+    // 빌드할 때마다 파일 이름(해시)이 바뀌는 서비스는 배포가 잦기만 해도 자주 바뀐 것으로 보이므로 둘 다 적음 (24단계)
+    notes.push('첫 화면이 자주 바뀌었습니다. 배포가 잦았거나(빌드할 때마다 첫 화면의 파일 이름이 바뀜) 시각·광고 같은 동적 내용이 있어서일 수 있습니다.');
   }
 
   return {

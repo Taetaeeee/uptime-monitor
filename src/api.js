@@ -21,6 +21,8 @@ import {
   getServiceIncidents,
   getAnalysisStats,
   getRecentChanges,
+  getRecentChangesPerMonitor,
+  getChangeCounts,
   getChangesBetween,
   getSiblingMonitorIds,
 } from './db.js';
@@ -208,9 +210,10 @@ export async function buildMonthlyReport(db, month, now) {
 // ─────────────────────────────────────────────
 
 export const SERVICE_INCIDENT_LIMIT = 10;
-// 대시보드 '최근 배포(추정)' (23단계): 전체 서비스의 첫 화면 변경을 최근 7일, 최대 20건
+// 대시보드 '최근 배포(추정)' (23단계): 전체 서비스의 첫 화면 변경을 최근 7일.
+// 24단계: 전체 최신 20건 대신 서비스(대표 점검)마다 최근 3건씩 — 배포가 잦은 서비스 하나가 목록을 다 차지하지 않게
 export const RECENT_CHANGE_DAYS = 7;
-export const RECENT_CHANGE_LIMIT = 20;
+export const RECENT_CHANGE_PER_SERVICE = 3;
 
 /**
  * 서비스 목록을 만든다. 서비스에 묶이지 않은 점검(예: 훈련 대상)은 여기 나오지 않습니다.
@@ -221,11 +224,27 @@ export async function buildServices(db, now) {
   // 첫 화면 변경(17단계)을 서비스 전체에서 한 번에 (대시보드가 서비스마다 상세 API를 10번 부르지 않게). 조회 1번 추가, 응답은 60초 캐시
   const serviceOf = new Map();
   for (const x of list) for (const c of x.view.checks) serviceOf.set(c.id, x.view);
-  const from = now.getTime() - RECENT_CHANGE_DAYS * 24 * 3600_000;
-  const changes = (await getRecentChanges(db, [...serviceOf.keys()], RECENT_CHANGE_LIMIT)).filter((c) => Date.parse(c.firstSeenAt) >= from);
+  const ids = [...serviceOf.keys()];
+  const weekIso = toIsoSeconds(new Date(now.getTime() - RECENT_CHANGE_DAYS * 24 * 3600_000));
+  const dayIso = toIsoSeconds(new Date(now.getTime() - 24 * 3600_000));
+  const [changes, counts] = await Promise.all([
+    getRecentChangesPerMonitor(db, ids, weekIso, RECENT_CHANGE_PER_SERVICE),
+    getChangeCounts(db, ids, weekIso, dayIso),
+  ]);
+  // 점검별 횟수를 서비스별로 합침 (변경 감지는 서비스 대표 주소만 하지만, 묶인 점검이 여럿이어도 맞게)
+  const countOf = new Map();
+  for (const c of counts) {
+    const key = serviceOf.get(c.monitorId).key;
+    const acc = countOf.get(key) ?? { serviceKey: key, day: 0, week: 0 };
+    acc.day += c.day;
+    acc.week += c.week;
+    countOf.set(key, acc);
+  }
   return {
     ...meta,
     services: list.map((x) => x.view),
+    // 서비스별 첫 화면 변경 수 (24시간·7일) — 화면의 '잦은 변경 · 24시간 N번'은 이 값으로 판단 (목록은 서비스당 3건뿐이라)
+    changeCounts: [...countOf.values()],
     // 공개 응답: 서비스 키·이름과 시각·크기만 (점검 주소·본문은 없음. 지문은 서비스 상세 API에서만)
     recentChanges: changes.map((c) => ({
       serviceKey: serviceOf.get(c.monitorId).key,

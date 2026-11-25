@@ -489,7 +489,7 @@ function renderWatch(svc, data) {
 
 function renderChanges(svc, data) {
   const { items, noisyKeys } = DashboardModel.changeFeed({
-    changes: svc.recentChanges ?? [], services: svc.services, incidents: data.incidents ?? [], now: Date.now(),
+    changes: svc.recentChanges ?? [], counts: svc.changeCounts, services: svc.services, incidents: data.incidents ?? [], now: Date.now(),
   });
   const root = document.getElementById('changes');
   if (items.length === 0) {
@@ -513,9 +513,10 @@ function renderChanges(svc, data) {
       li.append(b);
     }
     if (noisy.has(it.serviceKey)) {
-      // 자주 바뀌는 서비스는 한 줄로 묶어서 변경 수를 함께 적음 (changeFeed)
-      const b = el('span', 'chg__badge', it.count > 1 ? `자주 바뀜 · ${it.count}번` : '자주 바뀜');
-      b.title = `24시간에 ${DashboardModel.NOISY_PER_DAY}번 이상 바뀜 — 배포가 아니라 날짜·광고 같은 동적 내용일 수 있음`;
+      // 잦은 변경 서비스는 한 줄로 묶고 서버가 센 24시간 변경 수를 적음 (changeFeed).
+      // 빌드할 때마다 첫 화면의 파일 이름(해시)이 바뀌는 서비스는 배포가 잦아도 이렇게 보이므로 '동적 내용'이라고 단정하지 않음
+      const b = el('span', 'chg__badge', `잦은 변경 · 24시간 ${it.day}번`);
+      b.title = `최근 7일 ${it.week}번 바뀜 — 배포가 잦거나(빌드할 때마다 첫 화면의 파일 이름이 바뀜) 날짜·광고 같은 동적 내용일 수 있음`;
       li.append(b);
     }
     list.append(li);

@@ -372,11 +372,11 @@ test('changeFeed: 최신 순, 변경 뒤 60분 안 같은 서비스 장애만 �
   const many = Array.from({ length: 6 }, (_, k) => ch('b', 10 + k * 60)); // 24시간 안 6번
   const noisy = M.changeFeed({ changes: [...many, ch('a', 30)], services, incidents: [], now: NOW });
   assert.deepEqual(plain(noisy.noisyKeys), ['b']);
-  // 자주 바뀌는 b는 가장 최근 한 줄로 묶여서 a의 변경이 밀려나지 않음
-  assert.deepEqual(plain(noisy.items.map((i) => [i.serviceKey, i.count])), [['b', 6], ['a', 1]]);
+  // 잦은 변경 b는 가장 최근 한 줄로 묶여서 a의 변경이 밀려나지 않음 (counts가 없으면 받은 목록으로 셈)
+  assert.deepEqual(plain(noisy.items.map((i) => [i.serviceKey, i.day, i.week])), [['b', 6, 6], ['a', 1, 1]]);
   // 직후 장애가 붙은 변경(250분 전 변경 → 240분 전 장애)은 묶지 않음
   const withInc = M.changeFeed({ changes: many, services, incidents: [{ id: 21, monitorId: 3, startedAt: minsAgo(240) }], now: NOW });
-  assert.deepEqual(plain(withInc.items.map((i) => [i.count, i.incidentId])), [[5, null], [1, 21]]);
+  assert.deepEqual(plain(withInc.items.map((i) => [i.day, i.incidentId])), [[6, null], [6, 21]]);
   assert.deepEqual(plain(M.changeFeed({ changes: [], services, incidents: [], now: NOW })), { items: [], noisyKeys: [] });
 });
 
@@ -388,4 +388,19 @@ test('화면 기준 값이 서버 모듈의 같은 기준과 어긋나지 않는
   assert.equal(M.CHANGE_INCIDENT_MIN, api.CHANGE_LOOKBACK_MIN);
   assert.equal(M.SLOWDOWN_PERCENT, wr.SLOWDOWN_PERCENT);
   assert.equal(M.SLOWDOWN_MIN_MS, wr.SLOWDOWN_MIN_MS);
+});
+
+test('changeFeed (24단계): 잦은 변경 판단과 횟수는 서버가 센 counts를 따른다', () => {
+  const services = [{ key: 'a', checks: [{ id: 1 }] }, { key: 'b', checks: [{ id: 2 }] }];
+  const ch = (key, m) => ({ serviceKey: key, serviceName: key.toUpperCase(), firstSeenAt: minsAgo(m), oldSize: 668, newSize: 668 });
+  // 서버는 서비스당 3건만 주지만, 24시간 변경은 7번 → 목록만 보면 3번이라 잦은 변경이 아니게 셈
+  const changes = [ch('a', 10), ch('a', 70), ch('a', 130), ch('b', 3000)];
+  const counts = [{ serviceKey: 'a', day: 7, week: 11 }, { serviceKey: 'b', day: 0, week: 1 }];
+  const r = M.changeFeed({ changes, counts, services, incidents: [], now: NOW });
+  assert.deepEqual(plain(r.noisyKeys), ['a']);
+  assert.deepEqual(plain(r.items.map((i) => [i.serviceKey, i.day, i.week])), [['a', 7, 11], ['b', 0, 1]]);
+  // counts가 있어도 하루 6번 미만이면 묶지 않음
+  const calm = M.changeFeed({ changes, counts: [{ serviceKey: 'a', day: 3, week: 3 }], services, incidents: [], now: NOW });
+  assert.deepEqual(plain(calm.noisyKeys), []);
+  assert.equal(calm.items.length, 4);
 });
