@@ -112,15 +112,37 @@
           <div class="svc-list" id="services"></div>
         </section>
 
-        <!-- 운영 지표 요약 (2×2): 최근 알림 바로 아래 -->
-        <section class="metrics-card" id="metrics-panel" aria-labelledby="metrics-title">
-          <h2 class="metrics-card__title" id="metrics-title">
-            <span data-icon="chart" data-icon-class="ico ico--sm"></span>운영 지표 요약
-            <span class="metrics-card__sel">응답 일평균 · 장애 최근 30일</span>
-          </h2>
-          <p class="metrics-card__hint">칸을 누르면 크게 볼 수 있습니다.</p>
-          <div class="metrics" id="metrics"></div>
-        </section>
+        <!-- 오른쪽 칸 (23단계): 운영 지표 요약 + 오늘 확인할 것 + 최근 배포(추정).
+             넓은 화면에서는 스크롤해도 위에 붙어 따라옴(dashboard.css .side-col) -->
+        <div class="side-col">
+          <!-- 운영 지표 요약 (숫자 타일 2×2, 22단계): 최근 알림 바로 아래 -->
+          <section class="metrics-card" id="metrics-panel" aria-labelledby="metrics-title">
+            <h2 class="metrics-card__title" id="metrics-title">
+              <span data-icon="chart" data-icon-class="ico ico--sm"></span>운영 지표 요약
+              <span class="metrics-card__sel">응답 일평균 · 장애 최근 30일</span>
+            </h2>
+            <p class="metrics-card__hint">칸을 누르면 크게 볼 수 있습니다.</p>
+            <div class="metrics" id="metrics"></div>
+          </section>
+
+          <!-- 오늘 확인할 것: 장애 중 > 점검 끊김 > 느림 > 오늘 단발 실패 > 계획 작업 중 (app.js renderWatch) -->
+          <section class="side-card" id="watch-panel" aria-labelledby="watch-title">
+            <h2 class="side-card__title" id="watch-title">
+              <span data-icon="alert" data-icon-class="ico ico--sm"></span>오늘 확인할 것
+              <span class="side-card__hint" id="watch-count"></span>
+            </h2>
+            <div id="watch"></div>
+          </section>
+
+          <!-- 최근 배포(추정): 첫 화면 변경 감지(17단계) 기록, 최근 7일 (app.js renderChanges) -->
+          <section class="side-card" id="changes-panel" aria-labelledby="changes-title">
+            <h2 class="side-card__title" id="changes-title">
+              <span data-icon="activity" data-icon-class="ico ico--sm"></span>최근 배포 <small>(추정)</small>
+              <span class="side-card__hint">첫 화면 변경 · 최근 7일</span>
+            </h2>
+            <div id="changes"></div>
+          </section>
+        </div>
       </div>
 
       <!-- 계획 작업 안내 (진행 중·예정). 없으면 숨김 -->

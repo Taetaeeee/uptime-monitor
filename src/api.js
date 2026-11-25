@@ -100,6 +100,8 @@ export async function buildStatus(db, now) {
     })),
     incidents: incidents.map((i) => ({
       id: i.id,
+      // 점검 id (23단계): 대시보드가 진행 중 장애를 서비스 줄의 점검과 이름이 아니라 id로 맞추려고. /api/services에서 이미 공개하는 값
+      monitorId: i.monitorId,
       monitorName: i.monitorName,
       startedAt: i.startedAt,
       resolvedAt: i.resolvedAt,
@@ -206,6 +208,9 @@ export async function buildMonthlyReport(db, month, now) {
 // ─────────────────────────────────────────────
 
 export const SERVICE_INCIDENT_LIMIT = 10;
+// 대시보드 '최근 배포(추정)' (23단계): 전체 서비스의 첫 화면 변경을 최근 7일, 최대 20건
+export const RECENT_CHANGE_DAYS = 7;
+export const RECENT_CHANGE_LIMIT = 20;
 
 /**
  * 서비스 목록을 만든다. 서비스에 묶이지 않은 점검(예: 훈련 대상)은 여기 나오지 않습니다.
@@ -213,7 +218,25 @@ export const SERVICE_INCIDENT_LIMIT = 10;
  */
 export async function buildServices(db, now) {
   const { list, ...meta } = await collectServices(db, now);
-  return { ...meta, services: list.map((x) => x.view) };
+  // 첫 화면 변경(17단계)을 서비스 전체에서 한 번에 (대시보드가 서비스마다 상세 API를 10번 부르지 않게). 조회 1번 추가, 응답은 60초 캐시
+  const serviceOf = new Map();
+  for (const x of list) for (const c of x.view.checks) serviceOf.set(c.id, x.view);
+  const from = now.getTime() - RECENT_CHANGE_DAYS * 24 * 3600_000;
+  const changes = (await getRecentChanges(db, [...serviceOf.keys()], RECENT_CHANGE_LIMIT)).filter((c) => Date.parse(c.firstSeenAt) >= from);
+  return {
+    ...meta,
+    services: list.map((x) => x.view),
+    // 공개 응답: 서비스 키·이름과 시각·크기만 (점검 주소·본문은 없음. 지문은 서비스 상세 API에서만)
+    recentChanges: changes.map((c) => ({
+      serviceKey: serviceOf.get(c.monitorId).key,
+      serviceName: serviceOf.get(c.monitorId).name,
+      monitorId: c.monitorId,
+      firstSeenAt: c.firstSeenAt,
+      confirmedAt: c.confirmedAt,
+      oldSize: c.oldSize,
+      newSize: c.newSize,
+    })),
+  };
 }
 
 /** /api/services/:key 응답 본문. 없거나 내린 서비스면 null */
