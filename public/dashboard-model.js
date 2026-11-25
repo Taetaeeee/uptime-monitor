@@ -281,7 +281,7 @@
   // ─────────────────────────────────────────────
 
   const STALE_MIN = 15; // 켜진 외부 점검의 마지막 기록이 이보다 오래되면 '점검 끊김' (5분 Cron 3회차)
-  const NOISY_PER_DAY = 6; // 24시간에 이만큼 이상 첫 화면이 바뀌면 '자주 바뀜' (서버 src/fingerprint.js NOISY_PER_DAY와 같은 값)
+  const NOISY_PER_DAY = 6; // 24시간에 이만큼 이상 첫 화면이 바뀌면 '잦은 변경' (서버 src/fingerprint.js NOISY_PER_DAY와 같은 값)
   const CHANGE_INCIDENT_MIN = 60; // 변경 뒤 이 시간 안에 같은 서비스에서 장애가 시작되면 '직후 장애' (서버 CHANGE_LOOKBACK_MIN과 같은 값)
 
   // 확인할 것의 중요 순서 (작을수록 위)
@@ -347,19 +347,21 @@
   }
 
   /**
-   * 최근 배포(추정): 첫 화면 변경을 최신 순으로 + '직후 장애'(변경 뒤 60분 안에 같은 서비스에서 시작한 장애) + '자주 바뀜'.
+   * 최근 배포(추정): 첫 화면 변경을 최신 순으로 + '직후 장애'(변경 뒤 60분 안에 같은 서비스에서 시작한 장애) + '잦은 변경'.
    * 첫 화면이 바뀐 것이지 배포했다는 확인은 아니라서 화면 제목에 '추정'을 붙입니다.
-   * 자주 바뀌는 서비스(24시간에 6번 이상)는 가장 최근 한 줄로 묶고 count에 변경 수를 적습니다 —
-   * 날짜·광고처럼 동적 내용이 바뀌는 서비스 하나가 목록을 다 차지해 다른 서비스의 배포가 밀려나지 않게.
-   * 단, 직후 장애가 붙은 변경은 묶지 않고 따로 남깁니다 (장애와 연결된 변경은 놓치면 안 되므로).
+   * 잦은 변경 서비스(24시간에 6번 이상)는 가장 최근 한 줄로 묶고 day·week에 24시간·7일 변경 수를 담습니다 —
+   * 배포가 잦거나 동적 내용이 바뀌는 서비스 하나가 목록을 다 차지하지 않게. 직후 장애가 붙은 변경은 묶지 않습니다.
+   * 24단계: 목록은 서버가 서비스당 3건씩만 주므로, 횟수·잦은 변경 판단은 서버가 정확히 센 counts(/api/services의 changeCounts)로 합니다.
+   *         counts가 없으면(예: 옛 응답) 받은 목록으로 셉니다.
    * @param {object} o
    * @param {Array} o.changes    /api/services의 recentChanges
+   * @param {Array} [o.counts]   /api/services의 changeCounts: [{serviceKey, day, week}]
    * @param {Array} o.services   점검 id → 서비스 키를 찾는 데 씀
    * @param {Array} o.incidents  /api/status의 incidents (최근 10건까지만 — 오래된 변경은 직후 장애를 못 찾을 수 있음)
    * @param {Date|number} o.now
-   * @returns {{items:Array<{serviceKey:string, serviceName:string, at:string, oldSize:number, newSize:number, incidentId:number|null, count:number}>, noisyKeys:string[]}}
+   * @returns {{items:Array<{serviceKey:string, serviceName:string, at:string, oldSize:number, newSize:number, incidentId:number|null, day:number, week:number}>, noisyKeys:string[]}}
    */
-  function changeFeed({ changes, services, incidents, now }) {
+  function changeFeed({ changes, counts, services, incidents, now }) {
     const nowMs = typeof now === 'number' ? now : now.getTime();
     const serviceOfMonitor = new Map();
     for (const s of services) for (const c of s.checks ?? []) serviceOfMonitor.set(c.id, s.key);
@@ -373,20 +375,32 @@
           return t >= at && t - at <= CHANGE_INCIDENT_MIN * 60000;
         })
         .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))[0];
-      return { serviceKey: c.serviceKey, serviceName: c.serviceName, at: c.firstSeenAt, oldSize: c.oldSize, newSize: c.newSize, incidentId: hit ? hit.id : null, count: 1 };
+      return { serviceKey: c.serviceKey, serviceName: c.serviceName, at: c.firstSeenAt, oldSize: c.oldSize, newSize: c.newSize, incidentId: hit ? hit.id : null };
     });
-    const day = new Map();
-    for (const c of sorted) if (nowMs - Date.parse(c.firstSeenAt) <= 24 * 3600000) day.set(c.serviceKey, (day.get(c.serviceKey) ?? 0) + 1);
-    const noisyKeys = [...day.entries()].filter(([, n]) => n >= NOISY_PER_DAY).map(([k]) => k);
-    // 자주 바뀌는 서비스는 가장 최근 한 줄만 남기고 나머지 변경 수를 count에 (직후 장애가 붙은 줄은 그대로 둠)
+    // 서비스별 24시간·7일 변경 수: 서버 값이 있으면 그대로, 없으면 받은 목록으로 셈
+    const countOf = new Map();
+    if (Array.isArray(counts)) {
+      for (const c of counts) countOf.set(c.serviceKey, { day: c.day ?? 0, week: c.week ?? 0 });
+    } else {
+      for (const c of sorted) {
+        const acc = countOf.get(c.serviceKey) ?? { day: 0, week: 0 };
+        acc.week += 1;
+        if (nowMs - Date.parse(c.firstSeenAt) <= 24 * 3600000) acc.day += 1;
+        countOf.set(c.serviceKey, acc);
+      }
+    }
+    const noisyKeys = [...countOf.entries()].filter(([, n]) => n.day >= NOISY_PER_DAY).map(([k]) => k);
+    // 잦은 변경 서비스는 가장 최근 한 줄만 남김 (직후 장애가 붙은 줄은 그대로 둠)
     const noisy = new Set(noisyKeys);
-    const head = new Map();
+    const seen = new Set();
     const out = [];
     for (const it of items) {
-      if (!noisy.has(it.serviceKey) || it.incidentId !== null) { out.push(it); continue; }
-      const first = head.get(it.serviceKey);
-      if (first) first.count += 1;
-      else { head.set(it.serviceKey, it); out.push(it); }
+      const n = countOf.get(it.serviceKey) ?? { day: 0, week: 0 };
+      const row = { ...it, day: n.day, week: n.week };
+      if (!noisy.has(it.serviceKey) || it.incidentId !== null) { out.push(row); continue; }
+      if (seen.has(it.serviceKey)) continue;
+      seen.add(it.serviceKey);
+      out.push(row);
     }
     return { items: out, noisyKeys };
   }

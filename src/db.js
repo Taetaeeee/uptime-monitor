@@ -1117,6 +1117,52 @@ export async function getRecentChanges(db, monitorIds, limit) {
   return results.map(toChange);
 }
 
+/**
+ * 점검마다 최근 perMonitor건씩 (sinceIso 이후, 최신 순) — 대시보드 '최근 배포(추정)'용 (24단계).
+ * 전체에서 최신 N건만 가져오면 배포가 잦은 서비스 하나가 목록을 다 차지해 다른 서비스 변경이 밀려서, 점검마다 나눠 가져옵니다.
+ * "같은 점검에서 나보다 최근인 변경이 perMonitor건 미만"인 줄만 고르는 하위 조회로 씁니다.
+ * (창 함수 ROW_NUMBER가 더 간단하지만 D1 지원 여부를 공식 문서로 확인하지 않아, 어느 SQLite에서나 되는 방식을 골랐습니다.
+ *  하위 조회는 색인 idx_content_changes_monitor_time(monitor_id, first_seen_at)을 탑니다)
+ */
+export async function getRecentChangesPerMonitor(db, monitorIds, sinceIso, perMonitor) {
+  if (monitorIds.length === 0) return [];
+  const marks = monitorIds.map((_, i) => `?${i + 3}`).join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT c.*, m.name AS monitor_name
+         FROM content_changes c
+         JOIN monitors m ON m.id = c.monitor_id
+        WHERE c.monitor_id IN (${marks}) AND c.first_seen_at >= ?1
+          AND (SELECT COUNT(*) FROM content_changes c2
+                WHERE c2.monitor_id = c.monitor_id AND c2.first_seen_at >= ?1
+                  AND (c2.first_seen_at > c.first_seen_at OR (c2.first_seen_at = c.first_seen_at AND c2.id > c.id))) < ?2
+        ORDER BY c.first_seen_at DESC, c.id DESC`
+    )
+    .bind(sinceIso, perMonitor, ...monitorIds)
+    .all();
+  return results.map(toChange);
+}
+
+/**
+ * 점검별 변경 수: weekIso 이후 전체(week)와 dayIso 이후(day) (24단계).
+ * 목록은 점검마다 몇 건씩만 가져오므로, '잦은 변경 · 24시간 N번'의 N은 여기서 정확히 셉니다.
+ * @returns {Promise<Array<{monitorId:number, week:number, day:number}>>}
+ */
+export async function getChangeCounts(db, monitorIds, weekIso, dayIso) {
+  if (monitorIds.length === 0) return [];
+  const marks = monitorIds.map((_, i) => `?${i + 3}`).join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT monitor_id, COUNT(*) AS week, SUM(CASE WHEN first_seen_at >= ?2 THEN 1 ELSE 0 END) AS day
+         FROM content_changes
+        WHERE monitor_id IN (${marks}) AND first_seen_at >= ?1
+        GROUP BY monitor_id`
+    )
+    .bind(weekIso, dayIso, ...monitorIds)
+    .all();
+  return results.map((r) => ({ monitorId: r.monitor_id, week: r.week, day: r.day ?? 0 }));
+}
+
 /** 점검들의 [fromIso, toIso] 사이 변경 (오래된 순) — 장애 직전 변경 찾기용 */
 export async function getChangesBetween(db, monitorIds, fromIso, toIso) {
   if (monitorIds.length === 0) return [];

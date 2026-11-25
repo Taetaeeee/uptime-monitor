@@ -185,7 +185,7 @@ test('진행 중인 주·일부만 측정한 주·전주 기록 없음은 안내
   ]);
 });
 
-test('첫 화면 변경: 시각은 최근 10개만, 너무 자주 바뀌면 동적 내용 안내', () => {
+test('첫 화면 변경: 시각은 최근 10개만, 너무 자주 바뀌면 배포가 잦거나 동적 내용일 수 있다고 안내', () => {
   const changes = Array.from({ length: NOISY_CHANGES_PER_WEEK }, (_, i) => ({
     firstSeenAt: `2026-11-17T${String(i).padStart(2, '0')}:00:00Z`, monitorName: '웹 (HTTP)',
   }));
@@ -194,6 +194,7 @@ test('첫 화면 변경: 시각은 최근 10개만, 너무 자주 바뀌면 동�
   assert.equal(s.changes.length, CHANGE_LIST_LIMIT);
   assert.equal(s.changes.at(-1).firstSeenAt, changes.at(-1).firstSeenAt); // 가장 최근 것이 남음
   assert.ok(s.notes.some((n) => n.includes('동적 내용')));
+  assert.ok(s.notes.some((n) => n.includes('배포가 잦')), '동적 내용이라고 단정하지 않음 (24단계)');
   assert.match(renderWeeklyText('테스트', s), /\(.*…\)/); // 더 있다는 표시
 
   const few = run({ changes: changes.slice(0, 2) });

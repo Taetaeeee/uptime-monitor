@@ -387,7 +387,7 @@ function renderEvents(incidents, changes = [], noisy = false) {
   box.append(el('h2', '', '최근 이벤트'));
   box.append(el('p', 'sd-events__hint', '장애와 첫 화면 내용 변경(배포 등)을 시간순으로 함께 보여 줍니다. 변경은 5분 점검에서 같은 새 내용을 2회 연속 볼 때 기록합니다.'));
   if (noisy) {
-    box.append(el('p', 'an-note', '최근 24시간에 첫 화면이 자주 바뀌었습니다. 매번 달라지는 동적 내용이 섞여 있을 수 있어, 변경 기록을 배포로 보기 어렵습니다.'));
+    box.append(el('p', 'an-note', '최근 24시간에 첫 화면이 자주 바뀌었습니다. 배포가 잦거나(빌드할 때마다 첫 화면의 파일 이름이 바뀜) 동적 내용이 섞여 있을 수 있어, 변경 하나하나를 배포로 단정하기 어렵습니다.'));
   }
   const table = el('table', 'sd-table');
   const thead = el('thead');
