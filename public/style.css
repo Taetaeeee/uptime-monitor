@@ -772,6 +772,22 @@ body:has(.modal[open]) { overflow: hidden; }
 .evidence__links { margin-bottom: 0 !important; }
 .evidence__asof { font-weight: 500; font-size: .74rem; color: var(--faint); }
 
+/* 데이터 보존 정책 (25단계, 운영 근거 화면) */
+.retention { margin-top: 16px; }
+.retention h2 { margin: 0 0 6px; font-size: 1.05rem; color: var(--heading); }
+.retention__lead, .retention__note, .retention__last { font-size: .85rem; color: var(--muted); margin: 0 0 10px; }
+.retention__note { font-size: .78rem; color: var(--faint); margin: 10px 0 0; }
+.retention__last { color: var(--text); }
+.retention__table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.retention__table th, .retention__table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.retention__table thead th { color: var(--faint); font-weight: 600; font-size: .78rem; }
+.retention__table tbody th { color: var(--heading); font-weight: 600; white-space: nowrap; }
+@media (max-width: 640px) {
+  .retention__table thead { display: none; }
+  .retention__table tr { display: grid; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .retention__table th, .retention__table td { border: 0; padding: 2px 0; }
+}
+
 /* 인쇄: .badge--real은 위 @media print의 .badge 규칙보다 뒤에 있어서 화면용 색(배경 var)이 이기므로, 인쇄에서 다시 흰 바탕·검은 글씨로 맞춤 */
 @media print {
   .badge--real { background: #fff; color: #000; border-color: #888; }

@@ -96,13 +96,30 @@
         </div>
       </section>
 
+      <!-- 데이터 보존 정책 (25단계): 정책은 글로 적고, 마지막 정리 결과만 /api/retention에서 불러옴 (evidence.js) -->
+      <section class="panel retention" aria-labelledby="retention-title">
+        <h2 id="retention-title">데이터 보존 정책</h2>
+        <p class="retention__lead">5분마다 점검하면 원본이 하루 약 6,000행씩 쌓입니다. 화면과 보고서가 원본을 쓰는 기간은 짧아서, 가장 자세한 원본만 오래된 것부터 지우고 요약은 계속 남깁니다.</p>
+        <table class="retention__table">
+          <thead><tr><th scope="col">데이터</th><th scope="col">보존</th><th scope="col">쓰는 곳</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">5분 점검 원본</th><td><strong id="retention-days">90일</strong> (오늘 포함, 그 전 날은 매일 KST 04:00에 삭제)</td><td>상세 그래프(최근 48시간), 일별 집계 계산(어제·오늘)</td></tr>
+            <tr><th scope="row">일별 집계</th><td>계속</td><td>가동률, 30일 막대, 운영 지표, 월간·주간 보고서</td></tr>
+            <tr><th scope="row">장애·사후 보고서·알림·첫 화면 변경</th><td>계속</td><td>장애 이력, 최근 알림, 최근 배포(추정)</td></tr>
+          </tbody>
+        </table>
+        <p class="retention__last" id="retention-last" role="status">마지막 정리 결과를 불러오는 중…</p>
+        <p class="retention__note">그날 일별 집계가 없는 원본은 가동률의 유일한 근거라 지우지 않고 남깁니다. 지운 원본은 되돌릴 수 없어서(Cloudflare D1 Time Travel로 DB 전체를 그 시점으로 덮어쓰는 방법뿐) 정리할 때마다 기록을 남깁니다.</p>
+      </section>
+
       <footer class="site-footer">
         <p>웹 서비스(HTTP·DNS)는 Worker가 5분마다 점검하고, 2회 연속 실패를 장애로 판정해 기록합니다.</p>
       </footer>
     </main>
   </div>
 
-  <!-- 아이콘·테마 전환만 쓰므로 common.js 하나만 불러옵니다 -->
+  <!-- 아이콘·테마 전환(common.js) + 데이터 보존 정리 결과 불러오기(evidence.js, 25단계) -->
   <script src="/common.js" defer></script>
+  <script src="/evidence.js" defer></script>
 </body>
 </html>

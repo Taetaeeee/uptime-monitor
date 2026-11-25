@@ -9,9 +9,11 @@
 //          GET  /api/services, /api/services/:key → 서비스 묶음 목록·상세 (api.js + service-status.js, 0015)
 //          GET  /api/services/:key/analysis?days=30 → 실패 이유 분포·일별 p95·시간대 열지도 (api.js + analysis.js, 0017)
 //          GET  /api/services/:key/weekly?week=YYYY-MM-DD → 서비스 주간 점검 보고서 + 복사용 텍스트 (api.js + weekly-report.js, 20단계)
+//          GET  /api/retention → 데이터 보존 정책·마지막 정리 결과 (retention.js, 25단계)
 //          /api/admin/...          → 보고서 작성, 계획 작업 등록·취소 (admin.js, 관리자 토큰)
 //          /subscribe/confirm·unsubscribe → 장애 알림 수신 확인·그만 받기 페이지 (subscribe-api.js, 19단계, 기본은 꺼짐)
-//          [Cron] 점검 직후 첫 화면 변경 감지(change-run.js, 받은 본문의 지문만), 그 뒤 에이전트 무응답 감지(stale-run.js), 오래 가는 장애 메일(escalation-run.js)도 같은 회차에 실행
+//          [Cron] 점검 직후 첫 화면 변경 감지(change-run.js, 받은 본문의 지문만), 그 뒤 에이전트 무응답 감지(stale-run.js), 오래 가는 장애 메일(escalation-run.js)도 같은 회차에 실행,
+//          KST 04:00 회차에만 90일 지난 점검 원본 정리(retention-run.js, 25단계)
 // 세부 동작은 checker.js(네트워크), judge.js(1회 판정), record.js(기록 공용 경로),
 // ingest.js(에이전트 보고), api.js(상태 조회)가 맡습니다.
 // (공개 데이터셋 재생은 2026-11-19 가짜 데이터 정리 때 실행 경로를 없앴습니다. 판정 순수 함수 replay.js는
@@ -46,6 +48,9 @@ import { runStaleCheck } from './stale-run.js';
 import { runEscalation } from './escalation-run.js';
 import { runContentChanges } from './change-run.js';
 import { handleRca } from './rca-api.js';
+import { runRetention } from './retention-run.js';
+import { retentionView } from './retention.js';
+import { getLastRetentionRun } from './db.js';
 
 /**
  * 예약 실행 1회분: 활성 HTTP 대상을 모두 점검하고 기록한다.
@@ -180,6 +185,14 @@ export default {
     } catch (err) {
       console.error(`[메일] ${toCheckSlot(runTime)} 실패:`, err);
     }
+
+    // 데이터 보존 정리 (25단계): KST 04:00 회차에만 90일 지난 원본을 지움. 다른 회차는 시각만 보고 끝(조회 없음).
+    // 점검·메일이 모두 끝난 맨 뒤에 두어서, 정리가 실패하거나 늦어도 이번 회차 기록에는 영향이 없게 합니다.
+    try {
+      await runRetention(env.DB, runTime);
+    } catch (err) {
+      console.error(`[보존 정리] ${toCheckSlot(runTime)} 실패:`, err);
+    }
   },
 
   // HTTP 요청 처리.
@@ -191,6 +204,18 @@ export default {
       catch { return json({ error: 'rca_internal_error' }, 500); }
     }
     const url = new URL(request.url);
+
+    // 데이터 보존 정책과 마지막 정리 결과 (공개, 25단계) — 운영 근거 화면용. 정리 기록 1행만 읽음
+    if (url.pathname === '/api/retention') {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+      try {
+        // 하루 한 번 바뀌는 값이라 5분 캐시
+        return json(retentionView(await getLastRetentionRun(env.DB)), 200, { 'cache-control': 'public, max-age=300' });
+      } catch (err) {
+        console.error('[API 오류] /api/retention:', err);
+        return json({ error: 'internal_error' }, 500);
+      }
+    }
 
     if (url.pathname === '/api/status') {
       if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });

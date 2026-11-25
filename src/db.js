@@ -1193,3 +1193,74 @@ export async function getSiblingMonitorIds(db, monitorId) {
     .all();
   return results.length ? results.map((r) => r.id) : [monitorId];
 }
+
+// ─────────────────────────────────────────────
+// 데이터 보존 정리 (25단계, 0020) — 규칙은 retention.js, 실행은 retention-run.js
+// ─────────────────────────────────────────────
+
+/** 모든 점검 id (꺼진 점검 포함 — 꺼진 뒤에도 남아 있는 옛 원본을 같이 정리하려고) */
+export async function getAllMonitorIds(db) {
+  const { results } = await db.prepare('SELECT id FROM monitors ORDER BY id').all();
+  return results.map((r) => r.id);
+}
+
+/**
+ * 한 점검의 cutoffUtc보다 오래된 원본을 오래된 것부터 limit행까지 지운다. 지운 행 수를 돌려줌.
+ *   - 점검 id + 시각을 함께 조건으로 줘서 기존 색인 (monitor_id, checked_at)을 탑니다.
+ *     날짜만으로 지우면 그 색인을 못 써서 표 전체(수십만 행)를 훑게 되고, D1은 훑은 행을 모두 '읽기'로 셉니다.
+ *   - 그날 일별 집계(daily_stats)가 있는 원본만 지웁니다: 집계가 없는 날의 원본은 그날 가동률의 유일한 근거라 남김.
+ *     원본 시각(UTC)을 KST 날짜로 바꿔 비교합니다 — date('…Z', '+9 hours').
+ *   - SQLite의 DELETE … LIMIT은 빌드 옵션이 있어야 해서, 지울 id를 하위 조회로 골라 지웁니다.
+ */
+export async function deleteOldResults(db, monitorId, cutoffUtc, limit) {
+  if (limit <= 0) return 0;
+  const r = await db
+    .prepare(
+      `DELETE FROM check_results
+        WHERE id IN (
+          SELECT r.id FROM check_results r
+           WHERE r.monitor_id = ?1 AND r.checked_at < ?2
+             AND EXISTS (SELECT 1 FROM daily_stats d WHERE d.monitor_id = ?1 AND d.day = date(r.checked_at, '+9 hours'))
+           ORDER BY r.checked_at
+           LIMIT ?3)`
+    )
+    .bind(monitorId, cutoffUtc, limit)
+    .run();
+  return r.meta?.changes ?? 0;
+}
+
+/** 정리 뒤에도 남은, 기준보다 오래된 원본 수 (집계가 없는 날이거나 상한에 걸려 미룬 것). 같은 색인 구간만 셉니다 */
+export async function countOldResults(db, monitorId, cutoffUtc) {
+  const r = await db
+    .prepare('SELECT COUNT(*) AS n FROM check_results WHERE monitor_id = ?1 AND checked_at < ?2')
+    .bind(monitorId, cutoffUtc)
+    .first();
+  return r?.n ?? 0;
+}
+
+/** 정리 기록 1행 (같은 회차가 두 번 실행되면 처음 기록만 남김) */
+export async function insertRetentionRun(db, run) {
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO retention_runs (run_at, first_kept_day, cutoff_utc, deleted_rows, kept_old_rows, monitors, capped, error)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+    )
+    .bind(run.runAt, run.firstKeptDay, run.cutoffUtc, run.deletedRows, run.keptOldRows, run.monitors, run.capped ? 1 : 0, run.error ?? null)
+    .run();
+}
+
+/** 마지막 정리 기록 (없으면 null) */
+export async function getLastRetentionRun(db) {
+  const r = await db.prepare('SELECT * FROM retention_runs ORDER BY run_at DESC LIMIT 1').first();
+  if (!r) return null;
+  return {
+    runAt: r.run_at,
+    firstKeptDay: r.first_kept_day,
+    cutoffUtc: r.cutoff_utc,
+    deletedRows: r.deleted_rows,
+    keptOldRows: r.kept_old_rows,
+    monitors: r.monitors,
+    capped: r.capped === 1,
+    error: r.error,
+  };
+}
