@@ -248,3 +248,69 @@ test('responseSeries·uptimeSeries: 서비스 key를 함께 줘서 고유색을 
   assert.equal(M.responseSeries(services, 'http').series[0].key, 'k1');
   assert.equal(M.uptimeSeries(services)[0].key, 'k1');
 });
+
+// ── 22단계: 운영 지표 숫자 타일 ──
+
+// today 기준으로 offset일 전 날짜 (테스트 자료 만들기용)
+const dayBefore = (today, n) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86400000).toISOString().slice(0, 10);
+// 15일치 점: values[0]이 14일 전, values[14]가 오늘
+const pts = (today, values) => values.map((v, i) => ({ day: dayBefore(today, 14 - i), v }));
+
+test('averageSeries: 그날 기록이 있는 서비스만으로 평균, 아무도 없으면 null', () => {
+  const s = [
+    { points: [{ day: 'd1', v: 100 }, { day: 'd2', v: null }, { day: 'd3', v: null }] },
+    { points: [{ day: 'd1', v: 201 }, { day: 'd2', v: 300 }, { day: 'd3', v: null }] },
+  ];
+  assert.deepEqual(plain(M.averageSeries(s)), [
+    { day: 'd1', v: 151, n: 2 }, // (100 + 201) / 2 = 150.5 → 반올림
+    { day: 'd2', v: 300, n: 1 }, // 기록 없는 서비스를 0으로 세지 않음
+    { day: 'd3', v: null, n: 0 },
+  ]);
+  assert.deepEqual(plain(M.averageSeries([])), []);
+});
+
+test('weekOverWeek: 어제까지 7일과 그 전 7일을 비교하고 오늘은 뺀다', () => {
+  const today = '2026-11-25';
+  // 지난주 7일 100ms, 최근 주 7일 120ms, 오늘 9999ms(반영되면 안 됨)
+  const s = [{ points: pts(today, [...Array(7).fill(100), ...Array(7).fill(120), 9999]) }];
+  const r = M.weekOverWeek(s, today);
+  assert.deepEqual(plain(r), { compared: 1, total: 1, cur: 120, prev: 100, diffMs: 20, pct: 20, worse: false });
+});
+
+test('weekOverWeek: 한 주라도 기록이 3일 미만인 서비스는 비교에서 빼고, 남는 게 없으면 기록 부족', () => {
+  const today = '2026-11-25';
+  const old = { points: pts(today, [...Array(7).fill(200), ...Array(7).fill(220), null]) };
+  // 이번 주에 새로 등록된 서비스: 지난주 기록 없음, 이번 주 2일 → 비교 대상 아님
+  const fresh = { points: pts(today, [...Array(12).fill(null), 5000, 5000, 5000]) };
+  const r = M.weekOverWeek([old, fresh], today);
+  assert.equal(r.compared, 1);
+  assert.equal(r.total, 2);
+  assert.equal(r.cur, 220); // 새 서비스의 5000ms가 평균을 끌어올리지 않음
+  assert.equal(r.prev, 200);
+
+  // 지난주 2일만 있는 서비스 하나뿐 → 비교할 수 없음
+  const thin = { points: pts(today, [null, null, null, null, null, 90, 90, ...Array(7).fill(95), null]) };
+  assert.deepEqual(plain(M.weekOverWeek([thin], today)), { compared: 0, total: 1, cur: null, prev: null, diffMs: null, pct: null, worse: false });
+  assert.equal(M.weekOverWeek([], today).compared, 0);
+});
+
+test('weekOverWeek: 나빠짐은 +30% 이상 그리고 +100ms 이상일 때만 (주간 보고서와 같은 기준)', () => {
+  const today = '2026-11-25';
+  const wow = (prev, cur) => M.weekOverWeek([{ points: pts(today, [...Array(7).fill(prev), ...Array(7).fill(cur), null]) }], today);
+  assert.equal(wow(300, 400).worse, true);   // +33%, +100ms → 경계에서 나빠짐
+  assert.equal(wow(400, 500).worse, false);  // +25% → %가 모자람
+  assert.equal(wow(20, 40).worse, false);    // +100%지만 +20ms → 작은 값의 잡음 (DNS)
+  assert.equal(wow(500, 400).worse, false);  // 빨라짐
+  assert.equal(wow(500, 400).pct, -20);
+  assert.equal(M.SLOWDOWN_PERCENT, 30);
+  assert.equal(M.SLOWDOWN_MIN_MS, 100);
+});
+
+test('uptimeTileText: 가장 낮았던 서비스 이름 하나 + 나머지는 개수, 기록 없음은 따로', () => {
+  const d = (name) => ({ name, key: name, min: 99, points: [] });
+  assert.equal(M.uptimeTileText({ dipped: [d('Keychats'), d('고쳐라!')], hidden: 0, perfectCount: 8, noDataCount: 0 }), 'Keychats 외 1개 · 나머지 8개 100%');
+  assert.equal(M.uptimeTileText({ dipped: [d('A')], hidden: 2, perfectCount: 0, noDataCount: 1 }), 'A 외 2개 · 기록 없음 1개'); // 선에 못 그린 hidden도 개수에 포함
+  assert.equal(M.uptimeTileText({ dipped: [d('A')], hidden: 0, perfectCount: 0, noDataCount: 0 }), 'A');
+  assert.equal(M.uptimeTileText({ dipped: [], hidden: 0, perfectCount: 10, noDataCount: 0 }), '10개 모두 100%');
+  assert.equal(M.uptimeTileText({ dipped: [], hidden: 0, perfectCount: 0, noDataCount: 0 }), '기록이 아직 없습니다');
+});

@@ -279,6 +279,70 @@ function colorClass(c) {
 }
 
 /**
+ * 작은 선 그래프 (운영 지표 숫자 타일용, 22단계): 축·눈금 글자 없이 선만. 좁은 타일(약 190px)에는 축 글자가 들어갈 자리가 없어서.
+ * 정확한 값은 점에 마우스를 올리면 보이고(title), 자세한 그래프는 칸을 눌러 팝업에서 봅니다.
+ *   - 세로 범위: yMin·yMax를 주지 않으면 0부터 최댓값보다 조금 위까지. 값 범위에 딱 맞추면(자동 확대)
+ *     20ms → 24ms 같은 작은 흔들림도 큰 오르내림처럼 보여서, 응답 시간은 0을 바닥으로 둡니다.
+ *   - 값이 없는 날(null)은 선을 끊습니다. 마지막 점은 조금 크게 (지금 값이 어디쯤인지).
+ * @param {object} o
+ * @param {Array<{name:string, cls?:string, points:Array<{day:string, v:number|null}>}>} o.series  cls: 색 클래스 (없으면 기본 파랑)
+ * @param {string} o.unit
+ * @param {string} o.label  화면 낭독기용 설명
+ * @param {number} [o.yMin]
+ * @param {number} [o.yMax]
+ */
+function sparkLine(o) {
+  const w = 200, h = 46, pad = 4;
+  const values = o.series.flatMap((s) => s.points.map((p) => p.v)).filter((v) => typeof v === 'number' && Number.isFinite(v));
+  const lo = o.yMin ?? 0;
+  const hi = o.yMax ?? Math.max(...values, 1) * 1.15;
+  const n = o.series[0]?.points.length ?? 0;
+  const x = (i) => pad + (n > 1 ? (i / (n - 1)) * (w - pad * 2) : (w - pad * 2) / 2);
+  const y = (v) => h - pad - ((Math.min(Math.max(v, lo), hi) - lo) / Math.max(1e-9, hi - lo)) * (h - pad * 2);
+  const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, class: 'spark', role: 'img', 'aria-label': o.label });
+  for (const s of o.series) {
+    const cls = s.cls ?? '';
+    let d = '';
+    let open = false;
+    let last = -1;
+    s.points.forEach((p, i) => {
+      if (typeof p.v !== 'number') { open = false; return; }
+      d += `${open ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)} `;
+      open = true;
+      last = i;
+    });
+    if (d) svg.append(svgEl('path', { d: d.trim(), class: `spark__line ${cls}` }));
+    if (last >= 0) svg.append(svgEl('circle', { cx: x(last), cy: y(s.points[last].v), r: 2.6, class: `spark__dot ${cls}` }));
+    s.points.forEach((p, i) => {
+      if (typeof p.v !== 'number') return;
+      svg.append(svgEl('circle', { cx: x(i), cy: y(p.v), r: 5, class: 'chart__hit' }, `${p.day} · ${s.name} ${p.v}${o.unit}`));
+    });
+  }
+  return svg;
+}
+
+/**
+ * 작은 막대 (운영 지표 '최근 장애 수' 타일용): 축 글자 없이 날짜별 막대만. 0인 날은 그리지 않고 바닥선만.
+ * 막대 높이는 그 구간에서 가장 많은 날 기준 (최소 2건 높이 — 1건이 칸을 꽉 채워 커 보이지 않게).
+ * @param {{days:string[], values:number[], label:string}} o
+ */
+function sparkBars(o) {
+  const w = 200, h = 46, pad = 4;
+  const n = o.days.length;
+  const max = Math.max(2, ...o.values);
+  const slot = (w - pad * 2) / Math.max(1, n);
+  const bw = Math.max(2, Math.min(10, slot * 0.6));
+  const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, class: 'spark', role: 'img', 'aria-label': o.label });
+  svg.append(svgEl('line', { x1: pad, x2: w - pad, y1: h - pad, y2: h - pad, class: 'spark__base' }));
+  o.values.forEach((v, i) => {
+    if (!v) return;
+    const bh = (v / max) * (h - pad * 2);
+    svg.append(svgEl('rect', { x: pad + slot * i + (slot - bw) / 2, y: h - pad - bh, width: bw, height: bh, rx: 1.5, class: 'spark__bar' }, `${o.days[i]} · ${v}건`));
+  });
+  return svg;
+}
+
+/**
  * 가로 막대 순위: 한 줄 = 서비스(점검) 하나. 이름이 막대 바로 옆에 붙어서 범례가 필요 없습니다.
  * 색만으로 구별하지 않게 값도 글자로 함께 적습니다 (색을 못 보는 사람·화면 낭독기도 읽을 수 있게).
  * @param {object} o

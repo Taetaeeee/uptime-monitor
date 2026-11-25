@@ -239,20 +239,28 @@
 .mzoom .chart { width: 100%; height: auto; display: block; margin-top: 8px; }
 .mzoom .mlegend { font-size: 13px; margin-top: 10px; }
 .mzoom__note { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--d-line); font-size: 12.5px; color: var(--d-muted); line-height: 1.6; }
-.mbox--wide { grid-column: 1 / -1; }
 .mbox__t { color: var(--d-muted); font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .mbox__n { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--d-text); }
 .mbox__n small { font-size: 13px; color: var(--d-muted); margin-left: 2px; }
 .mbox__sub { font-size: 11px; color: var(--d-faint); }
+/* 숫자 타일(22단계): 한 줄 설명. 나빠졌을 때만 주의색 */
+.mbox__line { font-size: 11.5px; color: var(--d-muted); line-height: 1.4; margin-top: 2px; }
+.mbox__line--warn { color: var(--d-warn); font-weight: 600; }
+.mzoom .mbox__line { font-size: 12.5px; }
+/* 타일의 작은 선 (chart.js sparkLine): 축 없이 선만, 기본은 정보색, 서비스 선은 고유색 */
+/* 버튼은 내용을 세로 가운데에 두므로 flex로 위에서부터 쌓고, 작은 선은 맨 아래로 (옆 타일과 선 높이를 맞춤) */
+.mbox { display: flex; flex-direction: column; }
+.mbox .spark { width: 100%; height: auto; display: block; margin-top: auto; padding-top: 8px; }
+.spark__line { fill: none; stroke: var(--d-info); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.spark__dot { fill: var(--d-info); }
+.spark__line[class*="sc-"] { stroke: var(--sc); }
+.spark__line.sc-dash { stroke-dasharray: 5 3; }
+.spark__dot[class*="sc-"] { fill: var(--sc); }
+.spark__base { stroke: var(--d-line); }
+.spark__bar { fill: var(--d-bad); }
 .mbox .chart { width: 100%; height: auto; display: block; margin-top: 4px; }
 .mlegend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--d-muted); margin-top: 6px; }
 .mlegend span { display: inline-flex; align-items: center; }
-.mlegend b { font-weight: inherit; }
-/* 작은 칸 범례: 2열 격자 + 이름이 넘치면 … (전체 이름은 title로). 팝업 범례는 이 클래스를 쓰지 않아 전체 이름이 보임 */
-.mlegend--grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
-.mlegend--grid span { min-width: 0; }
-.mlegend--grid i { flex: none; }
-.mlegend--grid b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mlegend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; }
 
 /* 그래프 (시안: 옅은 눈금선, 가운데·위는 점선, 얇은 선) */
@@ -302,8 +310,6 @@
 .brank__val { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; color: var(--d-text); font-weight: 600; }
 .mzoom .brank { gap: 9px; margin-top: 12px; }
 .mzoom .brank__row { font-size: 13px; grid-template-columns: minmax(120px, 30%) minmax(0, 1fr) auto; }
-.mbox__more { margin-top: 8px; font-size: 11.5px; color: var(--d-info-text); }
-.mbox__more--plain { color: var(--d-muted); }
 .mbox__empty { margin: 8px 0 0; font-size: 12px; color: var(--d-muted); }
 
 .sgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }

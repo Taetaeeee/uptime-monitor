@@ -206,9 +206,10 @@ function renderServiceRows(svc) {
 }
 
 // ─────────────────────────────────────────────
-// 운영 지표 요약 — 서비스가 10개가 넘어도 읽히게 (작은 칸은 짧게, 자세한 것은 팝업에서)
-//   작은 칸: 서비스별 가로 막대 순위(상위 5개) · 가동률은 100% 아래로 내려간 서비스만 선으로, 나머지는 개수만
-//   팝업:   탭으로 '순위(전체)' · '서비스별'(서비스마다 미니 그래프) · '겹쳐 보기'(범례 버튼으로 켜고 끔)
+// 운영 지표 요약 — 한눈에 (22단계: 숫자 타일 4개, 2×2)
+//   타일:   큰 숫자 + 한 줄 설명(전주 대비·가장 느린 서비스·내려간 서비스·최근 7일) + 작은 선(서비스 평균 또는 내려간 서비스)
+//           1440×900 화면에서 스크롤 없이 4개가 다 보이게 서비스별 선·범례는 타일에서 뺐습니다
+//   팝업:   타일을 누르면 서비스별 자세한 그래프 — '겹쳐 보기'(범례 버튼으로 켜고 끔) · '순위(전체)' · '서비스별'
 //   색:     서비스마다 고유색 하나 (DashboardModel.serviceColors) — 서비스 줄 아이콘·막대·그래프에서 같은 색
 // 모두 이미 받은 두 응답으로 계산합니다 — 이 칸 때문에 API를 더 부르지 않습니다.
 // ─────────────────────────────────────────────
@@ -222,7 +223,7 @@ const metricUi = { tab: {}, hidden: {} };
  * spec.renderSmall()은 작은 칸 안의 내용, spec.renderLarge()는 팝업 안의 내용을 새로 만들어 돌려주는 함수입니다.
  */
 function metricBox(spec) {
-  const box = el('button', 'mbox mbox--wide');
+  const box = el('button', 'mbox');
   box.type = 'button';
   box.setAttribute('aria-label', `${spec.title} 크게 보기`);
   box.append(metricHead(spec, false), spec.renderSmall());
@@ -230,29 +231,24 @@ function metricBox(spec) {
   return box;
 }
 
-/** 제목·숫자·설명 (작은 칸과 팝업이 함께 씀) */
+/**
+ * 제목·숫자·설명 (타일과 팝업이 함께 씀).
+ *   spec.tile: 타일에서만 바꿔 보여 줄 제목·숫자·단위 (예: 가동률 타일은 '가동률 100% 미만 3개', 팝업 제목은 '서비스 상태 추이')
+ *   spec.sub:  긴 설명은 팝업에서만 (타일은 좁아서)
+ *   spec.lines: 한 줄 설명들 — 타일과 팝업 모두. warn이면 주의색 (나빠졌을 때만 색을 칠해 화면이 덜 시끄럽게)
+ */
 function metricHead(spec, large) {
+  const t = large ? spec : { ...spec, ...(spec.tile ?? {}) };
   const head = el('div', large ? 'mzoom__head' : '');
-  head.append(el('div', 'mbox__t', spec.title));
-  if (spec.value !== null && spec.value !== undefined) {
-    const n = el('div', 'mbox__n', String(spec.value));
-    n.append(el('small', '', spec.unit));
+  head.append(el('div', 'mbox__t', t.title));
+  if (t.value !== null && t.value !== undefined) {
+    const n = el('div', 'mbox__n', String(t.value));
+    n.append(el('small', '', t.unit));
     head.append(n);
   }
-  if (spec.sub) head.append(el('div', 'mbox__sub', spec.sub));
+  if (large && spec.sub) head.append(el('div', 'mbox__sub', spec.sub));
+  for (const line of spec.lines ?? []) head.append(el('div', `mbox__line${line.warn ? ' mbox__line--warn' : ''}`, line.text));
   return head;
-}
-
-/** 범례: 이름 + 같은 색 점 (classes는 colorClass 결과). 서비스 수가 많은 곳에서는 쓰지 않고 막대·미니 그래프에 이름을 직접 적습니다 */
-function metricLegend(names, classes, extraClass = '') {
-  const lg = el('div', `mlegend${extraClass ? ` ${extraClass}` : ''}`);
-  names.forEach((name, k) => {
-    const item = el('span');
-    item.title = name; // 작은 칸에서 이름이 잘려도 마우스를 올리면 전체가 보이게
-    item.append(el('i', classes[k]), el('b', '', name));
-    lg.append(item);
-  });
-  return lg;
 }
 
 // ── 지표 확대 팝업 ──
@@ -284,26 +280,33 @@ function renderMetrics(svc, status) {
   const specs = [];
 
   /**
-   * 응답 시간 지표(HTTP·DNS): 작은 칸은 느린 순 막대 5개, 팝업은 순위(전체) · 서비스별 · 겹쳐 보기.
-   * 점검 이름이 아니라 서비스 이름으로 보여 줍니다 (칸 제목이 이미 HTTP·DNS라서).
+   * 응답 시간 지표(HTTP·DNS): 타일은 평균 숫자 + 전주 대비(+ 가장 느린 서비스) + 서비스 평균 선 하나,
+   * 팝업은 겹쳐 보기 · 순위(전체) · 서비스별. 점검 이름이 아니라 서비스 이름으로 보여 줍니다 (칸 제목이 이미 HTTP·DNS라서).
    */
-  const responseSpec = ({ title, data, sub, note, label }) => {
+  const responseSpec = ({ title, data, sub, note, label, showSlowest }) => {
     const full = DashboardModel.rankByLatest(data.series, data.series.length);
     const named = DashboardModel.sliceSeries(data.series, start).map((s) => ({ ...s, name: s.service }));
     const hidden = (metricUi.hidden[title] ??= new Set());
     const row = (s) => ({ name: s.service, value: s.latest, color: colorOf(s) });
+    const lines = [];
+    if (data.series.length) {
+      // 전주 대비: 두 주 모두 기록이 있는 서비스만 비교 (새로 등록된 서비스가 평균을 바꾸지 않게) — 일부만 비교했으면 몇 개 기준인지 적음
+      const wow = DashboardModel.weekOverWeek(data.series, svc.today);
+      if (wow.compared === 0) lines.push({ text: '전주 대비: 비교할 지난주 기록 부족' });
+      else {
+        const arrow = wow.pct > 0 ? '↑' : wow.pct < 0 ? '↓' : '→';
+        const basis = wow.compared < wow.total ? ` · ${wow.compared}/${wow.total}개 기준` : '';
+        lines.push({ text: `전주 대비 ${arrow} ${Math.abs(wow.pct ?? 0)}%${basis}`, warn: wow.worse });
+      }
+      const top = full.ranked[0];
+      if (showSlowest && top && top.latest !== null) lines.push({ text: `가장 느림 ${top.service} ${top.latest.toLocaleString('ko-KR')}ms` });
+    }
     return {
-      title, value: data.mean ?? '-', unit: 'ms', sub, note,
-      // 작은 칸: 예전처럼 선 그래프 + 하단 범례. 선·범례 색은 서비스 고유색이고, 범례는 2열에 말줄임으로 짧게
+      title, value: data.mean ?? '-', unit: 'ms', sub, note, lines,
+      // 타일: 서비스 평균 선 하나 (그날 기록 있는 서비스만으로 평균). 서비스별 선은 팝업에서
       renderSmall: () => {
         if (data.series.length === 0) return el('p', 'mbox__empty', '기록이 아직 없습니다.');
-        const box = el('div');
-        const classes = named.map((s) => colorClass(colorOf(s)));
-        box.append(
-          multiLineChart({ series: named, classes, unit: '', label, box: { w: 360, h: 90, l: 34 } }),
-          metricLegend(named.map((s) => s.name), classes, 'mlegend--grid')
-        );
-        return box;
+        return sparkLine({ series: [{ name: '서비스 평균', points: DashboardModel.averageSeries(named) }], unit: 'ms', label: `${label} — 서비스 평균` });
       },
       // 팝업: 선 그래프('겹쳐 보기')를 첫 탭으로. 순위(전체)·서비스별은 그대로 남김
       renderLarge: () => {
@@ -324,9 +327,9 @@ function renderMetrics(svc, status) {
   // ① HTTP 평균 응답: 첫 화면 점검만 (DB 상태 확인 주소는 원래 약 1초라 섞으면 평균이 의미를 잃음)
   const http = DashboardModel.responseSeries(svc.services, 'http', 'HTTP');
   specs.push(responseSpec({
-    title: 'HTTP 평균 응답', data: http, label: '첫 화면 일평균 응답 시간',
+    title: 'HTTP 평균 응답', data: http, label: '첫 화면 일평균 응답 시간', showSlowest: true,
     sub: `${http.series.length}개 서비스 평균 · 첫 화면`,
-    note: '성공한 점검의 하루 평균 응답 시간입니다. 순위 탭의 막대는 가장 최근 일평균이고 느린 순입니다. DB 상태 확인 주소(원래 약 1초)는 성격이 달라 이 평균에서 뺐고, 서비스 줄의 점검 칩을 누르면 따로 볼 수 있습니다. 점에 마우스를 올리면 날짜와 값이 보입니다.',
+    note: '성공한 점검의 하루 평균 응답 시간입니다. 큰 숫자는 서비스마다 가장 최근 일평균을 단순 평균한 값이고, 전주 대비는 어제까지 7일과 그 전 7일을 두 주 모두 기록이 3일 이상인 서비스만으로 비교합니다(+30% 이상이면서 +100ms 이상 느려지면 노란 글씨 — 주간 보고서와 같은 기준). 타일의 선은 날짜별 서비스 평균입니다. 순위 탭의 막대는 가장 최근 일평균이고 느린 순입니다. DB 상태 확인 주소(원래 약 1초)는 성격이 달라 이 평균에서 뺐고, 서비스 줄의 점검 칩을 누르면 따로 볼 수 있습니다. 점에 마우스를 올리면 날짜와 값이 보입니다.',
   }));
 
   // ② DNS 평균 응답
@@ -334,7 +337,7 @@ function renderMetrics(svc, status) {
   specs.push(responseSpec({
     title: 'DNS 평균 응답', data: dns, label: 'DNS 일평균 응답 시간',
     sub: `${dns.series.length}개 서비스 평균`,
-    note: 'DNS-over-HTTPS로 이름을 푸는 데 걸린 시간의 하루 평균입니다(성공한 점검만). 기록이 없는 날은 선을 끊습니다.',
+    note: 'DNS-over-HTTPS로 이름을 푸는 데 걸린 시간의 하루 평균입니다(성공한 점검만). 전주 대비는 HTTP와 같은 방식이고, 값이 수십 ms라 +100ms 기준 때문에 노란 글씨는 거의 뜨지 않습니다. 기록이 없는 날은 선을 끊습니다.',
   }));
 
   // ③ 서비스 상태 추이: 예외 우선 — 100% 아래로 내려간 서비스만 선으로, 나머지는 개수만
@@ -346,28 +349,19 @@ function renderMetrics(svc, status) {
   if (!metricUi.hidden[upTitle]) {
     metricUi.hidden[upTitle] = new Set(upAll.map((s, i) => (dippedKeys.has(s.key) ? -1 : i)).filter((i) => i >= 0));
   }
+  const dippedTotal = upSplit.dipped.length + upSplit.hidden;
   specs.push({
     title: upTitle, value: null,
+    // 타일: 그래프 구간에서 100% 아래로 내려간 서비스 수 (기록이 하나도 없으면 '-')
+    tile: { title: '가동률 100% 미만', value: dippedTotal || upSplit.perfectCount ? dippedTotal : '-', unit: '개' },
+    lines: [{ text: DashboardModel.uptimeTileText(upSplit) }],
     sub: `${first ? `기록 시작 ${first} · ` : ''}세로축 95~100% (95% 아래는 바닥에 붙임)`,
     note: '서비스 가동률은 묶인 점검(HTTP·DNS·DB)이 모두 성공한 5분 회차의 비율입니다. 같은 5분에 여러 점검이 함께 실패해도 장애 한 번으로 셉니다. 작은 칸에는 그래프 구간에서 100% 아래로 내려간 날이 있는 서비스만 그리고, 100%만 있는 서비스는 개수로만 알립니다(선이 모두 맨 위에 겹쳐 읽을 수 없어서). 기록이 없는 서비스는 100%로 세지 않고 따로 셉니다.',
+    // 타일: 내려간 서비스만 작은 선으로 (서비스 고유색, 95~100%). 없으면 선 없이 숫자·설명만
     renderSmall: () => {
-      const box = el('div');
-      const lines = upSplit.dipped.map((d) => ({ name: d.name, key: d.key, points: d.points }));
-      if (lines.length) {
-        const cls = lines.map((s) => colorClass(colorOf(s)));
-        box.append(
-          multiLineChart({ series: lines, classes: cls, unit: '%', yMin: 95, yMax: 100, label: '100% 아래로 내려간 서비스의 일 가동률', box: { w: 400, h: 110, l: 40 } }),
-          metricLegend(lines.map((s) => s.name), cls)
-        );
-      }
-      const note = [];
-      if (!lines.length && upSplit.perfectCount > 0) note.push('100% 아래로 내려간 서비스 없음');
-      if (upSplit.hidden > 0) note.push(`선은 가장 낮았던 ${lines.length}개만 — 외 ${upSplit.hidden}개도 100% 아래로 내려간 날이 있음`);
-      if (upSplit.perfectCount > 0) note.push(`${upSplit.perfectCount}개 서비스는 구간 내내 100%`);
-      if (upSplit.noDataCount > 0) note.push(`기록 없음 ${upSplit.noDataCount}개`);
-      if (note.length) box.append(el('div', 'mbox__more mbox__more--plain', note.join(' · ')));
-      else if (!lines.length) box.append(el('p', 'mbox__empty', '기록이 아직 없습니다.'));
-      return box;
+      const lines = upSplit.dipped.map((d) => ({ name: d.name, cls: colorClass(colorOf(d)), points: d.points }));
+      if (!lines.length) return el('div');
+      return sparkLine({ series: lines, unit: '%', yMin: 95, yMax: 100, label: '100% 아래로 내려간 서비스의 일 가동률' });
     },
     renderLarge: () => {
       if (upAll.length === 0) return el('p', 'sd-empty', '기록이 아직 없습니다.');
@@ -385,11 +379,14 @@ function renderMetrics(svc, status) {
   // ④ 최근 장애 수 (장애 이력에서 시작일 기준). 숫자는 30일 전체, 막대는 그래프 구간만
   const inc = DashboardModel.incidentsByDay(status.incidents ?? [], allDays, INCIDENT_LIMIT);
   const incValues = inc.perDay.slice(start);
+  // 최근 7일(오늘 포함) 건수 — 장애 이력은 최근 10건까지만 오므로 10건이 모두 7일 안이면 '+'를 붙임
+  const inc7 = DashboardModel.incidentsByDay(status.incidents ?? [], allDays.slice(-7), INCIDENT_LIMIT);
   specs.push({
     title: '최근 장애 수', value: inc.capped ? `${inc.count}+` : inc.count, unit: '건',
     sub: inc.capped ? `장애 이력 최근 ${INCIDENT_LIMIT}건이 모두 30일 안이라 더 있을 수 있음` : '30일 · 2회 연속 실패로 판정된 장애',
+    lines: [{ text: `최근 7일 ${inc7.capped ? `${inc7.count}+` : inc7.count}건` }],
     note: '장애가 시작된 날(한국 시간) 기준으로 셉니다. 막대에 마우스를 올리면 날짜와 건수가 보이고, 장애 하나하나는 왼쪽 메뉴의 장애 이력에서 볼 수 있습니다.',
-    renderSmall: () => dayBarChart({ days, values: incValues, label: '날짜별 장애 수', box: { w: 400, h: 80, l: 24 } }),
+    renderSmall: () => sparkBars({ days, values: incValues, label: '날짜별 장애 수' }),
     renderLarge: () => dayBarChart({ days, values: incValues, label: '날짜별 장애 수', box: big(260) }),
   });
 

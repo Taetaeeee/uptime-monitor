@@ -199,6 +199,83 @@
     return { dipped: dipped.slice(0, limit), hidden: Math.max(0, dipped.length - limit), perfectCount, noDataCount };
   }
 
+  // ─────────────────────────────────────────────
+  // 운영 지표 숫자 타일 (22단계): 한눈에 보이게 숫자 + 한 줄 설명 + 작은 평균 선
+  // ─────────────────────────────────────────────
+
+  // '나빠짐' 기준 — 주간 보고서(src/weekly-report.js SLOWDOWN_PERCENT·SLOWDOWN_MIN_MS)와 같은 값.
+  // 화면은 빌드 도구 없는 일반 스크립트라 서버 모듈을 불러올 수 없어서 같은 값을 한 번 더 둡니다.
+  const SLOWDOWN_PERCENT = 30;
+  const SLOWDOWN_MIN_MS = 100;
+  const WOW_MIN_DAYS = 3; // 한 주에 기록 있는 날이 이보다 적은 서비스는 비교에서 뺌 (하루 이틀 값으로 '전주 대비'를 말하지 않게)
+
+  /**
+   * 날짜별 서비스 평균 선: 그날 기록이 있는 서비스만으로 평균을 냅니다 (기록 없는 서비스를 0으로 세지 않게).
+   * 한계: 서비스가 새로 등록된 날은 평균에 들어가는 서비스가 바뀌어 선이 계단처럼 튈 수 있습니다.
+   * @param {Array<{points:Array<{day:string, v:number|null}>}>} series  모든 줄이 같은 날짜 순서 (responseSeries 결과)
+   * @returns {Array<{day:string, v:number|null, n:number}>}  n: 그날 평균에 들어간 서비스 수
+   */
+  function averageSeries(series) {
+    const days = series[0]?.points.map((p) => p.day) ?? [];
+    return days.map((day, i) => {
+      const vs = series.map((s) => s.points[i]?.v).filter((v) => typeof v === 'number' && Number.isFinite(v));
+      return { day, v: vs.length ? Math.round(vs.reduce((a, b) => a + b, 0) / vs.length) : null, n: vs.length };
+    });
+  }
+
+  /**
+   * 전주 대비: 어제까지 7일(최근 주)과 그 전 7일(지난주)의 평균 응답을 비교합니다.
+   * 오늘은 아직 하루가 끝나지 않아 뺍니다. 두 주 모두 기록이 WOW_MIN_DAYS일 이상인 서비스만 비교해서,
+   * 이번 주에 새로 등록된 서비스가 평균을 바꿔 "느려졌다"로 보이는 일을 막습니다.
+   *   worse: 주간 보고서와 같은 기준 (+30% 이상 그리고 +100ms 이상)
+   * @param {Array<{points:Array<{day:string, v:number|null}>}>} series
+   * @param {string} today  'YYYY-MM-DD' (API의 today)
+   * @returns {{compared:number, total:number, cur:number|null, prev:number|null, diffMs:number|null, pct:number|null, worse:boolean}}
+   */
+  function weekOverWeek(series, today) {
+    const days = lastDays(today, 15); // [지난주 7일][최근 주 7일][오늘]
+    const prevSet = new Set(days.slice(0, 7));
+    const curSet = new Set(days.slice(7, 14));
+    const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const curs = [];
+    const prevs = [];
+    for (const s of series) {
+      const ok = (p) => typeof p.v === 'number' && Number.isFinite(p.v);
+      const c = s.points.filter((p) => curSet.has(p.day) && ok(p)).map((p) => p.v);
+      const p = s.points.filter((x) => prevSet.has(x.day) && ok(x)).map((x) => x.v);
+      if (c.length >= WOW_MIN_DAYS && p.length >= WOW_MIN_DAYS) {
+        curs.push(mean(c));
+        prevs.push(mean(p));
+      }
+    }
+    if (curs.length === 0) return { compared: 0, total: series.length, cur: null, prev: null, diffMs: null, pct: null, worse: false };
+    const cur = mean(curs);
+    const prev = mean(prevs);
+    const diffMs = cur - prev;
+    const pct = prev > 0 ? Math.round((diffMs / prev) * 100) : null;
+    return {
+      compared: curs.length, total: series.length, cur: Math.round(cur), prev: Math.round(prev), diffMs: Math.round(diffMs), pct,
+      worse: pct !== null && pct >= SLOWDOWN_PERCENT && diffMs >= SLOWDOWN_MIN_MS,
+    };
+  }
+
+  /**
+   * 가동률 타일 한 줄 설명: "Keychats 외 1개 · 나머지 8개 100%" (splitUptimeByException 결과로)
+   * 가장 낮았던 서비스 이름 하나만 적고 나머지는 개수로 — 좁은 타일에서도 한 줄에 들어가게.
+   */
+  function uptimeTileText(split) {
+    const dippedTotal = split.dipped.length + split.hidden;
+    const parts = [];
+    if (dippedTotal > 0) {
+      parts.push(`${split.dipped[0].name}${dippedTotal > 1 ? ` 외 ${dippedTotal - 1}개` : ''}`);
+      if (split.perfectCount > 0) parts.push(`나머지 ${split.perfectCount}개 100%`);
+    } else if (split.perfectCount > 0) {
+      parts.push(`${split.perfectCount}개 모두 100%`);
+    }
+    if (split.noDataCount > 0) parts.push(`기록 없음 ${split.noDataCount}개`);
+    return parts.length ? parts.join(' · ') : '기록이 아직 없습니다';
+  }
+
   /** 기록이 시작된 첫 날 (모든 서비스 중 가장 이른 날). 없으면 null */
   function firstRecordedDay(services) {
     const days = services.flatMap((s) => (s.daily ?? []).filter((d) => d.total > 0).map((d) => d.day));
@@ -313,5 +390,6 @@
     kstDay, countByState, searchServices, chipLabel, chipState, lastDays, incidentsByDay, responseSeries, uptimeSeries, firstRecordedDay,
     chartStart, sliceSeries, mmss,
     SERIES_COLORS, serviceColors, rankByLatest, splitUptimeByException,
+    SLOWDOWN_PERCENT, SLOWDOWN_MIN_MS, WOW_MIN_DAYS, averageSeries, weekOverWeek, uptimeTileText,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
