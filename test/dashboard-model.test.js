@@ -314,3 +314,78 @@ test('uptimeTileText: 가장 낮았던 서비스 이름 하나 + 나머지는 �
   assert.equal(M.uptimeTileText({ dipped: [], hidden: 0, perfectCount: 10, noDataCount: 0 }), '10개 모두 100%');
   assert.equal(M.uptimeTileText({ dipped: [], hidden: 0, perfectCount: 0, noDataCount: 0 }), '기록이 아직 없습니다');
 });
+
+// ── 23단계: 오늘 확인할 것 · 최근 배포(추정) ──
+
+const NOW = Date.parse('2026-11-25T05:00:00Z'); // KST 14:00
+const minsAgo = (m) => new Date(NOW - m * 60000).toISOString().replace(/\.\d+Z$/, 'Z');
+const chk = (id, over = {}) => ({ id, name: `점검 ${id}`, kind: 'http', state: 'up', lastCheckedAt: minsAgo(2), lastIsSlow: false, lastResponseMs: 200, daily: [{ day: '2026-11-25', failed: 0 }], ...over });
+
+test('watchItems: 장애 중 > 점검 끊김 > 느림 > 오늘 단발 실패 > 계획 작업 중, 점검마다 한 줄', () => {
+  const services = [
+    { key: 'a', name: 'A', checks: [chk(1, { daily: [{ day: '2026-11-25', failed: 2 }] })] },                  // 단발 실패
+    { key: 'b', name: 'B', checks: [chk(2, { state: 'down', daily: [{ day: '2026-11-25', failed: 5 }] })] },    // 장애 중 (실패로 또 세지 않음)
+    { key: 'c', name: 'C', checks: [chk(3, { lastIsSlow: true, lastResponseMs: 1469 }), chk(4, { kind: 'dns', name: 'C (DNS)', lastCheckedAt: minsAgo(18) })] },
+    { key: 'd', name: 'D', checks: [chk(5, { state: 'maintenance', daily: [{ day: '2026-11-25', failed: 9 }] }), chk(6, { state: 'paused', lastCheckedAt: minsAgo(999) })] },
+    { key: 'e', name: 'E', checks: [chk(7)] }, // 아무 일 없음
+  ];
+  const incidents = [{ id: 9, monitorId: 2, startedAt: minsAgo(12), resolvedAt: null }];
+  const items = M.watchItems({ services, incidents, today: '2026-11-25', now: NOW });
+  assert.deepEqual(plain(items.map((i) => [i.serviceKey, i.check, i.kind, i.text])), [
+    ['b', 'HTTP', 'down', '장애 중 12분'],
+    ['c', 'DNS', 'stale', '점검 기록 18분째 없음'],
+    ['c', 'HTTP', 'slow', '응답 느림 (마지막 1,469ms)'],
+    ['a', 'HTTP', 'fail', '오늘 실패 2회 · 장애 판정 전 단발 실패'],
+    ['d', 'HTTP', 'maint', '계획 작업 중'], // 계획 작업 중에는 실패를 경고하지 않음, 점검 대기는 빠짐
+  ]);
+});
+
+test('watchItems: 끊김 경계는 15분 초과, 오늘 복구된 장애가 있으면 단발 실패가 아니라고 적음', () => {
+  const at15 = [{ key: 'a', name: 'A', checks: [chk(1, { lastCheckedAt: minsAgo(15) })] }];
+  assert.equal(M.watchItems({ services: at15, incidents: [], today: '2026-11-25', now: NOW }).length, 0);
+  const at16 = [{ key: 'a', name: 'A', checks: [chk(1, { lastCheckedAt: minsAgo(16) })] }];
+  assert.equal(M.watchItems({ services: at16, incidents: [], today: '2026-11-25', now: NOW })[0].kind, 'stale');
+
+  const healed = [{ key: 'a', name: 'A', checks: [chk(1, { daily: [{ day: '2026-11-25', failed: 3 }] })] }];
+  const inc = [{ id: 1, monitorId: 1, startedAt: minsAgo(90), resolvedAt: minsAgo(80) }];
+  assert.equal(M.watchItems({ services: healed, incidents: inc, today: '2026-11-25', now: NOW })[0].text, '오늘 실패 3회 · 장애 1건 복구됨');
+  // 장애 중인데 장애 이력(최근 10건)에서 못 찾으면 시간 없이
+  const down = [{ key: 'a', name: 'A', checks: [chk(1, { state: 'down' })] }];
+  assert.equal(M.watchItems({ services: down, incidents: [], today: '2026-11-25', now: NOW })[0].text, '장애 중');
+  assert.equal(M.minutesText(65), '1시간 5분');
+  assert.equal(M.minutesText(120), '2시간');
+});
+
+test('changeFeed: 최신 순, 변경 뒤 60분 안 같은 서비스 장애만 직후 장애, 24시간 6번 이상이면 자주 바뀜', () => {
+  const services = [{ key: 'a', checks: [{ id: 1 }, { id: 2 }] }, { key: 'b', checks: [{ id: 3 }] }];
+  const ch = (key, m) => ({ serviceKey: key, serviceName: key.toUpperCase(), firstSeenAt: minsAgo(m), oldSize: 100, newSize: 120 });
+  const changes = [ch('a', 300), ch('a', 100), ch('b', 200)];
+  const incidents = [
+    { id: 11, monitorId: 2, startedAt: minsAgo(40) },  // a의 100분 전 변경 뒤 60분 → 직후 장애
+    { id: 12, monitorId: 3, startedAt: minsAgo(130) }, // b의 200분 전 변경 뒤 70분 → 60분 넘음
+    { id: 13, monitorId: 1, startedAt: minsAgo(310) }, // a 변경보다 먼저 시작 → 아님
+  ];
+  const r = M.changeFeed({ changes, services, incidents, now: NOW });
+  assert.deepEqual(plain(r.items.map((i) => [i.serviceKey, i.incidentId])), [['a', 11], ['b', null], ['a', null]]);
+  assert.deepEqual(plain(r.noisyKeys), []);
+
+  const many = Array.from({ length: 6 }, (_, k) => ch('b', 10 + k * 60)); // 24시간 안 6번
+  const noisy = M.changeFeed({ changes: [...many, ch('a', 30)], services, incidents: [], now: NOW });
+  assert.deepEqual(plain(noisy.noisyKeys), ['b']);
+  // 자주 바뀌는 b는 가장 최근 한 줄로 묶여서 a의 변경이 밀려나지 않음
+  assert.deepEqual(plain(noisy.items.map((i) => [i.serviceKey, i.count])), [['b', 6], ['a', 1]]);
+  // 직후 장애가 붙은 변경(250분 전 변경 → 240분 전 장애)은 묶지 않음
+  const withInc = M.changeFeed({ changes: many, services, incidents: [{ id: 21, monitorId: 3, startedAt: minsAgo(240) }], now: NOW });
+  assert.deepEqual(plain(withInc.items.map((i) => [i.count, i.incidentId])), [[5, null], [1, 21]]);
+  assert.deepEqual(plain(M.changeFeed({ changes: [], services, incidents: [], now: NOW })), { items: [], noisyKeys: [] });
+});
+
+test('화면 기준 값이 서버 모듈의 같은 기준과 어긋나지 않는다', async () => {
+  const fp = await import('../src/fingerprint.js');
+  const api = await import('../src/api.js');
+  const wr = await import('../src/weekly-report.js');
+  assert.equal(M.NOISY_PER_DAY, fp.NOISY_PER_DAY);
+  assert.equal(M.CHANGE_INCIDENT_MIN, api.CHANGE_LOOKBACK_MIN);
+  assert.equal(M.SLOWDOWN_PERCENT, wr.SLOWDOWN_PERCENT);
+  assert.equal(M.SLOWDOWN_MIN_MS, wr.SLOWDOWN_MIN_MS);
+});

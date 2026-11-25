@@ -441,6 +441,91 @@ function renderNotifications(notes) {
 }
 
 // ─────────────────────────────────────────────
+// 오른쪽 칸 (23단계): 오늘 확인할 것 · 최근 배포(추정)
+// 이미 받은 /api/services(recentChanges 포함)·/api/status(장애 이력)만 씁니다 — 새 요청 없음.
+// 무엇을 고르고 어떤 순서로 보일지는 DashboardModel.watchItems·changeFeed(순수 함수, 테스트 있음)가 정합니다.
+// ─────────────────────────────────────────────
+
+const WATCH_SHOW = 6;  // 확인할 것은 6줄까지, 나머지는 '외 N건'
+const CHANGE_SHOW = 5; // 최근 배포는 5줄까지
+
+// 바이트 → '7.4KB' (첫 화면 크기 변화를 보여 줄 때)
+const sizeText = (n) => (typeof n !== 'number' ? '-' : n < 1024 ? `${n}B` : `${(n / 1024).toFixed(1)}KB`);
+// 좁은 칸용 짧은 한국 시각: 오늘이면 '14:05', 아니면 '11/24 14:05' (24시간제)
+function shortKst(iso, today) {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return '-';
+  const k = new Date(ms + 9 * 3600000).toISOString(); // KST로 옮긴 뒤 글자로 자름
+  const hm = k.slice(11, 16);
+  return k.slice(0, 10) === today ? hm : `${Number(k.slice(5, 7))}/${Number(k.slice(8, 10))} ${hm}`;
+}
+
+function renderWatch(svc, data) {
+  const items = DashboardModel.watchItems({ services: svc.services, incidents: data.incidents ?? [], today: svc.today, now: Date.now() });
+  document.getElementById('watch-count').textContent = items.length ? `${items.length}건` : '';
+  const root = document.getElementById('watch');
+  if (items.length === 0) {
+    // 아무 일 없을 때도 '감시가 돌고 있다'는 근거(마지막 점검 시각)를 함께 보여 줍니다
+    const last = svc.services.map((s) => s.lastCheckedAt).filter(Boolean).sort().at(-1);
+    const ok = el('p', 'watch__ok');
+    const lastText = last ? ` · 마지막 점검 ${shortKst(last, svc.today)}` : ''; // 아직 한 번도 점검하지 않았으면 시각은 빼고
+    ok.append(icon('check', 'ico ico--sm'), document.createTextNode(` 확인할 것 없음 — ${svc.services.length}개 서비스${lastText}`));
+    root.replaceChildren(ok);
+    return;
+  }
+  const list = el('ul', 'watch');
+  for (const it of items.slice(0, WATCH_SHOW)) {
+    const li = el('li');
+    const a = el('a', `watch__row watch__row--${it.kind}`);
+    a.href = `/service.html?key=${encodeURIComponent(it.serviceKey)}`;
+    a.append(el('i', 'watch__dot'), el('span', 'watch__name', `${it.serviceName} · ${it.check}`), el('span', 'watch__text', it.text));
+    a.title = `${it.serviceName} · ${it.check} — ${it.text}`;
+    li.append(a);
+    list.append(li);
+  }
+  root.replaceChildren(list);
+  if (items.length > WATCH_SHOW) root.append(el('p', 'side-card__more', `외 ${items.length - WATCH_SHOW}건`));
+}
+
+function renderChanges(svc, data) {
+  const { items, noisyKeys } = DashboardModel.changeFeed({
+    changes: svc.recentChanges ?? [], services: svc.services, incidents: data.incidents ?? [], now: Date.now(),
+  });
+  const root = document.getElementById('changes');
+  if (items.length === 0) {
+    root.replaceChildren(el('p', 'side-card__empty', '최근 7일 첫 화면 변경 없음'));
+    return;
+  }
+  const noisy = new Set(noisyKeys);
+  const list = el('ul', 'chg');
+  for (const it of items.slice(0, CHANGE_SHOW)) {
+    const li = el('li', 'chg__row');
+    const name = el('a', 'chg__name', it.serviceName);
+    name.href = `/service.html?key=${encodeURIComponent(it.serviceKey)}`;
+    const time = el('span', 'chg__time', shortKst(it.at, svc.today));
+    time.title = formatKst(it.at);
+    li.append(time, name, el('span', 'chg__size', `${sizeText(it.oldSize)} → ${sizeText(it.newSize)}`));
+    if (it.incidentId !== null) {
+      // 변경 뒤 60분 안에 같은 서비스에서 장애가 시작됨 → 장애 상세(장애 직전 변경 타임라인, 17단계)로 연결
+      const b = el('a', 'chg__badge chg__badge--bad', '직후 장애');
+      b.href = `/incident.html?id=${encodeURIComponent(it.incidentId)}`;
+      b.title = `변경 뒤 ${DashboardModel.CHANGE_INCIDENT_MIN}분 안에 장애가 시작됨`;
+      li.append(b);
+    }
+    if (noisy.has(it.serviceKey)) {
+      // 자주 바뀌는 서비스는 한 줄로 묶어서 변경 수를 함께 적음 (changeFeed)
+      const b = el('span', 'chg__badge', it.count > 1 ? `자주 바뀜 · ${it.count}번` : '자주 바뀜');
+      b.title = `24시간에 ${DashboardModel.NOISY_PER_DAY}번 이상 바뀜 — 배포가 아니라 날짜·광고 같은 동적 내용일 수 있음`;
+      li.append(b);
+    }
+    list.append(li);
+  }
+  root.replaceChildren(list);
+  if (items.length > CHANGE_SHOW) root.append(el('p', 'side-card__more', `외 ${items.length - CHANGE_SHOW}건`));
+  root.append(el('p', 'side-card__foot', '첫 화면 내용이 바뀐 시각입니다. 배포 시각과 다를 수 있습니다.'));
+}
+
+// ─────────────────────────────────────────────
 // 불러오기
 // ─────────────────────────────────────────────
 
@@ -472,6 +557,8 @@ async function load() {
     renderStats(svc);
     renderServiceRows(svc);
     renderMetrics(svc, data);
+    renderWatch(svc, data);
+    renderChanges(svc, data);
     renderMaintenance(data.maintenance ?? []);
     refreshDetail(data); // 점검 상세 팝업(detail.js)에도 새 데이터 전달
     renderNotifications(data.notifications);

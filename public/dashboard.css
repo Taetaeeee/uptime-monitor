@@ -88,7 +88,7 @@
 .load-status.is-error { color: var(--d-bad-text); }
 
 /* ── 카드 공통 ── */
-.kcard, .svc, .metrics-card { background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); }
+.kcard, .svc, .metrics-card, .side-card { background: var(--d-panel); border: 1px solid var(--d-line); border-radius: var(--d-r); }
 
 /* ── 위 줄: 작은 요약 3개 (전체 폭, 작은 높이) ── */
 .kcards { grid-area: stats; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
@@ -131,7 +131,12 @@
 }
 .dash-grid > .alerts-card { align-self: stretch; }
 .svc-area { grid-area: list; min-width: 0; }
-.metrics-card { grid-area: metrics; }
+/* 오른쪽 칸 (23단계): 운영 지표 + 오늘 확인할 것 + 최근 배포를 한 칸에 쌓고, 넓은 화면에서는 스크롤해도 위에 붙어 따라옴.
+   칸이 화면보다 길면(창 높이가 낮을 때) 아래가 잘리지 않게 칸 높이를 화면에 맞추고 안에서 스크롤 */
+.side-col {
+  grid-area: metrics; display: flex; flex-direction: column; gap: 14px; min-width: 0;
+  position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: thin;
+}
 
 .pagehead { grid-area: head; display: flex; gap: 12px; align-items: center; margin: 4px 0 0; }
 .pagehead__ico { color: var(--d-info); display: grid; place-items: center; }
@@ -228,6 +233,38 @@
 .mbox:hover { border-color: var(--d-blue); }
 .mbox:focus-visible { outline: 2px solid var(--d-blue); outline-offset: 2px; }
 .metrics-card__hint { margin: -6px 0 10px; font-size: 11.5px; color: var(--d-faint); }
+
+/* ── 오른쪽 작은 카드 (23단계): 오늘 확인할 것 · 최근 배포(추정) ── */
+.side-card { padding: 14px 16px; flex: none; }
+.side-card__title { margin: 0 0 8px; font-size: 14px; display: flex; gap: 6px; align-items: center; color: var(--d-text); }
+.side-card__title [data-icon] { color: var(--d-info); }
+.side-card__title small { font-size: 11.5px; color: var(--d-muted); font-weight: 600; }
+.side-card__hint { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--d-faint); }
+.side-card__empty, .side-card__more, .side-card__foot { margin: 6px 0 0; font-size: 12px; color: var(--d-muted); }
+.side-card__foot { font-size: 11px; color: var(--d-faint); }
+/* 확인할 것: 한 줄 = 점 · 서비스·점검 · 설명. 점 색이 종류(장애 빨강, 끊김·느림 노랑, 단발 실패·계획 작업 파랑) */
+.watch, .chg { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.watch__row { display: grid; grid-template-columns: 8px minmax(0, auto) minmax(0, 1fr); gap: 0 8px; align-items: center;
+  padding: 6px 8px; border-radius: 8px; color: var(--d-text); text-decoration: none; font-size: 12.5px; }
+.watch__row:hover { background: var(--d-panel2); }
+.watch__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--d-info); }
+.watch__row--down .watch__dot { background: var(--d-bad); }
+.watch__row--stale .watch__dot, .watch__row--slow .watch__dot { background: var(--d-warn); }
+.watch__row--maint .watch__dot { background: var(--d-muted); }
+.watch__name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.watch__text { color: var(--d-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.watch__row--down .watch__text { color: var(--d-bad-text); font-weight: 600; }
+.watch__ok { margin: 0; font-size: 12.5px; color: var(--d-muted); display: flex; align-items: center; gap: 6px; }
+.watch__ok [class*="ico"] { color: var(--d-good); }
+/* 최근 배포: 시각 · 서비스 · 크기 변화 · 표시(직후 장애·자주 바뀜) */
+.chg__row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 5px 0; font-size: 12.5px; border-bottom: 1px solid var(--d-line); }
+.chg__row:last-child { border-bottom: 0; }
+.chg__time { color: var(--d-faint); font-variant-numeric: tabular-nums; font-size: 12px; }
+.chg__name { color: var(--d-text); font-weight: 600; text-decoration: none; }
+.chg__name:hover { text-decoration: underline; }
+.chg__size { color: var(--d-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chg__badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--d-warn-soft); color: var(--d-warn-text); text-decoration: none; }
+.chg__badge--bad { background: var(--d-bad-soft); color: var(--d-bad-text); }
 
 /* 지표 확대 팝업 */
 .modal--metric .modal__box { background: var(--d-panel); border-color: var(--d-line2); }
@@ -517,6 +554,7 @@
 /* ── 좁은 화면 (시안과 같은 기준: 1180px에서 한 칸, 760px에서 메뉴가 위로) ── */
 @media (max-width: 1180px) {
   .dash-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stats" "alerts" "head" "list" "metrics"; }
+  .side-col { position: static; max-height: none; overflow: visible; }
   .alerts-card { contain: none; }
   .alerts-card .scroll-list { flex: none; height: 170px; }
   .svc { grid-template-columns: 44px minmax(0, 1fr) auto; }

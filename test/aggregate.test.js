@@ -70,10 +70,11 @@ test('30일 막대: 기록 없는 날도 빈 칸으로 채워 항상 30개, 오�
   );
   assert.equal(bars.length, 30);
   assert.equal(bars[0].day, '2026-10-12');
-  assert.deepEqual(bars[29], { day: '2026-11-10', total: 288, uptime: 100, avgResponseMs: 412 });
-  assert.deepEqual(bars[28], { day: '2026-11-09', total: 0, uptime: null, avgResponseMs: null });
+  assert.deepEqual(bars[29], { day: '2026-11-10', total: 288, uptime: 100, avgResponseMs: 412, failed: 0 });
+  assert.deepEqual(bars[28], { day: '2026-11-09', total: 0, uptime: null, avgResponseMs: null, failed: 0 });
   assert.equal(bars[27].avgResponseMs, null); // 평균 응답이 없는 날은 null (0으로 그리면 '0ms'로 오해)
   assert.equal(bars[27].uptime, 95.83);
+  assert.equal(bars[27].failed, 12); // 23단계: 실패 횟수는 %에서 되살리지 않고 그대로 (288 - 276)
 });
 
 test('전체 가동률은 날짜별 %의 평균이 아니라 점검 수 합계로 계산', () => {

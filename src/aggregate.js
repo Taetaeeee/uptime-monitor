@@ -79,6 +79,8 @@ export function buildDailyBars(stats, today, days = 30) {
       uptime: s ? uptimePercent(s.successChecks, s.totalChecks) : null,
       // 그날 성공한 점검의 평균 응답 시간 (상세 팝업의 '30일 일평균 응답' 그래프용)
       avgResponseMs: s?.avgResponseMs ?? null,
+      // 그날 실패 횟수 (23단계, 대시보드 '오늘 확인할 것'의 단발 실패용). uptime은 내림한 %라 여기서 되살릴 수 없어서 따로 둡니다
+      failed: s ? s.totalChecks - s.successChecks : 0,
     });
   }
   return bars;

@@ -230,3 +230,45 @@ test('서비스 상세의 장애 이력은 그 서비스에 묶인 점검의 장
   assert.equal(k.incidents[0].monitorName, '사내 메신저 (DB 상태)');
   assert.equal(g.incidents.length, 0);
 });
+
+// ── 23단계: 대시보드 '최근 배포(추정)'·'오늘 확인할 것'용 자료 ──
+
+test('GET /api/services의 recentChanges: 최근 7일 변경만, 서비스 키·이름·시각·크기만 공개 (지문·주소 없음)', async () => {
+  const db = createFakeD1();
+  const now = new Date(Date.UTC(2026, 10, 25, 5, 0, 0));
+  const idOf = (url) => db.sqlite.prepare('SELECT id FROM monitors WHERE url = ?').get(url).id;
+  const add = (monitorId, at) =>
+    db.sqlite
+      .prepare("INSERT INTO content_changes (monitor_id, first_seen_at, confirmed_at, old_hash, new_hash, old_size, new_size, source) VALUES (?, ?, ?, 'aaaaaaaaaaaa', 'bbbbbbbbbbbb', 100, 120, 'real')")
+      .run(monitorId, at, at);
+  const g = idOf('https://gochyeora.pages.dev');
+  add(g, '2026-11-24T01:00:00Z');
+  add(g, '2026-11-10T01:00:00Z'); // 7일보다 오래됨 → 빠짐
+
+  const body = await buildServices(db, now);
+  assert.equal(body.recentChanges.length, 1);
+  const c = body.recentChanges[0];
+  assert.deepEqual(Object.keys(c).sort(), ['confirmedAt', 'firstSeenAt', 'monitorId', 'newSize', 'oldSize', 'serviceKey', 'serviceName']);
+  assert.equal(c.serviceKey, 'gochyeora');
+  assert.equal(c.firstSeenAt, '2026-11-24T01:00:00Z');
+  assert.ok(!JSON.stringify(body.recentChanges).includes('aaaa'), '지문은 대시보드 응답에 넣지 않음');
+
+  // 내린 서비스의 변경은 나오지 않음 (점검이 목록에 없으므로)
+  db.sqlite.exec("UPDATE services SET is_active = 0 WHERE service_key = 'gochyeora'");
+  assert.equal((await buildServices(db, now)).recentChanges.length, 0);
+});
+
+test('일별 자료의 failed와 /api/status 장애 이력의 monitorId (23단계)', async () => {
+  const db = createFakeD1();
+  db.sqlite.exec('UPDATE monitors SET is_active = 1 WHERE service_id IS NOT NULL');
+  const at = (min) => new Date(Date.UTC(2026, 10, 19, 3, min, 12));
+  await runCron(db, fakeFetch({ healthOk: false }), [at(0), at(5)]);
+
+  const svc = await buildServices(db, at(6));
+  const health = svc.services.find((s) => s.key === 'keychats').checks.find((c) => c.name === '사내 메신저 (DB 상태)');
+  assert.equal(health.daily.at(-1).failed, 2); // 오늘 DB 상태 실패 2회
+  assert.equal(svc.services.find((s) => s.key === 'gochyeora').checks[0].daily.at(-1).failed, 0);
+
+  const status = await (await worker.fetch(new Request('https://example.test/api/status'), { DB: db })).json();
+  assert.equal(status.incidents[0].monitorId, health.id); // 이름이 아니라 id로 서비스 줄의 점검과 맞출 수 있음
+});

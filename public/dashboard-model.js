@@ -276,6 +276,121 @@
     return parts.length ? parts.join(' · ') : '기록이 아직 없습니다';
   }
 
+  // ─────────────────────────────────────────────
+  // 오른쪽 칸 (23단계): 오늘 확인할 것 · 최근 배포(추정)
+  // ─────────────────────────────────────────────
+
+  const STALE_MIN = 15; // 켜진 외부 점검의 마지막 기록이 이보다 오래되면 '점검 끊김' (5분 Cron 3회차)
+  const NOISY_PER_DAY = 6; // 24시간에 이만큼 이상 첫 화면이 바뀌면 '자주 바뀜' (서버 src/fingerprint.js NOISY_PER_DAY와 같은 값)
+  const CHANGE_INCIDENT_MIN = 60; // 변경 뒤 이 시간 안에 같은 서비스에서 장애가 시작되면 '직후 장애' (서버 CHANGE_LOOKBACK_MIN과 같은 값)
+
+  // 확인할 것의 중요 순서 (작을수록 위)
+  const WATCH = { down: 1, stale: 2, slow: 3, fail: 4, maint: 5 };
+
+  /** 분 → '12분' / '1시간 5분' */
+  function minutesText(min) {
+    const m = Math.max(0, Math.floor(min));
+    return m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 ? ` ${m % 60}분` : ''}`;
+  }
+
+  /**
+   * 오늘 확인할 것: 조치가 필요할 수 있는 점검만 중요한 순서대로 (장애 중 > 점검 끊김 > 느림 > 오늘 단발 실패 > 계획 작업 중).
+   * 점검 하나에는 가장 중요한 항목 하나만 붙입니다 (장애 중인 점검을 '오늘 실패'로 한 번 더 세지 않게).
+   *   - 점검 대기(꺼짐)는 빼고, 점검 끊김은 Cron이 도는 외부 점검(http·dns)만 봅니다 (에이전트 점검은 11단계 무응답 감지가 따로 맡음)
+   *   - 계획 작업 중인 점검은 '계획 작업 중' 한 줄만 (그동안의 실패·끊김은 경고하지 않음)
+   * @param {object} o
+   * @param {Array} o.services   /api/services의 services (checks에 id·kind·state·lastCheckedAt·lastIsSlow·lastResponseMs·daily)
+   * @param {Array} o.incidents  /api/status의 incidents (monitorId·startedAt·resolvedAt)
+   * @param {string} o.today     'YYYY-MM-DD'
+   * @param {Date|number} o.now
+   * @returns {Array<{level:number, kind:string, serviceKey:string, serviceName:string, check:string, text:string}>}
+   */
+  function watchItems({ services, incidents, today, now }) {
+    const nowMs = typeof now === 'number' ? now : now.getTime();
+    const items = [];
+    services.forEach((s, order) => {
+      for (const c of s.checks ?? []) {
+        if (c.state === 'paused') continue;
+        const base = { serviceKey: s.key, serviceName: s.name, check: chipLabel(c), order };
+        if (c.state === 'maintenance') {
+          items.push({ ...base, level: WATCH.maint, kind: 'maint', text: '계획 작업 중' });
+          continue;
+        }
+        const mine = (incidents ?? []).filter((i) => i.monitorId === c.id);
+        if (c.state === 'down') {
+          const open = mine.find((i) => !i.resolvedAt);
+          const text = open ? `장애 중 ${minutesText((nowMs - Date.parse(open.startedAt)) / 60000)}` : '장애 중';
+          items.push({ ...base, level: WATCH.down, kind: 'down', text });
+          continue;
+        }
+        const lastMs = c.lastCheckedAt ? Date.parse(c.lastCheckedAt) : NaN;
+        if ((c.kind === 'http' || c.kind === 'dns') && Number.isFinite(lastMs) && nowMs - lastMs > STALE_MIN * 60000) {
+          items.push({ ...base, level: WATCH.stale, kind: 'stale', text: `점검 기록 ${minutesText((nowMs - lastMs) / 60000)}째 없음` });
+          continue;
+        }
+        if (chipState(c) === 'slow') {
+          const ms = typeof c.lastResponseMs === 'number' ? ` (마지막 ${c.lastResponseMs.toLocaleString('ko-KR')}ms)` : '';
+          items.push({ ...base, level: WATCH.slow, kind: 'slow', text: `응답 느림${ms}` });
+          continue;
+        }
+        const todayBar = (c.daily ?? []).find((d) => d.day === today);
+        const failed = todayBar?.failed ?? 0;
+        if (failed > 0) {
+          const todayIncidents = mine.filter((i) => kstDay(i.startedAt) === today).length;
+          const why = todayIncidents ? `장애 ${todayIncidents}건 복구됨` : '장애 판정 전 단발 실패';
+          items.push({ ...base, level: WATCH.fail, kind: 'fail', text: `오늘 실패 ${failed}회 · ${why}` });
+        }
+      }
+    });
+    items.sort((a, b) => a.level - b.level || a.order - b.order);
+    return items.map(({ order, ...x }) => x);
+  }
+
+  /**
+   * 최근 배포(추정): 첫 화면 변경을 최신 순으로 + '직후 장애'(변경 뒤 60분 안에 같은 서비스에서 시작한 장애) + '자주 바뀜'.
+   * 첫 화면이 바뀐 것이지 배포했다는 확인은 아니라서 화면 제목에 '추정'을 붙입니다.
+   * 자주 바뀌는 서비스(24시간에 6번 이상)는 가장 최근 한 줄로 묶고 count에 변경 수를 적습니다 —
+   * 날짜·광고처럼 동적 내용이 바뀌는 서비스 하나가 목록을 다 차지해 다른 서비스의 배포가 밀려나지 않게.
+   * 단, 직후 장애가 붙은 변경은 묶지 않고 따로 남깁니다 (장애와 연결된 변경은 놓치면 안 되므로).
+   * @param {object} o
+   * @param {Array} o.changes    /api/services의 recentChanges
+   * @param {Array} o.services   점검 id → 서비스 키를 찾는 데 씀
+   * @param {Array} o.incidents  /api/status의 incidents (최근 10건까지만 — 오래된 변경은 직후 장애를 못 찾을 수 있음)
+   * @param {Date|number} o.now
+   * @returns {{items:Array<{serviceKey:string, serviceName:string, at:string, oldSize:number, newSize:number, incidentId:number|null, count:number}>, noisyKeys:string[]}}
+   */
+  function changeFeed({ changes, services, incidents, now }) {
+    const nowMs = typeof now === 'number' ? now : now.getTime();
+    const serviceOfMonitor = new Map();
+    for (const s of services) for (const c of s.checks ?? []) serviceOfMonitor.set(c.id, s.key);
+    const sorted = [...(changes ?? [])].sort((a, b) => Date.parse(b.firstSeenAt) - Date.parse(a.firstSeenAt));
+    const items = sorted.map((c) => {
+      const at = Date.parse(c.firstSeenAt);
+      const hit = (incidents ?? [])
+        .filter((i) => serviceOfMonitor.get(i.monitorId) === c.serviceKey)
+        .filter((i) => {
+          const t = Date.parse(i.startedAt);
+          return t >= at && t - at <= CHANGE_INCIDENT_MIN * 60000;
+        })
+        .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))[0];
+      return { serviceKey: c.serviceKey, serviceName: c.serviceName, at: c.firstSeenAt, oldSize: c.oldSize, newSize: c.newSize, incidentId: hit ? hit.id : null, count: 1 };
+    });
+    const day = new Map();
+    for (const c of sorted) if (nowMs - Date.parse(c.firstSeenAt) <= 24 * 3600000) day.set(c.serviceKey, (day.get(c.serviceKey) ?? 0) + 1);
+    const noisyKeys = [...day.entries()].filter(([, n]) => n >= NOISY_PER_DAY).map(([k]) => k);
+    // 자주 바뀌는 서비스는 가장 최근 한 줄만 남기고 나머지 변경 수를 count에 (직후 장애가 붙은 줄은 그대로 둠)
+    const noisy = new Set(noisyKeys);
+    const head = new Map();
+    const out = [];
+    for (const it of items) {
+      if (!noisy.has(it.serviceKey) || it.incidentId !== null) { out.push(it); continue; }
+      const first = head.get(it.serviceKey);
+      if (first) first.count += 1;
+      else { head.set(it.serviceKey, it); out.push(it); }
+    }
+    return { items: out, noisyKeys };
+  }
+
   /** 기록이 시작된 첫 날 (모든 서비스 중 가장 이른 날). 없으면 null */
   function firstRecordedDay(services) {
     const days = services.flatMap((s) => (s.daily ?? []).filter((d) => d.total > 0).map((d) => d.day));
@@ -391,5 +506,6 @@
     chartStart, sliceSeries, mmss,
     SERIES_COLORS, serviceColors, rankByLatest, splitUptimeByException,
     SLOWDOWN_PERCENT, SLOWDOWN_MIN_MS, WOW_MIN_DAYS, averageSeries, weekOverWeek, uptimeTileText,
+    STALE_MIN, NOISY_PER_DAY, CHANGE_INCIDENT_MIN, minutesText, watchItems, changeFeed,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
