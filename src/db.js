@@ -1044,7 +1044,8 @@ export async function getFingerprints(db, monitorIds) {
   const marks = monitorIds.map((_, i) => `?${i + 1}`).join(', ');
   const { results } = await db
     .prepare(
-      `SELECT monitor_id, hash, size_bytes, since, candidate_hash, candidate_size, candidate_since, candidate_count
+      `SELECT monitor_id, hash, size_bytes, since, candidate_hash, candidate_size, candidate_since, candidate_count,
+              asset_hash, candidate_asset_hash
          FROM content_fingerprints
         WHERE monitor_id IN (${marks})`
     )
@@ -1061,6 +1062,8 @@ export async function getFingerprints(db, monitorIds) {
         candidateSize: r.candidate_size,
         candidateSince: r.candidate_since,
         candidateCount: r.candidate_count,
+        assetHash: r.asset_hash, // 빌드 지문 (0021, 27단계)
+        candidateAssetHash: r.candidate_asset_hash,
       },
     ])
   );
@@ -1074,22 +1077,28 @@ export async function saveFingerprints(db, items, updatedAt, source = 'real') {
   if (items.length === 0) return;
   const upsert = db.prepare(
     `INSERT INTO content_fingerprints
-       (monitor_id, hash, size_bytes, since, candidate_hash, candidate_size, candidate_since, candidate_count, updated_at, source)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+       (monitor_id, hash, size_bytes, since, candidate_hash, candidate_size, candidate_since, candidate_count, updated_at, source,
+        asset_hash, candidate_asset_hash)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
      ON CONFLICT (monitor_id) DO UPDATE SET
        hash = excluded.hash, size_bytes = excluded.size_bytes, since = excluded.since,
        candidate_hash = excluded.candidate_hash, candidate_size = excluded.candidate_size,
        candidate_since = excluded.candidate_since, candidate_count = excluded.candidate_count,
-       updated_at = excluded.updated_at`
+       updated_at = excluded.updated_at,
+       asset_hash = excluded.asset_hash, candidate_asset_hash = excluded.candidate_asset_hash`
   );
+  // kind: 'deploy'(빌드 지문 바뀜) · 'content'(HTML만 바뀜) · 'unknown'(비교할 빌드 지문 없음) — 27단계
   const insertChange = db.prepare(
-    `INSERT INTO content_changes (monitor_id, first_seen_at, confirmed_at, old_hash, new_hash, old_size, new_size, source)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+    `INSERT INTO content_changes (monitor_id, first_seen_at, confirmed_at, old_hash, new_hash, old_size, new_size, source,
+                                  old_asset_hash, new_asset_hash, kind)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
   );
   const stmts = [];
   for (const { monitorId, state: s, change: c } of items) {
-    stmts.push(upsert.bind(monitorId, s.hash, s.sizeBytes, s.since, s.candidateHash, s.candidateSize, s.candidateSince, s.candidateCount, updatedAt, source));
-    if (c) stmts.push(insertChange.bind(monitorId, c.firstSeenAt, c.confirmedAt, c.oldHash, c.newHash, c.oldSize, c.newSize, source));
+    stmts.push(upsert.bind(monitorId, s.hash, s.sizeBytes, s.since, s.candidateHash, s.candidateSize, s.candidateSince, s.candidateCount, updatedAt, source,
+      s.assetHash ?? null, s.candidateAssetHash ?? null));
+    if (c) stmts.push(insertChange.bind(monitorId, c.firstSeenAt, c.confirmedAt, c.oldHash, c.newHash, c.oldSize, c.newSize, source,
+      c.oldAssetHash ?? null, c.newAssetHash ?? null, c.kind ?? 'unknown'));
   }
   await db.batch(stmts);
 }
@@ -1106,6 +1115,7 @@ function toChange(r) {
     oldSize: r.old_size,
     newSize: r.new_size,
     source: r.source,
+    kind: r.kind ?? 'unknown', // 27단계: deploy · content · unknown
   };
 }
 

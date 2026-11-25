@@ -265,6 +265,11 @@
 .chg__size { color: var(--d-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .chg__badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--d-warn-soft); color: var(--d-warn-text); text-decoration: none; }
 .chg__badge--bad { background: var(--d-bad-soft); color: var(--d-bad-text); }
+.chg__badge--deploy { background: var(--d-blue-soft); color: var(--d-info-text); }
+/* 변경 종류 (27단계): 배포는 파랑, 내용 변경·구별 불가는 회색 글자 */
+.chg__kind { font-size: 11px; font-weight: 600; color: var(--d-faint); }
+.chg__kind--deploy { color: var(--d-info-text); }
+.chg__kind--content { color: var(--d-muted); }
 
 /* 지표 확대 팝업 */
 .modal--metric .modal__box { background: var(--d-panel); border-color: var(--d-line2); }

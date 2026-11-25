@@ -462,6 +462,14 @@ function renderNotifications(notes) {
 const WATCH_SHOW = 6;  // 확인할 것은 6줄까지, 나머지는 '외 N건'
 const CHANGE_SHOW = 5; // 최근 배포는 5줄까지
 
+// 변경 종류 표시 (27단계): 빌드 지문이 바뀌면 배포, 파일은 그대로 내용만 바뀌면 내용 변경, 근거가 없으면 첫 화면 변경
+const CHANGE_KIND_TEXT = { deploy: '배포', content: '내용 변경', unknown: '첫 화면 변경' };
+const CHANGE_KIND_TITLE = {
+  deploy: '스크립트·스타일 파일 이름(빌드 해시)이 바뀌었습니다 — 새로 빌드해 배포한 것',
+  content: '빌드 파일은 그대로이고 첫 화면 내용만 바뀌었습니다 — 데이터·문구 변경',
+  unknown: '이 사이트는 빌드 해시가 붙은 파일이 없거나(직접 쓴 정적 페이지 등) 비교할 기록이 없어 배포인지 구별할 수 없습니다',
+};
+
 // 바이트 → '7.4KB' (첫 화면 크기 변화를 보여 줄 때)
 const sizeText = (n) => (typeof n !== 'number' ? '-' : n < 1024 ? `${n}B` : `${(n / 1024).toFixed(1)}KB`);
 // 좁은 칸용 짧은 한국 시각: 오늘이면 '14:05', 아니면 '11/24 14:05' (24시간제)
@@ -517,7 +525,9 @@ function renderChanges(svc, data) {
     name.href = `/service.html?key=${encodeURIComponent(it.serviceKey)}`;
     const time = el('span', 'chg__time', shortKst(it.at, svc.today));
     time.title = formatKst(it.at);
-    li.append(time, name, el('span', 'chg__size', `${sizeText(it.oldSize)} → ${sizeText(it.newSize)}`));
+    const kind = el('span', `chg__kind chg__kind--${it.kind}`, CHANGE_KIND_TEXT[it.kind] ?? CHANGE_KIND_TEXT.unknown);
+    kind.title = CHANGE_KIND_TITLE[it.kind] ?? CHANGE_KIND_TITLE.unknown;
+    li.append(time, name, kind, el('span', 'chg__size', `${sizeText(it.oldSize)} → ${sizeText(it.newSize)}`));
     if (it.incidentId !== null) {
       // 변경 뒤 60분 안에 같은 서비스에서 장애가 시작됨 → 장애 상세(장애 직전 변경 타임라인, 17단계)로 연결
       const b = el('a', 'chg__badge chg__badge--bad', '직후 장애');
@@ -528,15 +538,20 @@ function renderChanges(svc, data) {
     if (noisy.has(it.serviceKey)) {
       // 잦은 변경 서비스는 한 줄로 묶고 서버가 센 24시간 변경 수를 적음 (changeFeed).
       // 빌드할 때마다 첫 화면의 파일 이름(해시)이 바뀌는 서비스는 배포가 잦아도 이렇게 보이므로 '동적 내용'이라고 단정하지 않음
-      const b = el('span', 'chg__badge', `잦은 변경 · 24시간 ${it.day}번`);
-      b.title = `최근 7일 ${it.week}번 바뀜 — 배포가 잦거나(빌드할 때마다 첫 화면의 파일 이름이 바뀜) 날짜·광고 같은 동적 내용일 수 있음`;
+      // 27단계: 24시간 변경이 모두 빌드 파일이 바뀐 배포로 확인되면 '배포 잦음'으로 (동적 내용 안내를 붙이지 않음)
+      const b = it.allDeploy
+        ? el('span', 'chg__badge chg__badge--deploy', `배포 잦음 · 24시간 ${it.deployDay}번`)
+        : el('span', 'chg__badge', `잦은 변경 · 24시간 ${it.day}번`);
+      b.title = it.allDeploy
+        ? `최근 7일 배포 ${it.deployWeek}번 (빌드 파일 이름이 바뀐 변경만 셈)`
+        : `최근 7일 ${it.week}번 바뀜 — 배포가 잦거나(빌드할 때마다 첫 화면의 파일 이름이 바뀜) 날짜·광고 같은 동적 내용일 수 있음`;
       li.append(b);
     }
     list.append(li);
   }
   root.replaceChildren(list);
   if (items.length > CHANGE_SHOW) root.append(el('p', 'side-card__more', `외 ${items.length - CHANGE_SHOW}건`));
-  root.append(el('p', 'side-card__foot', '첫 화면 내용이 바뀐 시각입니다. 배포 시각과 다를 수 있습니다.'));
+  root.append(el('p', 'side-card__foot', '처음 본 시각(5분 점검)입니다. 배포 = 빌드 파일 이름이 바뀜 · 내용 변경 = 파일은 그대로 · 첫 화면 변경 = 구별할 근거 없음'));
 }
 
 // ─────────────────────────────────────────────

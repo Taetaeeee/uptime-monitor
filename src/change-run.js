@@ -7,7 +7,7 @@
 // 이 단계가 실패해도 점검 기록은 이미 저장된 뒤라 영향이 없습니다 (index.js에서 try/catch).
 
 import { getHomePageMonitorIds, getFingerprints, saveFingerprints } from './db.js';
-import { sha256Hex, byteSize, nextFingerprint } from './fingerprint.js';
+import { sha256Hex, byteSize, nextFingerprint, buildAssetHash } from './fingerprint.js';
 
 /**
  * @param {object} db
@@ -24,14 +24,15 @@ export async function runContentChanges(db, pages, checkedAt, source = 'real') {
   const prev = await getFingerprints(db, targets.map((p) => p.monitorId));
   const items = [];
   for (const p of targets) {
-    const next = nextFingerprint(prev.get(p.monitorId) ?? null, await sha256Hex(p.body), byteSize(p.body), checkedAt);
+    // 빌드 지문(27단계): 해시 붙은 스크립트·스타일 파일 이름 목록의 지문 — 바뀌면 '배포', HTML만 바뀌면 '내용 변경'
+    const next = nextFingerprint(prev.get(p.monitorId) ?? null, await sha256Hex(p.body), byteSize(p.body), checkedAt, await buildAssetHash(p.body));
     if (next.dirty) items.push({ monitorId: p.monitorId, ...next });
   }
   await saveFingerprints(db, items, checkedAt, source);
 
   const changes = items.filter((i) => i.change).map((i) => ({ monitorId: i.monitorId, ...i.change }));
   for (const c of changes) {
-    console.log(`[변경] 점검 ${c.monitorId}: 첫 화면 내용이 바뀜 (${c.oldSize} → ${c.newSize} bytes, 처음 본 회차 ${c.firstSeenAt})`);
+    console.log(`[변경] 점검 ${c.monitorId}: 첫 화면 내용이 바뀜 (${c.kind}, ${c.oldSize} → ${c.newSize} bytes, 처음 본 회차 ${c.firstSeenAt})`);
   }
   return changes;
 }

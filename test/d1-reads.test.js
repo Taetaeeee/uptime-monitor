@@ -96,7 +96,7 @@ test('pickRecentChanges: 최신 순 목록에서 서비스당 최근 N건과 24�
   ];
   const { changes, counts } = pickRecentChanges(rows, serviceOf, '2026-11-24T05:00:00Z', 3);
   assert.deepEqual(changes.map((c) => [c.monitorId, c.firstSeenAt.slice(11, 13)]), [[1, '04'], [1, '03'], [3, '06'], [2, '05']]);
-  assert.deepEqual(counts.get('a'), { serviceKey: 'a', day: 3, week: 4 });
-  assert.deepEqual(counts.get('b'), { serviceKey: 'b', day: 1, week: 1 });
+  assert.deepEqual(counts.get('a'), { serviceKey: 'a', day: 3, week: 4, deployDay: 0, deployWeek: 0 });
+  assert.deepEqual(counts.get('b'), { serviceKey: 'b', day: 1, week: 1, deployDay: 0, deployWeek: 0 });
   assert.equal(counts.has('?'), false);
 });

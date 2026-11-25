@@ -210,6 +210,9 @@ export function summarizeWeek({ range, today, now, slots, checks, incidents, cha
 
   const checkViews = checks.map((c) => summarizeCheck(c, range));
   const changeCount = changes.length;
+  // 종류별 횟수 (27단계): 배포(빌드 파일 이름이 바뀜) · 내용 변경 · 구별 불가
+  const byKind = { deploy: 0, content: 0, unknown: 0 };
+  for (const c of changes) byKind[c.kind === 'deploy' || c.kind === 'content' ? c.kind : 'unknown'] += 1;
 
   // 판정: 장애 > 기록 없음 > 주의 > 이상 없음.
   //   - 장애 기록은 그 자체로 증거라서, 집계 행이 아직 없어도 '장애 있었음'을 먼저 봅니다.
@@ -256,7 +259,10 @@ export function summarizeWeek({ range, today, now, slots, checks, incidents, cha
     incidents: metrics,
     checks: checkViews,
     changeCount,
-    changes: changes.slice(-CHANGE_LIST_LIMIT).map((c) => ({ firstSeenAt: c.firstSeenAt, monitorName: c.monitorName ?? null })),
+    deployCount: byKind.deploy,
+    contentCount: byKind.content,
+    unknownChangeCount: byKind.unknown,
+    changes: changes.slice(-CHANGE_LIST_LIMIT).map((c) => ({ firstSeenAt: c.firstSeenAt, monitorName: c.monitorName ?? null, kind: c.kind ?? 'unknown' })),
     notes,
   };
 }
@@ -327,10 +333,15 @@ export function renderWeeklyText(serviceName, summary, link = null) {
     }
 
     if (s.changeCount === 0) {
-      lines.push('- 배포 추정(첫 화면 변경): 없음');
+      lines.push('- 첫 화면 변경: 없음');
     } else {
+      // 27단계: 배포(빌드 파일 이름이 바뀜) · 내용 변경 · 구별 불가로 나눠 적음 (0인 종류는 뺌)
+      const parts = [['배포', s.deployCount], ['내용 변경', s.contentCount], ['구별 불가', s.unknownChangeCount]]
+        .filter(([, n]) => n > 0)
+        .map(([k, n]) => `${k} ${n}`)
+        .join(' · ');
       const when = s.changes.map((c) => kstStamp(c.firstSeenAt)).join(', ');
-      lines.push(`- 배포 추정(첫 화면 변경): ${s.changeCount}회 (${when}${s.changeCount > s.changes.length ? ' …' : ''})`);
+      lines.push(`- 첫 화면 변경: ${s.changeCount}회 (${parts}) — ${when}${s.changeCount > s.changes.length ? ' …' : ''}`);
     }
     lines.push(`- 측정 기간: ${s.period.coverageDays}/${s.period.expectedDays}일`);
   }
