@@ -227,9 +227,14 @@ export function pickRecentChanges(rows, serviceOf, dayIso, perService) {
   for (const c of rows) {
     const svc = serviceOf.get(c.monitorId);
     if (!svc) continue;
-    const acc = counts.get(svc.key) ?? { serviceKey: svc.key, day: 0, week: 0 };
+    const acc = counts.get(svc.key) ?? { serviceKey: svc.key, day: 0, week: 0, deployDay: 0, deployWeek: 0 };
+    const deploy = c.kind === 'deploy'; // 27단계: 빌드 지문이 바뀐 변경 = 배포
     acc.week += 1;
-    if (c.firstSeenAt >= dayIso) acc.day += 1; // 같은 형식의 UTC ISO 글자라 글자 비교 = 시각 비교
+    if (deploy) acc.deployWeek += 1;
+    if (c.firstSeenAt >= dayIso) { // 같은 형식의 UTC ISO 글자라 글자 비교 = 시각 비교
+      acc.day += 1;
+      if (deploy) acc.deployDay += 1;
+    }
     counts.set(svc.key, acc);
     if (acc.week <= perService) changes.push(c); // 최신 순이라 서비스마다 앞의 perService건이 가장 최근
   }
@@ -264,6 +269,7 @@ export async function buildServices(db, now) {
       confirmedAt: c.confirmedAt,
       oldSize: c.oldSize,
       newSize: c.newSize,
+      kind: c.kind, // 27단계: deploy · content · unknown
     })),
   };
 }
@@ -430,7 +436,7 @@ export async function buildWeeklyReport(db, key, startDay, now, siteUrl = null) 
         .map((s) => ({ ...s, p95ResponseMs: p95.get(`${m.id}|${s.day}`) ?? null })),
     })),
     incidents: incidentRows.filter((i) => idSet.has(i.monitorId)).map((i) => ({ ...i, monitorName: nameOf.get(i.monitorId) ?? null })),
-    changes: changeRows.map((c) => ({ firstSeenAt: c.firstSeenAt, monitorName: c.monitorName })),
+    changes: changeRows.map((c) => ({ firstSeenAt: c.firstSeenAt, monitorName: c.monitorName, kind: c.kind })),
   });
 
   const link = siteUrl ? `${siteUrl.replace(/\/$/, '')}/weekly.html?key=${encodeURIComponent(key)}&week=${startDay}` : null;

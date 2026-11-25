@@ -248,7 +248,7 @@ test('GET /api/services의 recentChanges: 최근 7일 변경만, 서비스 키·
   const body = await buildServices(db, now);
   assert.equal(body.recentChanges.length, 1);
   const c = body.recentChanges[0];
-  assert.deepEqual(Object.keys(c).sort(), ['confirmedAt', 'firstSeenAt', 'monitorId', 'newSize', 'oldSize', 'serviceKey', 'serviceName']);
+  assert.deepEqual(Object.keys(c).sort(), ['confirmedAt', 'firstSeenAt', 'kind', 'monitorId', 'newSize', 'oldSize', 'serviceKey', 'serviceName']); // kind: 27단계
   assert.equal(c.serviceKey, 'gochyeora');
   assert.equal(c.firstSeenAt, '2026-11-24T01:00:00Z');
   assert.ok(!JSON.stringify(body.recentChanges).includes('aaaa'), '지문은 대시보드 응답에 넣지 않음');
@@ -304,6 +304,6 @@ test('recentChanges는 서비스당 최근 3건씩이라 배포가 잦은 서비
   assert.equal(byKey('keychats').length, 3); // 경계 2건 + 120시간 전 (150시간 전은 4번째라 빠짐)
 
   const count = (key) => body.changeCounts.find((c) => c.serviceKey === key);
-  assert.deepEqual({ ...count('gochyeora') }, { serviceKey: 'gochyeora', day: 7, week: 11 }); // 8일 전은 7일 밖
-  assert.deepEqual({ ...count('keychats') }, { serviceKey: 'keychats', day: 1, week: 4 }); // 정확히 24시간 전만 하루 안
+  assert.deepEqual({ ...count('gochyeora') }, { serviceKey: 'gochyeora', day: 7, week: 11, deployDay: 0, deployWeek: 0 }); // 8일 전은 7일 밖
+  assert.deepEqual({ ...count('keychats') }, { serviceKey: 'keychats', day: 1, week: 4, deployDay: 0, deployWeek: 0 }); // 정확히 24시간 전만 하루 안
 });

@@ -359,7 +359,7 @@
    * @param {Array} o.services   점검 id → 서비스 키를 찾는 데 씀
    * @param {Array} o.incidents  /api/status의 incidents (최근 10건까지만 — 오래된 변경은 직후 장애를 못 찾을 수 있음)
    * @param {Date|number} o.now
-   * @returns {{items:Array<{serviceKey:string, serviceName:string, at:string, oldSize:number, newSize:number, incidentId:number|null, day:number, week:number}>, noisyKeys:string[]}}
+   * @returns {{items:Array<{serviceKey:string, serviceName:string, at:string, oldSize:number, newSize:number, incidentId:number|null, kind:string, day:number, week:number, deployDay:number, deployWeek:number, allDeploy:boolean}>, noisyKeys:string[]}}
    */
   function changeFeed({ changes, counts, services, incidents, now }) {
     const nowMs = typeof now === 'number' ? now : now.getTime();
@@ -375,17 +375,23 @@
           return t >= at && t - at <= CHANGE_INCIDENT_MIN * 60000;
         })
         .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))[0];
-      return { serviceKey: c.serviceKey, serviceName: c.serviceName, at: c.firstSeenAt, oldSize: c.oldSize, newSize: c.newSize, incidentId: hit ? hit.id : null };
+      // kind (27단계): deploy(빌드 파일 이름이 바뀜) · content(파일은 그대로, 내용만) · unknown(구별할 근거 없음)
+      return { serviceKey: c.serviceKey, serviceName: c.serviceName, at: c.firstSeenAt, oldSize: c.oldSize, newSize: c.newSize, incidentId: hit ? hit.id : null, kind: c.kind ?? 'unknown' };
     });
     // 서비스별 24시간·7일 변경 수: 서버 값이 있으면 그대로, 없으면 받은 목록으로 셈
     const countOf = new Map();
     if (Array.isArray(counts)) {
-      for (const c of counts) countOf.set(c.serviceKey, { day: c.day ?? 0, week: c.week ?? 0 });
+      for (const c of counts) countOf.set(c.serviceKey, { day: c.day ?? 0, week: c.week ?? 0, deployDay: c.deployDay ?? 0, deployWeek: c.deployWeek ?? 0 });
     } else {
       for (const c of sorted) {
-        const acc = countOf.get(c.serviceKey) ?? { day: 0, week: 0 };
+        const acc = countOf.get(c.serviceKey) ?? { day: 0, week: 0, deployDay: 0, deployWeek: 0 };
+        const deploy = c.kind === 'deploy';
         acc.week += 1;
-        if (nowMs - Date.parse(c.firstSeenAt) <= 24 * 3600000) acc.day += 1;
+        if (deploy) acc.deployWeek += 1;
+        if (nowMs - Date.parse(c.firstSeenAt) <= 24 * 3600000) {
+          acc.day += 1;
+          if (deploy) acc.deployDay += 1;
+        }
         countOf.set(c.serviceKey, acc);
       }
     }
@@ -395,8 +401,9 @@
     const seen = new Set();
     const out = [];
     for (const it of items) {
-      const n = countOf.get(it.serviceKey) ?? { day: 0, week: 0 };
-      const row = { ...it, day: n.day, week: n.week };
+      const n = countOf.get(it.serviceKey) ?? { day: 0, week: 0, deployDay: 0, deployWeek: 0 };
+      // allDeploy: 24시간 변경이 모두 배포로 확인됨 → 화면에서 '동적 내용일 수 있음' 대신 '배포 잦음'으로 (27단계)
+      const row = { ...it, day: n.day, week: n.week, deployDay: n.deployDay, deployWeek: n.deployWeek, allDeploy: n.day > 0 && n.deployDay === n.day };
       if (!noisy.has(it.serviceKey) || it.incidentId !== null) { out.push(row); continue; }
       if (seen.has(it.serviceKey)) continue;
       seen.add(it.serviceKey);

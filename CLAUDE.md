@@ -235,3 +235,13 @@
    - 확인: node --test 495개 통과(새 5개: 어제 재계산 회차 경계·Cron 낮 회차는 어제 안 건드림·자정 직후 반영·EXPLAIN 기본 키·pickRecentChanges). 가짜 D1 화면: 숨은 탭 API 0회, 다시 보이면 2회(services·status), 6분 '정상'·8분 '연결 지연', 실패 시 60초 뒤 재시도, 콘솔 오류 없음.
      실제 읽기량은 배포 다음 날 wrangler d1 insights로 재서 README 표에 기록 (예상 하루 100만~150만 행, 추정)
    - 라이브(2026-11-25 배포): 대시보드 타일 4개·'화면 갱신 5분'·콘솔 오류 없음, /api/services recentChanges 12건(서비스 5개 × 최대 3건)·changeCounts 5개(24단계 응답과 같은 모양). 실제 읽기량 전·후는 2026-11-26에 insights로 확인 예정
+27. '배포'와 '내용 변경' 구분 (빌드 지문)  ← 완료 (2026-11-25, 커밋 전, 브랜치 feat/change-kind. 0021 원격 적용·배포 전)
+   - 사전 조사(서비스 10개 공개 첫 화면 1번씩, 본문 저장 안 함): 해시 붙은 빌드 파일이 있는 곳 3개(Vite 1·Next.js 2), 나머지 7개는 해시 없는 HTML.
+     Last-Modified는 배포 시각으로 못 씀 — 캐시 MISS 때 요청 시각 그대로(06:31:24·06:31:26 UTC), 2018년 날짜 1곳, 내용 그대로인데 값만 바뀐 곳 1곳 → 계획에서 뺌
+   - fingerprint.js buildAssetList(script·link의 .js/.css 중 /_next/static/ 또는 끝이 -해시/.해시(8자 이상, 숫자 또는 대·소문자 섞임) — 정렬·중복 제거, 쿼리·도메인 뗌)·buildAssetHash·changeKind(deploy/content/unknown),
+     nextFingerprint가 빌드 지문을 같이 들고 다님(27단계 전 기준은 같은 내용일 때 한 번만 채움). 실측: 10개 서비스에서 2번 받아도 목록 같음, 추출 1ms 미만
+   - 0021(content_fingerprints asset_hash·candidate_asset_hash, content_changes old/new_asset_hash·kind DEFAULT 'unknown' CHECK), db.js 저장·읽기, change-run.js, api.js recentChanges kind·changeCounts deployDay/deployWeek, 주간 보고서 deployCount·contentCount·unknownChangeCount
+   - 화면: 대시보드 '최근 배포(추정)' → '최근 변경' + 줄마다 배포/내용 변경/첫 화면 변경, 24시간 변경이 모두 배포면 '배포 잦음 · 24시간 N번', 서비스 상세 '최근 이벤트' 구분, 주간 보고서 '배포 N회'(첫 화면 변경 중)·표에 구분 열·복사용 텍스트 '첫 화면 변경: N회 (배포 a · 내용 변경 b · 구별 불가 c)'
+   - D1: 읽기 늘지 않음(같은 행에 열만 추가), 쓰기는 적용 직후 서비스 대표 점검당 1번(빌드 지문 채우기) + 변경 확정 때만
+   - 확인: node --test 502개 통과(새 7개 + 기존 문구·필드 테스트 수정). 가짜 D1 화면: 카드 '최근 변경' 줄마다 종류·'배포 잦음 · 24시간 6번'(설명 '최근 7일 배포 11번')·직후 장애 유지, 서비스 상세 '배포' 구분, 콘솔 오류 없음
+   - 순서 주의: 0021 원격 적용 먼저, 배포는 그 뒤. 라이브에서 종류가 붙는 것은 배포 뒤 해시 파일이 있는 3개 서비스가 다음에 배포할 때부터

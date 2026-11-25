@@ -122,7 +122,7 @@ function renderStrip(s) {
   strip.append(
     stat('가동률', pct(s.uptime), uptimeTone(s.uptime), prev),
     stat('장애', `${s.incidentCount}건`, s.incidentCount ? 'bad' : 'good', s.incidentCount ? `영향 ${formatMinutes(s.incidentMinutes)}${s.ongoingIncidents ? ` · 진행 중 ${s.ongoingIncidents}건` : ''}` : '이 주에는 없음'),
-    stat('배포 추정', `${s.changeCount}회`, '', '첫 화면 내용이 바뀐 횟수'),
+    stat('배포', `${s.deployCount ?? 0}회`, '', `첫 화면 변경 ${s.changeCount}회 중 빌드 파일이 바뀐 것`),
     stat('측정 기간', `${s.period.coverageDays}/${s.period.expectedDays}일`, s.period.coverageDays < s.period.expectedDays ? 'warn' : '', s.totalSlots ? `5분 회차 ${s.totalSlots.toLocaleString('ko-KR')}개` : '기록 없음')
   );
   return strip;
@@ -182,12 +182,14 @@ function renderIncidents(s) {
 
 // ── ④-3 첫 화면 변경 ──
 function renderChanges(s) {
-  if (s.changeCount === 0) return panel('배포 추정 (첫 화면 변경)', el('p', 'sd-empty', '이 주에는 첫 화면 내용이 바뀐 기록이 없습니다.'));
+  if (s.changeCount === 0) return panel('첫 화면 변경', el('p', 'sd-empty', '이 주에는 첫 화면 내용이 바뀐 기록이 없습니다.'));
   const more = s.changeCount > s.changes.length ? ` · 전체 ${s.changeCount}회 중 최근 ${s.changes.length}회만 표시` : '';
+  // 27단계: 배포 = 빌드 파일 이름(해시)이 바뀜, 내용 변경 = 파일은 그대로, 구별 불가 = 해시 파일이 없거나 비교할 기록이 없음
+  const kindText = { deploy: '배포', content: '내용 변경' };
   return panel(
-    '배포 추정 (첫 화면 변경)',
-    el('p', 'sd-events__hint', `같은 새 내용을 5분 점검에서 2회 연속 볼 때 기록합니다${more}`),
-    table(['바뀐 것을 처음 본 시각', '점검'], s.changes.map((c) => [formatKst(c.firstSeenAt), c.monitorName ?? '-']))
+    '첫 화면 변경',
+    el('p', 'sd-events__hint', `배포 ${s.deployCount ?? 0} · 내용 변경 ${s.contentCount ?? 0} · 구별 불가 ${s.unknownChangeCount ?? 0}. 같은 새 내용을 5분 점검에서 2회 연속 볼 때 기록합니다${more}`),
+    table(['바뀐 것을 처음 본 시각', '구분', '점검'], s.changes.map((c) => [formatKst(c.firstSeenAt), kindText[c.kind] ?? '구별 불가', c.monitorName ?? '-']))
   );
 }
 

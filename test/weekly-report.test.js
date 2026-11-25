@@ -195,11 +195,11 @@ test('첫 화면 변경: 시각은 최근 10개만, 너무 자주 바뀌면 배�
   assert.equal(s.changes.at(-1).firstSeenAt, changes.at(-1).firstSeenAt); // 가장 최근 것이 남음
   assert.ok(s.notes.some((n) => n.includes('동적 내용')));
   assert.ok(s.notes.some((n) => n.includes('배포가 잦')), '동적 내용이라고 단정하지 않음 (24단계)');
-  assert.match(renderWeeklyText('테스트', s), /\(.*…\)/); // 더 있다는 표시
+  assert.match(renderWeeklyText('테스트', s), / …$/m); // 더 있다는 표시
 
   const few = run({ changes: changes.slice(0, 2) });
   assert.equal(few.notes.length, 0);
-  assert.match(renderWeeklyText('테스트', few), /배포 추정\(첫 화면 변경\): 2회 \(11\/17 09:00, 11\/17 10:00\)/); // UTC 0·1시 = KST 9·10시
+  assert.match(renderWeeklyText('테스트', few), /첫 화면 변경: 2회 \(구별 불가 2\) — 11\/17 09:00, 11\/17 10:00/); // UTC 0·1시 = KST 9·10시
 });
 
 // ── 복사용 텍스트 ──
@@ -215,7 +215,7 @@ test('복사용 텍스트: 한 줄 판정과 숫자, 링크. 점검 주소·소�
       '- 가동률: 100% (전주 100%, 0%p)',
       '- 장애: 없음',
       '- 응답 시간(웹 (HTTP)): 평균 120ms (전주 120ms, 0%) · 가장 느린 날 p95 200ms',
-      '- 배포 추정(첫 화면 변경): 1회 (11/18 14:30)',
+      '- 첫 화면 변경: 1회 (구별 불가 1) — 11/18 14:30', // 27단계: 종류별로 (0인 종류는 뺌)
       '- 측정 기간: 7/7일',
       '자세히: https://monitor.example/weekly.html?key=gochyeora&week=2026-11-16',
     ].join('\n')
@@ -339,4 +339,13 @@ test('GET /api/services/:key/weekly: 검증·상태 코드·캐시', async () =>
 
   const current = await call(`/api/services/gochyeora/weekly?week=${thisMonday}`); // 진행 중인 주도 볼 수 있음
   assert.equal(current.status, 200);
+});
+
+test('첫 화면 변경 종류별 횟수 (27단계): 배포 · 내용 변경 · 구별 불가', () => {
+  const at = (h) => ({ firstSeenAt: `2026-11-17T0${h}:00:00Z`, monitorName: '웹 (HTTP)' });
+  const changes = [{ ...at(1), kind: 'deploy' }, { ...at(2), kind: 'deploy' }, { ...at(3), kind: 'content' }, { ...at(4) }];
+  const s = run({ changes });
+  assert.deepEqual([s.changeCount, s.deployCount, s.contentCount, s.unknownChangeCount], [4, 2, 1, 1]);
+  assert.deepEqual(s.changes.map((c) => c.kind), ['deploy', 'deploy', 'content', 'unknown']);
+  assert.match(renderWeeklyText('테스트', s), /첫 화면 변경: 4회 \(배포 2 · 내용 변경 1 · 구별 불가 1\)/);
 });

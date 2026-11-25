@@ -40,7 +40,7 @@ test('nextFingerprint: 새 지문이 2회 연속이면 변경 확정, 바뀐 시
   assert.equal(r1.state.candidateHash, 'B');
   assert.equal(r1.state.candidateCount, 1);
   const r2 = nextFingerprint(r1.state, 'B', 120, T(10));
-  assert.deepEqual(r2.change, { firstSeenAt: T(5), confirmedAt: T(10), oldHash: 'A', newHash: 'B', oldSize: 100, newSize: 120 });
+  assert.deepEqual(r2.change, { firstSeenAt: T(5), confirmedAt: T(10), oldHash: 'A', newHash: 'B', oldSize: 100, newSize: 120, oldAssetHash: null, newAssetHash: null, kind: 'unknown' }); // 빌드 지문이 없으면 구별 불가 (27단계)
   assert.equal(r2.state.hash, 'B');
   assert.equal(r2.state.since, T(5));
   assert.equal(r2.state.candidateHash, null);

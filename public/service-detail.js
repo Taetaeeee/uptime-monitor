@@ -372,11 +372,17 @@ function incidentRow(i) {
 
 function changeRow(c) {
   const tr = el('tr');
+  // 27단계: 빌드 지문이 바뀌면 '배포', HTML만 바뀌면 '내용 변경', 구별할 근거가 없으면 '내용 바뀜'(예전 표시)
+  const label = { deploy: '배포', content: '내용 변경' }[c.kind] ?? '내용 바뀜';
+  const why = {
+    deploy: '스크립트·스타일 파일 이름(빌드 해시)이 바뀌어 새로 배포한 것으로 판단',
+    content: '빌드 파일은 그대로이고 첫 화면 내용만 바뀜 (데이터·문구 변경)',
+  }[c.kind] ?? '빌드 해시가 붙은 파일이 없거나 비교할 기록이 없어 배포인지 구별할 수 없음';
   const kind = el('td');
-  kind.append(el('span', 'sd-dot sd-dot--info'), document.createTextNode(' 내용 바뀜'));
+  kind.append(el('span', 'sd-dot sd-dot--info'), document.createTextNode(` ${label}`));
   const diff = c.newSize - c.oldSize;
   const what = el('td', '', `${c.monitorName}: 첫 화면 내용이 바뀜 (${fmtBytes(c.oldSize)} → ${fmtBytes(c.newSize)} bytes, ${diff >= 0 ? '+' : ''}${fmtBytes(diff)})`);
-  what.title = `지문 ${c.oldHash}… → ${c.newHash}… (본문 SHA-256 앞 8자리). 배포 등으로 바뀐 것으로 보이지만 원인은 알 수 없음`;
+  what.title = `지문 ${c.oldHash}… → ${c.newHash}… (본문 SHA-256 앞 8자리). ${why}`;
   // 처음 본 회차가 '바뀐 시각', 2회 연속 확인한 회차가 '확정'
   tr.append(el('td', '', formatKst(c.firstSeenAt)), kind, what, el('td', '', `확정 ${kstHm.format(new Date(c.confirmedAt))} (2회 연속 확인)`));
   return tr;
