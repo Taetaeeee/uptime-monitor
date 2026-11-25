@@ -213,7 +213,6 @@ function renderServiceRows(svc) {
 // 모두 이미 받은 두 응답으로 계산합니다 — 이 칸 때문에 API를 더 부르지 않습니다.
 // ─────────────────────────────────────────────
 
-const METRIC_TOP = 5; // 작은 칸에 보여 줄 막대 수
 const UPTIME_LINES = 5; // 가동률 칸에 그릴 선 수 (100% 아래로 내려간 서비스 중 가장 낮았던 순)
 // 팝업에서 고른 탭·꺼 둔 서비스는 60초마다 다시 그려도 그대로 두려고 지표 제목별로 기억합니다
 const metricUi = { tab: {}, hidden: {} };
@@ -245,11 +244,12 @@ function metricHead(spec, large) {
 }
 
 /** 범례: 이름 + 같은 색 점 (classes는 colorClass 결과). 서비스 수가 많은 곳에서는 쓰지 않고 막대·미니 그래프에 이름을 직접 적습니다 */
-function metricLegend(names, classes) {
-  const lg = el('div', 'mlegend');
+function metricLegend(names, classes, extraClass = '') {
+  const lg = el('div', `mlegend${extraClass ? ` ${extraClass}` : ''}`);
   names.forEach((name, k) => {
     const item = el('span');
-    item.append(el('i', classes[k]), document.createTextNode(name));
+    item.title = name; // 작은 칸에서 이름이 잘려도 마우스를 올리면 전체가 보이게
+    item.append(el('i', classes[k]), el('b', '', name));
     lg.append(item);
   });
   return lg;
@@ -288,27 +288,31 @@ function renderMetrics(svc, status) {
    * 점검 이름이 아니라 서비스 이름으로 보여 줍니다 (칸 제목이 이미 HTTP·DNS라서).
    */
   const responseSpec = ({ title, data, sub, note, label }) => {
-    const rank = DashboardModel.rankByLatest(data.series, METRIC_TOP);
     const full = DashboardModel.rankByLatest(data.series, data.series.length);
     const named = DashboardModel.sliceSeries(data.series, start).map((s) => ({ ...s, name: s.service }));
     const hidden = (metricUi.hidden[title] ??= new Set());
     const row = (s) => ({ name: s.service, value: s.latest, color: colorOf(s) });
     return {
       title, value: data.mean ?? '-', unit: 'ms', sub, note,
+      // 작은 칸: 예전처럼 선 그래프 + 하단 범례. 선·범례 색은 서비스 고유색이고, 범례는 2열에 말줄임으로 짧게
       renderSmall: () => {
         if (data.series.length === 0) return el('p', 'mbox__empty', '기록이 아직 없습니다.');
         const box = el('div');
-        box.append(barRank({ rows: rank.top.map(row), max: rank.max, unit: 'ms' }));
-        if (rank.rest > 0) box.append(el('div', 'mbox__more', `외 ${rank.rest}개 — 눌러서 전체 보기`));
+        const classes = named.map((s) => colorClass(colorOf(s)));
+        box.append(
+          multiLineChart({ series: named, classes, unit: '', label, box: { w: 360, h: 90, l: 34 } }),
+          metricLegend(named.map((s) => s.name), classes, 'mlegend--grid')
+        );
         return box;
       },
+      // 팝업: 선 그래프('겹쳐 보기')를 첫 탭으로. 순위(전체)·서비스별은 그대로 남김
       renderLarge: () => {
         if (data.series.length === 0) return el('p', 'sd-empty', '기록이 아직 없습니다.');
         return metricTabs(
           [
+            { label: '겹쳐 보기', build: () => seriesOverlay({ series: named, colorOf, unit: 'ms', label, box: big(300), hidden }) },
             { label: '순위 (전체)', build: () => barRank({ rows: full.ranked.map(row), max: full.max, unit: 'ms' }) },
             { label: '서비스별', build: () => seriesGrid({ series: named, colorOf, unit: 'ms', label }) },
-            { label: '겹쳐 보기', build: () => seriesOverlay({ series: named, colorOf, unit: 'ms', label, box: big(300), hidden }) },
           ],
           metricUi.tab[title] ?? 0,
           (i) => { metricUi.tab[title] = i; }
@@ -321,15 +325,15 @@ function renderMetrics(svc, status) {
   const http = DashboardModel.responseSeries(svc.services, 'http', 'HTTP');
   specs.push(responseSpec({
     title: 'HTTP 평균 응답', data: http, label: '첫 화면 일평균 응답 시간',
-    sub: `${http.series.length}개 서비스 평균 · 첫 화면, 느린 순`,
-    note: '성공한 점검의 하루 평균 응답 시간입니다. 막대는 가장 최근 일평균이고 느린 순입니다. DB 상태 확인 주소(원래 약 1초)는 성격이 달라 이 평균에서 뺐고, 서비스 줄의 점검 칩을 누르면 따로 볼 수 있습니다. 점에 마우스를 올리면 날짜와 값이 보입니다.',
+    sub: `${http.series.length}개 서비스 평균 · 첫 화면`,
+    note: '성공한 점검의 하루 평균 응답 시간입니다. 순위 탭의 막대는 가장 최근 일평균이고 느린 순입니다. DB 상태 확인 주소(원래 약 1초)는 성격이 달라 이 평균에서 뺐고, 서비스 줄의 점검 칩을 누르면 따로 볼 수 있습니다. 점에 마우스를 올리면 날짜와 값이 보입니다.',
   }));
 
   // ② DNS 평균 응답
   const dns = DashboardModel.responseSeries(svc.services, 'dns');
   specs.push(responseSpec({
     title: 'DNS 평균 응답', data: dns, label: 'DNS 일평균 응답 시간',
-    sub: `${dns.series.length}개 서비스 평균 · 느린 순`,
+    sub: `${dns.series.length}개 서비스 평균`,
     note: 'DNS-over-HTTPS로 이름을 푸는 데 걸린 시간의 하루 평균입니다(성공한 점검만). 기록이 없는 날은 선을 끊습니다.',
   }));
 

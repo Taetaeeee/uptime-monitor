@@ -247,6 +247,12 @@
 .mbox .chart { width: 100%; height: auto; display: block; margin-top: 4px; }
 .mlegend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--d-muted); margin-top: 6px; }
 .mlegend span { display: inline-flex; align-items: center; }
+.mlegend b { font-weight: inherit; }
+/* 작은 칸 범례: 2열 격자 + 이름이 넘치면 … (전체 이름은 title로). 팝업 범례는 이 클래스를 쓰지 않아 전체 이름이 보임 */
+.mlegend--grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
+.mlegend--grid span { min-width: 0; }
+.mlegend--grid i { flex: none; }
+.mlegend--grid b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mlegend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; }
 
 /* 그래프 (시안: 옅은 눈금선, 가운데·위는 점선, 얇은 선) */
