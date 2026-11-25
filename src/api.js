@@ -21,8 +21,7 @@ import {
   getServiceIncidents,
   getAnalysisStats,
   getRecentChanges,
-  getRecentChangesPerMonitor,
-  getChangeCounts,
+  getChangesSince,
   getChangesBetween,
   getSiblingMonitorIds,
 } from './db.js';
@@ -216,6 +215,28 @@ export const RECENT_CHANGE_DAYS = 7;
 export const RECENT_CHANGE_PER_SERVICE = 3;
 
 /**
+ * 7일치 변경(최신 순)에서 서비스당 최근 perService건과 서비스별 24시간·7일 횟수를 고른다 (순수 함수, 26단계).
+ * @param {Array<{monitorId:number, firstSeenAt:string}>} rows  최신 순
+ * @param {Map<number, {key:string}>} serviceOf  점검 id → 서비스
+ * @param {string} dayIso  24시간 전 시각 (이 시각 포함 이후가 '24시간')
+ * @returns {{changes:Array, counts:Map<string, {serviceKey:string, day:number, week:number}>}}
+ */
+export function pickRecentChanges(rows, serviceOf, dayIso, perService) {
+  const changes = [];
+  const counts = new Map();
+  for (const c of rows) {
+    const svc = serviceOf.get(c.monitorId);
+    if (!svc) continue;
+    const acc = counts.get(svc.key) ?? { serviceKey: svc.key, day: 0, week: 0 };
+    acc.week += 1;
+    if (c.firstSeenAt >= dayIso) acc.day += 1; // 같은 형식의 UTC ISO 글자라 글자 비교 = 시각 비교
+    counts.set(svc.key, acc);
+    if (acc.week <= perService) changes.push(c); // 최신 순이라 서비스마다 앞의 perService건이 가장 최근
+  }
+  return { changes, counts };
+}
+
+/**
  * 서비스 목록을 만든다. 서비스에 묶이지 않은 점검(예: 훈련 대상)은 여기 나오지 않습니다.
  * 공개 응답에는 서비스 대표 주소(공개 사이트 첫 화면)만 넣고, 점검 주소(DB 상태 확인·DNS)는 넣지 않습니다.
  */
@@ -227,19 +248,8 @@ export async function buildServices(db, now) {
   const ids = [...serviceOf.keys()];
   const weekIso = toIsoSeconds(new Date(now.getTime() - RECENT_CHANGE_DAYS * 24 * 3600_000));
   const dayIso = toIsoSeconds(new Date(now.getTime() - 24 * 3600_000));
-  const [changes, counts] = await Promise.all([
-    getRecentChangesPerMonitor(db, ids, weekIso, RECENT_CHANGE_PER_SERVICE),
-    getChangeCounts(db, ids, weekIso, dayIso),
-  ]);
-  // 점검별 횟수를 서비스별로 합침 (변경 감지는 서비스 대표 주소만 하지만, 묶인 점검이 여럿이어도 맞게)
-  const countOf = new Map();
-  for (const c of counts) {
-    const key = serviceOf.get(c.monitorId).key;
-    const acc = countOf.get(key) ?? { serviceKey: key, day: 0, week: 0 };
-    acc.day += c.day;
-    acc.week += c.week;
-    countOf.set(key, acc);
-  }
+  // 7일치 변경을 한 번만 읽고(26단계), 서비스당 최근 3건과 24시간·7일 횟수는 여기서 계산
+  const { changes, counts: countOf } = pickRecentChanges(await getChangesSince(db, ids, weekIso), serviceOf, dayIso, RECENT_CHANGE_PER_SERVICE);
   return {
     ...meta,
     services: list.map((x) => x.view),

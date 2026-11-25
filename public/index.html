@@ -90,11 +90,11 @@
             <h1 id="services-title">서비스 모니터링</h1>
             <p>운영하는 서비스를 5분마다 점검합니다.</p>
           </div>
-          <!-- 점검 시간: 위 줄 "● 다음 점검 04:36", 아래 작은 글씨 "5분 점검 │ 화면 갱신 60초" (점은 3분 넘게 못 불러오면 노란색).
+          <!-- 점검 시간: 위 줄 "● 다음 점검 04:36", 아래 작은 글씨 "5분 점검 │ 화면 갱신 60초" (점은 7분 넘게 못 불러오면 노란색).
                남은 시간은 app.js tickClock이 1초마다 갱신 -->
-          <div class="cycle" id="cycle" title="Cron이 5분마다 점검하고, 화면은 60초마다 새로 불러옵니다. 실시간 감시가 아닙니다.">
+          <div class="cycle" id="cycle" title="Cron이 5분마다 점검하고, 화면은 점검 직후에 새로 불러옵니다(다른 탭을 보는 동안은 쉬고, 돌아오면 바로 불러옴). 실시간 감시가 아닙니다.">
             <div class="cycle__main"><span class="cycle__dot" aria-hidden="true"></span>다음 점검 <b id="next-run">--:--</b></div>
-            <div class="cycle__sub">5분 점검 <span aria-hidden="true">│</span> 화면 갱신 60초</div>
+            <div class="cycle__sub">5분 점검 <span aria-hidden="true">│</span> 화면 갱신 5분</div>
           </div>
         </header>
 

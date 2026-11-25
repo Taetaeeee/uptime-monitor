@@ -6,9 +6,15 @@
 // 점검 상세 팝업과 점검 공용 도우미(agoText·lastValue·uptimeText 등)는 detail.js에 있습니다.
 //
 // 화면 상태(검색어·선택한 점검)는 이 파일의 변수에 두고,
-// 60초마다 데이터를 새로 받아도 사용자가 고른 것은 그대로 유지합니다.
+// 데이터를 새로 받아도(점검 회차 직후, 26단계부터 5분마다) 사용자가 고른 것은 그대로 유지합니다.
+//
+// 26단계 — D1 읽기 줄이기: 예전에는 회차 직후 + 60초마다 불렀지만, 데이터는 5분 점검 때만 바뀌므로 60초 새로고침을 없앴습니다.
+// 열어 둔 화면 하나가 하루 1,440번 API를 불러 D1 무료 읽기 한도(하루 500만 행)를 크게 썼기 때문입니다.
+// 탭이 숨어 있으면(다른 탭을 보는 중) 부르지 않고, 다시 보이면 마지막으로 받은 지 1분이 넘었을 때 바로 한 번 부릅니다.
 
-const REFRESH_MS = 60_000; // 60초마다 새로 고침 (API 캐시 시간과 같게)
+const RETRY_MS = 60_000; // 불러오기에 실패하면 1분 뒤 다시 시도
+const VISIBLE_STALE_MS = 60_000; // 탭이 다시 보일 때 이보다 오래된 화면이면 바로 새로 불러옴
+const STALE_WARN_MS = 7 * 60_000; // 이보다 오래 새 데이터를 못 받으면 '연결 지연' (5분 회차 + 25초 여유보다 길게)
 const INCIDENT_LIMIT = 10; // /api/status가 주는 장애 이력 개수 (src/api.js INCIDENT_LIMIT과 같게)
 
 const view = {
@@ -37,8 +43,9 @@ function tickClock() {
   const now = Date.now();
   const next = nextRunAt(now);
   const left = Math.max(0, Math.round((next - now) / 1000));
-  // 3분 넘게 새 데이터를 못 받았으면 '연결 지연'으로 (제목 줄 끝 점검 주기 표시: 점이 노란색으로)
-  const stale = view.lastLoadedAt && now - view.lastLoadedAt > 3 * 60 * 1000;
+  // 7분 넘게 새 데이터를 못 받았으면 '연결 지연'으로 (제목 줄 끝 점검 주기 표시: 점이 노란색으로).
+  // 화면은 5분 회차 직후에만 새로 부르므로 3분 기준이면 정상인데도 노랗게 됨 (26단계에서 늘림). 숨은 탭은 일부러 안 불러서 제외
+  const stale = !document.hidden && view.lastLoadedAt && now - view.lastLoadedAt > STALE_WARN_MS;
   const nextRun = document.getElementById('next-run');
   if (nextRun) nextRun.textContent = stale ? '연결 지연' : DashboardModel.mmss(left);
   document.getElementById('cycle')?.classList.toggle('is-stale', Boolean(stale));
@@ -48,11 +55,17 @@ function tickClock() {
     node.textContent = (node.dataset.agoPrefix ?? '') + (node.dataset.agoShort ? text.replace(' 점검', '') : text);
   }
 
-  if (view.nextReloadAt && now >= view.nextReloadAt) {
+  // 숨은 탭에서는 예약을 지키지 않고 기다렸다가, 다시 보일 때 visibilitychange에서 한 번 부름
+  if (view.nextReloadAt && now >= view.nextReloadAt && !document.hidden) {
     view.nextReloadAt = 0;
     load();
   }
 }
+
+// 탭이 다시 보이면: 마지막으로 받은 지 1분이 넘었으면 바로 새로 불러옴 (숨어 있는 동안은 API를 부르지 않음)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && Date.now() - view.lastLoadedAt > VISIBLE_STALE_MS) load();
+});
 
 // ─────────────────────────────────────────────
 // 상태 영역 + 요약 카드
@@ -215,7 +228,7 @@ function renderServiceRows(svc) {
 // ─────────────────────────────────────────────
 
 const UPTIME_LINES = 5; // 가동률 칸에 그릴 선 수 (100% 아래로 내려간 서비스 중 가장 낮았던 순)
-// 팝업에서 고른 탭·꺼 둔 서비스는 60초마다 다시 그려도 그대로 두려고 지표 제목별로 기억합니다
+// 팝업에서 고른 탭·꺼 둔 서비스는 새로 불러와 다시 그려도 그대로 두려고 지표 제목별로 기억합니다
 const metricUi = { tab: {}, hidden: {} };
 
 /**
@@ -391,7 +404,7 @@ function renderMetrics(svc, status) {
   });
 
   document.getElementById('metrics').replaceChildren(...specs.map(metricBox));
-  // 팝업이 열려 있으면 같은 지표를 새 데이터로 다시 그림 (60초 자동 갱신)
+  // 팝업이 열려 있으면 같은 지표를 새 데이터로 다시 그림 (점검 회차 직후 자동 갱신)
   const d = metricDialog();
   if (d?.open) {
     const same = specs.find((s) => s.title === document.getElementById('metric-title').textContent);
@@ -532,7 +545,7 @@ function renderChanges(svc, data) {
 
 async function load() {
   try {
-    // cache: 'no-store' — 브라우저가 60초 캐시를 쓰지 않고 항상 최신을 받아 오게 (실시간 표시를 위해)
+    // cache: 'no-store' — 브라우저 캐시를 쓰지 않고 항상 최신을 받아 오게 (회차 직후에만 부르므로 늦은 캐시를 받지 않게)
     // 두 응답을 함께 받습니다. 하나라도 실패하면 이전 화면을 그대로 두고 안내만 바꿔요 (반쪽짜리 화면을 만들지 않으려고)
     const [svc, data] = await Promise.all([
       fetchJson('/api/services', { cache: 'no-store' }),
@@ -571,6 +584,8 @@ async function load() {
     status.textContent = view.svc
       ? '최신 상태를 불러오지 못했습니다. 아래는 마지막으로 받은 화면이며, 잠시 후 자동으로 다시 시도합니다.'
       : '상태를 불러오지 못했습니다. 잠시 후 자동으로 다시 시도합니다.';
+    // 60초 새로고침이 없으므로(26단계) 실패하면 1분 뒤 다시 시도하도록 예약 (다음 회차까지 기다리지 않게)
+    view.nextReloadAt = Date.now() + RETRY_MS;
     status.classList.add('is-error');
   }
 }
@@ -581,7 +596,7 @@ document.getElementById('search').addEventListener('input', (e) => {
 });
 
 load();
-setInterval(load, REFRESH_MS); // 점검 회차와 별개로 60초마다도 새로 불러옴 (계획 작업·알림 변화 반영)
+// 60초마다 부르던 것은 없앴습니다 (26단계): 새로 부르는 때는 점검 회차 직후(tickClock), 실패 뒤 1분, 탭이 다시 보일 때뿐
 setInterval(tickClock, 1000);
 tickClock();
 
