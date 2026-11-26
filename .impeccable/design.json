@@ -1,0 +1,433 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-26T08:20:04.863Z",
+  "title": "Design System: Uptime Monitor · 서비스 상태 진단",
+  "extensions": {
+    "colorMeta": {
+      "night-navy": {
+        "role": "neutral",
+        "displayName": "밤 남색",
+        "canonical": "#0b1220",
+        "purpose": "페이지 바탕",
+        "tonalRamp": [
+          "#030508",
+          "#05080e",
+          "#070c15",
+          "#090f1b",
+          "#3c414d",
+          "#797d84",
+          "#b6b8bc",
+          "#e7e7e9"
+        ]
+      },
+      "night-panel": {
+        "role": "neutral",
+        "displayName": "패널 남색",
+        "canonical": "#111b2e",
+        "purpose": "카드·서비스 줄·팝업",
+        "tonalRamp": [
+          "#04070c",
+          "#080c15",
+          "#0b121e",
+          "#0e1727",
+          "#414958",
+          "#7c828c",
+          "#b8bbc0",
+          "#e7e8ea"
+        ]
+      },
+      "night-panel-raised": {
+        "role": "neutral",
+        "displayName": "올린 패널",
+        "canonical": "#15213a",
+        "purpose": "패널 안의 칸",
+        "tonalRamp": [
+          "#05080f",
+          "#090f1a",
+          "#0e1526",
+          "#121c31",
+          "#444d61",
+          "#7e8593",
+          "#b9bcc4",
+          "#e8e9eb"
+        ]
+      },
+      "night-text": {
+        "role": "neutral",
+        "displayName": "본문 글자",
+        "canonical": "#e6edf7",
+        "purpose": "본문·숫자",
+        "tonalRamp": [
+          "#3a3b3e",
+          "#676b6f",
+          "#969aa1",
+          "#c4c9d2",
+          "#ebf1f9",
+          "#f1f5fb",
+          "#f8fafd",
+          "#fdfdfe"
+        ]
+      },
+      "night-muted": {
+        "role": "neutral",
+        "displayName": "흐린 글자",
+        "canonical": "#93a3bd",
+        "purpose": "이름표·설명",
+        "tonalRamp": [
+          "#25292f",
+          "#424955",
+          "#606a7b",
+          "#7d8ba1",
+          "#a9b5ca",
+          "#c4ccdb",
+          "#dfe3eb",
+          "#f4f6f8"
+        ]
+      },
+      "night-faint": {
+        "role": "neutral",
+        "displayName": "가장 흐린 글자",
+        "canonical": "#7b8ba1",
+        "purpose": "시각·단위·안내 (카드 위 4.6:1)",
+        "tonalRamp": [
+          "#1f2328",
+          "#373f48",
+          "#505a69",
+          "#697689",
+          "#95a2b4",
+          "#b6bfcb",
+          "#d7dce3",
+          "#f2f3f6"
+        ]
+      },
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "신호 파랑",
+        "canonical": "#3b82f6",
+        "purpose": "어두운 바탕 위 파란 글자·선·초점",
+        "tonalRamp": [
+          "#0f213e",
+          "#1b3b6f",
+          "#2655a0",
+          "#326fd1",
+          "#629bf8",
+          "#93bafa",
+          "#c4dafc",
+          "#ebf3fe"
+        ]
+      },
+      "signal-blue-fill": {
+        "role": "primary",
+        "displayName": "채운 파랑",
+        "canonical": "#2563eb",
+        "purpose": "흰 글자 버튼 배경 (5.2:1)",
+        "tonalRamp": [
+          "#09193b",
+          "#112d6a",
+          "#184099",
+          "#1f54c8",
+          "#5182ef",
+          "#87a9f4",
+          "#bed0f9",
+          "#e9effd"
+        ]
+      },
+      "status-up": {
+        "role": "status",
+        "displayName": "정상 초록",
+        "canonical": "#22c55e",
+        "purpose": "표시용 (글자는 status-up-text)",
+        "tonalRamp": [
+          "#093118",
+          "#0f592a",
+          "#16803d",
+          "#1da750",
+          "#4ed17e",
+          "#85dfa6",
+          "#bdeecf",
+          "#e9f9ef"
+        ]
+      },
+      "status-warn": {
+        "role": "status",
+        "displayName": "주의 호박색",
+        "canonical": "#f59e0b",
+        "purpose": "표시용 (글자는 status-warn-text)",
+        "tonalRamp": [
+          "#3d2803",
+          "#6e4705",
+          "#9f6707",
+          "#d08609",
+          "#f7b13c",
+          "#faca79",
+          "#fce2b6",
+          "#fef5e7"
+        ]
+      },
+      "status-down": {
+        "role": "status",
+        "displayName": "장애 빨강",
+        "canonical": "#ef4444",
+        "purpose": "표시용 (글자는 status-down-text)",
+        "tonalRamp": [
+          "#3c1111",
+          "#6c1f1f",
+          "#9b2c2c",
+          "#cb3a3a",
+          "#f26969",
+          "#f69898",
+          "#fac7c7",
+          "#fdecec"
+        ]
+      },
+      "status-info": {
+        "role": "status",
+        "displayName": "정보 하늘색",
+        "canonical": "#60a5fa",
+        "purpose": "점검 대기·계획 작업",
+        "tonalRamp": [
+          "#18293f",
+          "#2b4a71",
+          "#3e6ba3",
+          "#528cd5",
+          "#80b7fb",
+          "#a8cefc",
+          "#cfe4fe",
+          "#eff6ff"
+        ]
+      },
+      "day-bg": {
+        "role": "neutral",
+        "displayName": "낮 바탕",
+        "canonical": "#f3f6fb",
+        "purpose": "밝은 화면 페이지 바탕",
+        "tonalRamp": [
+          "#3d3e3f",
+          "#6d6f71",
+          "#9ea0a3",
+          "#cfd1d5",
+          "#f5f8fc",
+          "#f8fafd",
+          "#fbfcfe",
+          "#fefeff"
+        ]
+      },
+      "day-faint": {
+        "role": "neutral",
+        "displayName": "낮 가장 흐린 글자",
+        "canonical": "#617087",
+        "purpose": "밝은 화면 안내 (4.6:1)",
+        "tonalRamp": [
+          "#181c22",
+          "#2c323d",
+          "#3f4958",
+          "#525f73",
+          "#818d9f",
+          "#a8b0bd",
+          "#d0d4db",
+          "#eff1f3"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "화면 제목 하나"
+      },
+      "metric": {
+        "displayName": "Metric",
+        "purpose": "요약·지표의 큰 숫자 (가장 굵음)"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "서비스 이름·카드 제목"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "기본 글자"
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "이름표·버튼·칩·탭"
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "시각·단위·안내 (faint 색)"
+      }
+    },
+    "shadows": [
+      {
+        "name": "dialog",
+        "value": "0 30px 80px rgba(0, 0, 0, .55)",
+        "purpose": "화면 위에 뜨는 팝업에만"
+      },
+      {
+        "name": "status-ring",
+        "value": "0 0 0 3px rgba(34, 197, 94, .14)",
+        "purpose": "상태 점의 살아 있음 고리 (상태색 14~15%)"
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-change",
+        "value": "border-color .15s~.2s",
+        "purpose": "테두리·색 변화"
+      },
+      {
+        "name": "dialog-in",
+        "value": ".18s ease-out",
+        "purpose": "팝업 열기 (움직임 줄이기에서는 없음)"
+      },
+      {
+        "name": "cycle-pulse",
+        "value": "transform·opacity 고리 퍼짐",
+        "purpose": "다음 점검 점: 정상일 때만"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack-dashboard",
+        "value": "1180px"
+      },
+      {
+        "name": "top-nav",
+        "value": "760px"
+      },
+      {
+        "name": "narrow",
+        "value": "560px"
+      }
+    ],
+    "focusRing": {
+      "value": "outline: 2px solid #3b82f6; outline-offset: 2px",
+      "purpose": "모든 누를 수 있는 것과 입력 칸 (검색창은 감싸는 칸)"
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "주요 동작(추가 등). 채운 파랑 + 흰 글자.",
+      "html": "<button class=\"ds-btn-primary\">추가</button>",
+      "css": ".ds-btn-primary{font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;font-weight:600;font-size:13.5px;padding:8px 16px;border-radius:9px;border:1px solid #2563eb;background:#2563eb;color:#fff;cursor:pointer}.ds-btn-primary:hover{filter:brightness(1.08)}.ds-btn-primary:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "보조 동작(미리 점검 등).",
+      "html": "<button class=\"ds-btn-secondary\">미리 점검</button>",
+      "css": ".ds-btn-secondary{font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;font-weight:600;font-size:13.5px;padding:8px 16px;border-radius:9px;border:1px solid #2b3b5c;background:#15213a;color:#e6edf7;cursor:pointer}.ds-btn-secondary:hover{border-color:#3b82f6}.ds-btn-secondary:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}"
+    },
+    {
+      "name": "Filter Pill + Add Button",
+      "kind": "button",
+      "refersTo": "filter-pill-active",
+      "description": "선택된 필터 알약과 점선 알약 추가 버튼.",
+      "html": "<span class=\"ds-row\"><span class=\"ds-pill\">전체 (11)</span><button class=\"ds-add\">+ 서비스 추가</button></span>",
+      "css": ".ds-row{display:inline-flex;gap:10px;align-items:center;font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;}.ds-pill{background:#2563eb;color:#fff;padding:7px 14px;border-radius:999px;font-weight:600;font-size:13px}.ds-add{font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;display:inline-flex;gap:6px;padding:6px 12px;border-radius:999px;font-weight:600;font-size:13px;color:#93c5fd;background:transparent;border:1px dashed #2b3b5c;cursor:pointer}.ds-add:hover{border-color:#3b82f6;border-style:solid}.ds-add:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}"
+    },
+    {
+      "name": "Status Pills",
+      "kind": "chip",
+      "refersTo": "status-pill-up",
+      "description": "서비스 상태 알약: 옅은 상태색 바탕 + 글자용 상태색.",
+      "html": "<span class=\"ds-states\"><span class=\"ds-state ds-up\">정상</span><span class=\"ds-state ds-warn\">주의</span><span class=\"ds-state ds-down\">장애</span></span>",
+      "css": ".ds-states{display:inline-flex;gap:8px;font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;}.ds-state{border-radius:999px;padding:5px 12px;font-weight:800;font-size:13px}.ds-up{background:rgba(34,197,94,.14);color:#4ade80}.ds-warn{background:rgba(245,158,11,.15);color:#fbbf24}.ds-down{background:rgba(239,68,68,.15);color:#f87171}"
+    },
+    {
+      "name": "Check Chip",
+      "kind": "chip",
+      "refersTo": "check-chip",
+      "description": "세부 점검 칩: 점검 종류 + 상태, 누르면 상세 팝업.",
+      "html": "<button class=\"ds-chip\">HTTP <span class=\"ds-chip-ok\">✓ 정상</span></button>",
+      "css": ".ds-chip{font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;display:inline-flex;gap:5px;align-items:center;border:1px solid #2b3b5c;border-radius:7px;padding:3px 8px;font-size:11.5px;font-weight:700;color:#e6edf7;background:rgba(255,255,255,.02);cursor:pointer}.ds-chip:hover{border-color:#3b82f6}.ds-chip:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}.ds-chip-ok{color:#4ade80;font-weight:600}"
+    },
+    {
+      "name": "Service Row",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "서비스 한 줄: 왼쪽 3px 상태 표시, 이름·상태·가동률.",
+      "html": "<div class=\"ds-svc\"><div class=\"ds-svc-name\">고쳐라!<small>웹게임</small></div><span class=\"ds-state ds-up\">정상</span><div><div class=\"ds-k\">30일 가동률</div><div class=\"ds-v\">99.44%</div></div></div>",
+      "css": ".ds-svc{font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:16px 18px;background:#111b2e;border:1px solid #22304d;border-left:3px solid #22c55e;border-radius:12px;color:#e6edf7}.ds-svc:hover{background:#15213a;border-color:#2b3b5c;border-left-color:#22c55e}.ds-svc-name{font-size:17px;font-weight:700}.ds-svc-name small{display:block;font-size:11.5px;font-weight:500;color:#93a3bd}.ds-k{font-size:12px;color:#93a3bd}.ds-v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}.ds-state{border-radius:999px;padding:5px 12px;font-weight:800;font-size:13px}.ds-up{background:rgba(34,197,94,.14);color:#4ade80}"
+    },
+    {
+      "name": "Metric Tile",
+      "kind": "card",
+      "refersTo": "metric-tile",
+      "description": "운영 지표 타일: 이름표 → 큰 숫자 → 한 줄 설명.",
+      "html": "<button class=\"ds-mbox\"><span class=\"ds-mlabel\">HTTP 평균 응답</span><span class=\"ds-mval\">144<small>ms</small></span><span class=\"ds-msub\">전주 대비 ↓ 12%</span></button>",
+      "css": ".ds-mbox{font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;display:flex;flex-direction:column;gap:4px;text-align:left;width:220px;background:#15213a;border:1px solid #22304d;border-radius:10px;padding:12px;color:#e6edf7;cursor:zoom-in}.ds-mbox:hover{border-color:#2b3b5c}.ds-mbox:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}.ds-mlabel{font-size:12.5px;font-weight:600;color:#93a3bd}.ds-mval{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}.ds-mval small{font-size:13px;color:#93a3bd;margin-left:2px}.ds-msub{font-size:11.5px;color:#7b8ba1}"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "검색창: 아이콘과 입력 칸을 한 칸에, 초점은 감싸는 칸 외곽선.",
+      "html": "<label class=\"ds-search\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-3.5-3.5\"/></svg><input placeholder=\"서비스 이름으로 검색\"></label>",
+      "css": ".ds-search{font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;display:flex;align-items:center;gap:8px;border:1px solid #2b3b5c;border-radius:9px;padding:7px 12px;color:#7b8ba1;width:300px;background:#0b1220}.ds-search:focus-within{border-color:#3b82f6;outline:2px solid #3b82f6;outline-offset:2px}.ds-search input{background:none;border:0;outline:none;color:#e6edf7;font:inherit;font-size:14px;width:100%}.ds-search input::placeholder{color:#7b8ba1}"
+    },
+    {
+      "name": "Side Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "왼쪽 메뉴: 현재 페이지는 옅은 파랑 + 왼쪽 2px 선.",
+      "html": "<nav class=\"ds-nav\"><a aria-current=\"page\">대시보드</a><a>서비스</a><a>장애 이력</a></nav>",
+      "css": ".ds-nav{font-family:Pretendard, system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;display:grid;gap:4px;width:200px;background:#0d1628;padding:10px;border-radius:12px}.ds-nav a{display:flex;padding:10px 12px;border-radius:9px;color:#93a3bd;font-weight:600;font-size:14px;cursor:pointer}.ds-nav a:hover{color:#e6edf7;background:rgba(255,255,255,.03)}.ds-nav a[aria-current=\"page\"]{background:rgba(59,130,246,.16);color:#dbeafe;box-shadow:inset 2px 0 0 #3b82f6}"
+    }
+  ],
+  "narrative": {
+    "northStar": "야간 관제실",
+    "overview": "불을 낮춘 관제실의 벽면 화면처럼, 어두운 남색 바탕 위에서 **상태만 또렷하게 떠오르는** 운영 도구입니다. 바탕·메뉴·패널은 같은 남색 계열의 밝기 단계로만 나뉘고, 눈에 띄는 색은 정상·주의·장애·정보 네 가지 상태와 주요 동작의 파랑뿐입니다. 장식이 아니라 숫자(가동률, 응답 시간, 다음 점검까지 남은 시간)가 화면의 무게를 집니다.\n\n밀도는 높되 빽빽하지 않습니다. 한 줄에 서비스 하나(아이콘 · 이름 · 상태 · 30일 가동률 · 최근 점검 · 세부 점검 칩)를 놓고, 오른쪽 칸에 최근 알림·운영 지표·오늘 확인할 것·최근 변경을 쌓아 **한 화면에서 훑고, 누르면 깊이 들어가는** 구조입니다. 어두운 화면이 기본이고 밝은 화면은 같은 구조에 색만 바꾼 낮 근무용입니다.\n\n부품은 **또렷하고 자신 있게** 동작합니다. 주요 버튼과 선택된 필터는 꽉 찬 파랑에 흰 글자, 상태 알약은 옅은 상태색 바탕에 굵은 글자로, 누를 수 있는 것과 지금 상태가 망설임 없이 읽혀야 합니다.",
+    "keyCharacteristics": [
+      "어두운 남색 단계(바탕 → 메뉴 → 패널 → 올린 칸)로 구획, 그림자 없이 1px 테두리",
+      "색은 상태와 주요 동작에만. 서비스 구분은 별도의 고유색 10개(그래프·아이콘 전용)",
+      "숫자는 굵고(800) 고정폭 숫자(tabular-nums), 설명은 작고 흐리게",
+      "글자 대비는 KWCAG 2.2 기준(본문 4.5:1) 이상, 두 화면 모두",
+      "상태는 색 + 글자 + 아이콘으로 함께 표시"
+    ],
+    "rules": [
+      {
+        "name": "The Status-Only Color Rule",
+        "body": "채도 높은 색은 상태(정상·주의·장애·정보)와 주요 동작(파랑)에만 쓴다. 장식·강조·구분용으로 상태색을 빌려 쓰지 않는다 — 초록이 보이면 언제나 \"정상\"이어야 한다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Text-Token Rule",
+        "body": "상태색은 표시용(점·막대·테두리)과 글자용(`-text`)이 따로 있다. 글자에는 반드시 글자용을 쓴다. 표시용 초록 `#16a34a`는 밝은 화면 흰 바탕에서 3.3:1밖에 안 된다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Blues Rule",
+        "body": "흰 글자를 얹는 파란 면은 `signal-blue-fill`, 어두운 바탕 위 파란 글자·선은 `signal-blue`. 하나로 합치면 어느 한쪽의 대비가 무너진다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Heavy Numbers Rule",
+        "body": "화면에서 가장 굵은 글자(800)는 숫자다. 제목보다 숫자가 먼저 읽혀야 한다.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Panel Rule",
+        "body": "패널·카드·서비스 줄에는 그림자를 넣지 않는다. 위계가 필요하면 한 단계 밝은 남색(`night-panel-raised`)이나 강한 테두리(`night-line-strong`)를 쓴다.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** 새 화면도 `.dash` 팔레트(`--d-*` 토큰)와 왼쪽 메뉴 틀을 쓴다. 공용 `style.css` 토큰은 아직 옛 틀(장애 상세·월간 보고서)이 쓰는 값이다.",
+      "**Do** 글자에는 글자용 토큰(`--d-*-text`, `--d-faint` 이상)을 쓰고, 새 조합은 `test/contrast.test.js`에 넣어 4.5:1을 확인한다.",
+      "**Do** 상태를 색 + 글자 + 아이콘으로 함께 보인다(색만으로 구분하지 않기).",
+      "**Do** 숫자에는 `font-variant-numeric: tabular-nums`를 준다.",
+      "**Do** 어두운·밝은 화면, 390px 모바일을 함께 확인한다.",
+      "**Do** 움직임에는 `prefers-reduced-motion` 대안을 둔다."
+    ],
+    "donts": [
+      "**Don't** 상태색(초록·호박·빨강)을 장식이나 강조에 쓰지 않는다.",
+      "**Don't** 서비스 고유색으로 상태를 표현하지 않는다(고유색은 어떤 서비스인지만 뜻한다).",
+      "**Don't** 패널·카드에 그림자를 넣지 않는다. 그림자는 팝업 전용이다.",
+      "**Don't** 흰 글자를 `signal-blue`(#3b82f6) 위에 얹지 않는다(3.7:1). `signal-blue-fill`을 쓴다.",
+      "**Don't** 입력 칸의 초점 외곽선을 지우고 테두리 색만 바꾸지 않는다."
+    ]
+  }
+}
