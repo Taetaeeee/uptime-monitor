@@ -281,10 +281,11 @@
    - 확인: node --test 518개 통과. 가짜 D1 임시 서버로 impeccable detect(7개 화면 × 어두운·밝은 + 390px 3개) 대비 경고 0건(전: 라이브에서 화면마다 수십~90곳+), 대시보드 전후 스크린샷 비교(배치 그대로)
    - 라이브(2026-11-26 배포): impeccable detect 7개 화면 × 어두운·밝은 + 390px 2개 대비 경고 0건(배포 전 라이브는 화면마다 수십~90곳+), 대시보드 --d-faint #7b8ba1·'전체' 칩 #2563eb 적용, 서비스 11개, 콘솔 오류 없음
    - 남은 것(다음 후보): P2 제목 순서·입력 칸 초점 외곽선(harden), 11px 미만 글자(typeset), P3 빛 그림자·줄무늬 배경(quieter)
-31. 제목 순서 + 입력 칸 초점 외곽선 (P2)  ← 완료 (2026-11-26, 커밋 전, 브랜치 fix/headings-focus. 정적 파일·테스트만, API·DB·Cron 변경 없음)
+31. 제목 순서 + 입력 칸 초점 외곽선 (P2)  ← 완료 (2026-11-26, c3c0514 → main 병합 c6041c0·푸시, 배포·라이브 확인, Notion B-31. 정적 파일·테스트만, API·DB·Cron 변경 없음)
    - 라이브 제목 구조 확인(8개 화면): 대시보드(h1 → h3 서비스 이름)·서비스 페이지(h1 → h3 점검 카드)·운영 근거(h1 → h3 4개 → h2)만 단계 건너뜀, 나머지는 h1 → h2 → h3
    - app.js svc__name·services.js card__name h3 → h2(모양은 클래스가 정해 그대로), evidence.html 카드 제목 4개 h3 → h2 + style.css 선택자
    - 초점: dashboard.css .dash .search:focus-within·style.css .search:focus-within에 2px 외곽선(전역 :focus-visible과 같은 파랑), 추가 팝업 입력·선택 칸 outline: none 제거 → :focus-visible 2px
    - test/contrast.test.js 새 3개: 초점 외곽선 파랑이 둘레 배경 위 3:1 이상(비텍스트 대비), 외곽선을 끈 곳은 대신 그리는지, 목록 제목이 h2인지
    - 확인: node --test 521개 통과. 가짜 D1 임시 서버 렌더 검사(7개 화면 × 어두운·밝은) 대비·건너뛴 제목 경고 0건. 키보드(Tab/Shift+Tab/Enter)로 검색창 외곽선 2px, 추가 팝업을 Enter로 열면 첫 칸에 초점·외곽선, Tab으로 다음 칸도 외곽선 확인
+   - 라이브(2026-11-26 배포): impeccable detect 7개 화면 × 어두운·밝은 대비·건너뛴 제목 경고 0건, 대시보드 서비스 이름 h2 11개·본문 h3 0개, 키보드 Tab으로 검색창 외곽선 2px, 콘솔 오류 없음
    - 이번에 안 함: 대시보드 '최근 알림'(h2)이 h1보다 앞(오른쪽 칸이 HTML에서 먼저 — 단계 건너뜀은 아니고 고치려면 배치 변경), 11px 미만 글자(typeset), P3 장식(quieter)
