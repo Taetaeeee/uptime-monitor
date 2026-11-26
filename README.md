@@ -438,12 +438,16 @@ Invoke-RestMethod -Method Post -Uri "$b/api/admin/alerts/test" -Headers $h   # �
 ### 서비스 추가 · 끄기
 
 대시보드의 **[+ 서비스 추가]**에서 사이트 주소를 넣고 [미리 점검] → [추가]를 누르면 서비스 1개와 점검(HTTP·DNS, 선택한 상태 확인 주소)이 만들어지고 다음 5분 회차부터 점검합니다. 관리자 토큰이 필요하고(입력칸에만 두고 저장하지 않음), "내가 운영하거나 운영자 동의를 받은 서비스" 확인이 없으면 서버가 거부합니다. 끄기는 화면 버튼 없이 API로 합니다(삭제 대신 끄기 — 기록은 남음).
+
+**서비스 종류 (28단계):** 서비스마다 종류(게임·채팅·AI·기록·메모·패션·생활·의료·건강·사내 업무·교육·쇼핑·커뮤니티·기타)를 저장하고, 대시보드 서비스 줄과 서비스 상세의 아이콘을 종류로 고릅니다(색은 서비스 고유색 그대로). 추가 팝업에서 [미리 점검]을 누르면 이름·설명의 단어로 종류를 **추천**해 골라 두고, 저장 전에 바꿀 수 있습니다(직접 고른 값은 추천이 덮어쓰지 않음). 추천은 단어 표라서 설명이 짧으면 '기타'로 나올 수 있습니다. 나중에 바꾸려면 PATCH에 `category`를 보냅니다(화면 버튼은 없음).
 ```powershell
 $s = @{ url = 'https://my-app.pages.dev'; name = '내 앱'; consent = $true } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri "$b/api/admin/services" -Headers $h `
   -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($s))
 Invoke-RestMethod -Method Patch -Uri "$b/api/admin/services/<서비스 키>" -Headers $h `
   -ContentType 'application/json' -Body '{"isActive":false}'      # 끄기 (true면 다시 켜기)
+Invoke-RestMethod -Method Patch -Uri "$b/api/admin/services/<서비스 키>" -Headers $h `
+  -ContentType 'application/json' -Body '{"category":"game"}'     # 종류 바꾸기 (목록 밖 값은 400)
 ```
 받는 주소: `https://` 공개 도메인만(IP 주소·`localhost`·`.local`·`.internal`·`.test` 등 내부용 이름·이 Worker 자신·아이디/비밀번호가 붙은 주소·다른 포트 거부, `?` 뒤는 버림). 상태 확인 주소는 같은 사이트 안만. 켜진 서비스는 10개까지(`MAX_SERVICES`), 이미 점검 중인 주소는 `409`.
 
@@ -469,7 +473,7 @@ Invoke-RestMethod -Method Patch -Uri "$b/api/admin/services/<서비스 키>" -He
 | `DELETE /api/admin/subscribers/:id` | 관리자 토큰 | 수신자 삭제 (주소도 지움) |
 | `GET·POST /subscribe/confirm`, `/subscribe/unsubscribe` | 링크 토큰(HMAC) | 메일 속 링크: GET은 확인 버튼만, POST가 등록·그만 받기 (그만 받기는 기능을 꺼도 동작) |
 | `POST /api/admin/services/preview` | 관리자 토큰 | 서비스 추가 미리 점검: 주소 검사 + 점검을 한 번씩 실행한 결과 (저장 안 함) |
-| `POST /api/admin/services` · `PATCH /api/admin/services/:key` | 관리자 토큰 | 서비스 + 점검 추가 (운영자 동의 필수) / 끄기·다시 켜기 |
+| `POST /api/admin/services` · `PATCH /api/admin/services/:key` | 관리자 토큰 | 서비스 + 점검 추가 (운영자 동의 필수, `category` 선택 — 없으면 추천값) / 끄기·다시 켜기·종류 바꾸기(`category`) |
 
 공개 응답에는 점검 주소(DNS 점검·DB 상태 확인 주소 등)를 넣지 않습니다. 서비스의 대표 주소(누구나 여는 공개 사이트 첫 화면)만 `/api/services`의 `homeUrl`로 공개합니다(서비스 상세 화면의 '사이트 열기' 링크).
 

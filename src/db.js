@@ -422,7 +422,7 @@ export async function upsertServiceDailyStats(db, stats, updatedAt, source = 're
 export async function getServices(db) {
   const { results } = await db
     .prepare(
-      `SELECT id, service_key, name, description, source, home_url
+      `SELECT id, service_key, name, description, source, home_url, category
          FROM services
         WHERE is_active = 1
         ORDER BY sort_order, id`
@@ -435,6 +435,7 @@ export async function getServices(db) {
     description: r.description,
     source: r.source,
     homeUrl: r.home_url,
+    category: r.category ?? 'other', // 서비스 종류 (0022, 28단계) — 화면 아이콘
   }));
 }
 
@@ -807,9 +808,9 @@ export async function getServiceRows(db) {
 export async function insertServiceWithMonitors(db, svc, monitors, createdAt) {
   const statements = [
     db.prepare(
-      `INSERT INTO services (service_key, name, description, home_url, is_active, sort_order, source, created_at)
-       VALUES (?1, ?2, ?3, ?4, 1, ?5, 'real', ?6)`
-    ).bind(svc.key, svc.name, svc.description, svc.homeUrl, svc.sortOrder, createdAt),
+      `INSERT INTO services (service_key, name, description, home_url, is_active, sort_order, source, created_at, category)
+       VALUES (?1, ?2, ?3, ?4, 1, ?5, 'real', ?6, ?7)`
+    ).bind(svc.key, svc.name, svc.description, svc.homeUrl, svc.sortOrder, createdAt, svc.category ?? 'other'),
     ...monitors.map((m) =>
       db.prepare(
         `INSERT INTO monitors (name, kind, url, expected_status, keyword, max_response_ms, is_active, source, created_at, service_id)
@@ -818,6 +819,15 @@ export async function insertServiceWithMonitors(db, svc, monitors, createdAt) {
     ),
   ];
   await db.batch(statements);
+}
+
+/**
+ * 서비스 종류 바꾸기 (28단계, 관리자 PATCH). 값 검사는 호출하는 쪽(checkCategory)과 DB CHECK가 함께 막음
+ * @returns {Promise<number>} 바뀐 서비스 수 (0이면 없는 키)
+ */
+export async function setServiceCategory(db, key, category) {
+  const r = await db.prepare('UPDATE services SET category = ?1 WHERE service_key = ?2').bind(category, key).run();
+  return r.meta?.changes ?? 0;
 }
 
 /**

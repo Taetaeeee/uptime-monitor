@@ -77,8 +77,17 @@ function valueSpec(s) {
 // ── 서비스·점검 표시 공용 (대시보드 app.js · 서비스 상세 service-detail.js) ──
 const CHIP_TEXT = { up: '정상', down: '오류', slow: '지연', maintenance: '작업', paused: '대기', unknown: '확인 중' };
 const CHIP_ICON = { up: 'check', down: 'x', slow: 'clock', maintenance: 'wrench', paused: 'pause', unknown: 'help' };
-// 서비스 아이콘: 지금은 서비스 키로 고릅니다. 모르는 서비스(나중에 '+ 서비스 추가'로 생길 것)는 지구본
-const SERVICE_ICON = { gochyeora: 'game', keychats: 'chat' };
+// 서비스 아이콘 (28단계): 서비스 키가 아니라 종류(/api/services의 category, 0022)로 고릅니다.
+// 예전에는 키 2개(고쳐라!·Keychats)만 적혀 있어서 '+ 서비스 추가'로 만든 서비스는 모두 지구본이었음.
+// 종류 목록은 서버 src/service-admin.js SERVICE_CATEGORIES·CATEGORY_LABEL과 같아야 합니다 (test/service-category.test.js가 확인)
+const CATEGORY_ICON = { game: 'game', chat: 'chat', ai: 'sparkles', note: 'notebook', lifestyle: 'shirt', health: 'heart', work: 'building', education: 'book', shopping: 'cart', community: 'users', other: 'globe' };
+const CATEGORY_TEXT = { game: '게임', chat: '채팅', ai: 'AI', note: '기록·메모', lifestyle: '패션·생활', health: '의료·건강', work: '사내 업무', education: '교육', shopping: '쇼핑', community: '커뮤니티', other: '기타' };
+
+/** 서비스 종류 아이콘 (모르는 종류는 지구본). 색은 바깥 칸(svc__ico 등)이 정함 */
+function serviceIcon(s) {
+  const node = icon(CATEGORY_ICON[s.category] ?? 'globe');
+  return node;
+}
 
 // 한국 시각 'HH:MM' (최근 점검 칸: "17:40 · 5분 전")
 const kstHm = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });

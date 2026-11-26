@@ -351,6 +351,7 @@ async function collectServices(db, now) {
           description: svc.description,
           source: svc.source,
           homeUrl: svc.homeUrl, // 공개 사이트 첫 화면 주소 (점검 주소는 넣지 않음)
+          category: svc.category ?? 'other', // 서비스 종류 (28단계) — 화면은 이 값으로 아이콘을 고름
           state: serviceState(checks),
           lastCheckedAt: last,
           uptime30d: overallUptime(mine), // 모든 점검이 성공한 회차 비율

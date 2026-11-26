@@ -24,6 +24,7 @@ import {
   getServiceRows,
   insertServiceWithMonitors,
   setServiceActive,
+  setServiceCategory,
   getServices,
   listSubscribers,
   getSubscriber,
@@ -32,7 +33,7 @@ import {
 import { subscribersStatus, normalizeEmail, maskEmail } from './subscribers.js';
 import { inviteSubscriber } from './subscribe-api.js';
 import { toIsoSeconds } from './time.js';
-import { validateServiceInput, serviceKeyFor, buildMonitors, MAX_SERVICES } from './service-admin.js';
+import { validateServiceInput, serviceKeyFor, buildMonitors, MAX_SERVICES, suggestCategory, checkCategory } from './service-admin.js';
 import { observe } from './checker.js';
 import { observeDns } from './dns.js';
 import { judgeCheck, judgeDns } from './judge.js';
@@ -174,6 +175,8 @@ export async function handleAdmin(request, env, url, deps = {}) {
     return json({
       ok: true,
       proposed: { key: serviceKeyFor(v.value.host, rows.map((r) => r.key)), name: v.value.name, homeUrl: v.value.homeUrl },
+      // 종류 추천(28단계): 이름·설명의 단어로. 팝업이 이 값을 기본으로 골라 두고, 운영자가 바꿀 수 있음
+      suggestedCategory: suggestCategory(v.value.name, v.value.description),
       alreadyExists: rows.some((r) => r.isActive && sameSite(r.homeUrl, v.value.homeUrl)),
       activeCount: rows.filter((r) => r.isActive).length,
       limit: MAX_SERVICES,
@@ -201,7 +204,7 @@ export async function handleAdmin(request, env, url, deps = {}) {
     const key = serviceKeyFor(v.value.host, rows.map((r) => r.key));
     const sortOrder = Math.max(0, ...rows.map((r) => r.sortOrder ?? 0)) + 1; // 맨 뒤에 붙임
     const monitors = buildMonitors(v.value);
-    await insertServiceWithMonitors(env.DB, { key, name: v.value.name, description: v.value.description, homeUrl: v.value.homeUrl, sortOrder }, monitors, toIsoSeconds(now));
+    await insertServiceWithMonitors(env.DB, { key, name: v.value.name, description: v.value.description, homeUrl: v.value.homeUrl, sortOrder, category: v.value.category }, monitors, toIsoSeconds(now));
     console.log(`[관리자] 서비스 추가 ${key} (${v.value.host}), 점검 ${monitors.length}개`);
     let subscriber = null;
     if (alertEmail) {
@@ -209,7 +212,7 @@ export async function handleAdmin(request, env, url, deps = {}) {
       const r = await inviteSubscriber(env, svc, alertEmail, now, deps);
       subscriber = { status: r.status, ...r.body }; // 서비스는 이미 만들어졌으므로 수신자 결과만 따로 알려 줌
     }
-    return json({ ok: true, key, name: v.value.name, checks: monitors.map((m) => ({ name: m.name, kind: m.kind })), ...(subscriber ? { subscriber } : {}) }, 201);
+    return json({ ok: true, key, name: v.value.name, category: v.value.category, checks: monitors.map((m) => ({ name: m.name, kind: m.kind })), ...(subscriber ? { subscriber } : {}) }, 201);
   }
 
   // ── 시험 메일 (15단계) ──
@@ -232,12 +235,22 @@ export async function handleAdmin(request, env, url, deps = {}) {
     }
   }
 
-  // ── 서비스 끄기·다시 켜기 ──
+  // ── 서비스 끄기·다시 켜기 · 종류 바꾸기(28단계) ──
   m = path.match(/^\/api\/admin\/services\/([a-z0-9][a-z0-9-]{0,39})$/);
   if (m) {
     if (method !== 'PATCH') return json({ error: 'method_not_allowed' }, 405);
     const { body, error } = await readJson(request);
     if (error) return error;
+    // { category }만 오면 종류만 바꿈 (isActive와 함께 와도 됨). 둘 다 없으면 400
+    const hasCategory = body && Object.prototype.hasOwnProperty.call(body, 'category');
+    if (hasCategory) {
+      const c = checkCategory(body.category);
+      if (!c.ok || c.value === null) return json({ error: 'category_invalid' }, 400);
+      const changed = await setServiceCategory(env.DB, m[1], c.value);
+      if (changed === 0) return json({ error: 'service_not_found' }, 404);
+      console.log(`[관리자] 서비스 ${m[1]} 종류 → ${c.value}`);
+      if (typeof body.isActive !== 'boolean') return json({ ok: true, key: m[1], category: c.value });
+    }
     if (typeof body?.isActive !== 'boolean') return json({ error: 'is_active_required' }, 400);
     if (body.isActive) {
       // 다시 켤 때도 상한을 지킴

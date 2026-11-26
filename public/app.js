@@ -186,7 +186,8 @@ function renderServiceRows(svc) {
 
       // 서비스 고유색: 운영 지표의 막대·그래프와 같은 색이라 어느 서비스인지 바로 이어서 볼 수 있음
       const ico = el('span', `svc__ico ${colorClass(colors[s.key])}`);
-      ico.append(icon(SERVICE_ICON[s.key] ?? 'globe'));
+      ico.append(serviceIcon(s)); // 종류별 아이콘 (28단계)
+      ico.title = `종류: ${CATEGORY_TEXT[s.category] ?? CATEGORY_TEXT.other}`;
 
       const name = el('div');
       name.style.minWidth = '0';
@@ -623,6 +624,7 @@ tickClock();
 
 // 서버 오류 코드 → 화면 문구 (src/service-admin.js·src/admin.js의 코드와 같게)
 const ADD_ERROR_TEXT = {
+  category_invalid: '종류 값이 목록에 없습니다. 목록에서 골라 주세요.',
   url_required: '사이트 주소를 넣어 주세요.',
   url_invalid: '주소 형식이 올바르지 않습니다.',
   url_too_long: '주소가 너무 깁니다.',
@@ -659,7 +661,7 @@ function addBody() {
   const f = addForm();
   const v = (n) => f.elements[n].value.trim();
   const body = { url: v('url'), consent: f.elements.consent.checked };
-  for (const k of ['name', 'description', 'healthUrl', 'healthKeyword']) if (v(k)) body[k] = v(k);
+  for (const k of ['name', 'description', 'healthUrl', 'healthKeyword', 'category']) if (v(k)) body[k] = v(k); // category: 비우면 서버가 추천값으로 저장 (28단계)
   // 알림 받을 메일 (19단계): 칸이 보일 때(기능이 켜져 있을 때)만 보냄
   if (!document.getElementById('add-email-row').hidden && v('alertEmail')) body.alertEmail = v('alertEmail');
   return body;
@@ -711,6 +713,12 @@ async function addPreview() {
     if (status !== 200) return addShow('bad', addErrorText(data?.error));
     const name = addForm().elements.name;
     if (!name.value.trim()) name.placeholder = `비우면 ${data.proposed.name}`;
+    // 종류 추천 (28단계): 운영자가 아직 고르지 않았을 때만 추천값을 골라 둠 (직접 고른 값은 덮어쓰지 않음)
+    const cat = addForm().elements.category;
+    if (data.suggestedCategory && (!cat.value || cat.dataset.suggested === 'yes')) {
+      cat.value = data.suggestedCategory;
+      cat.dataset.suggested = 'yes';
+    }
     const allOk = data.checks.every((c) => c.isSuccess);
     let text = allOk ? '모두 정상입니다. [추가]를 누르면 다음 5분 회차부터 점검합니다.' : '실패한 점검이 있습니다. 주소를 확인해 주세요. 그대로 추가하면 장애로 기록될 수 있습니다.';
     if (data.alreadyExists) text = ADD_ERROR_TEXT.already_exists;
@@ -758,6 +766,7 @@ document.getElementById('add-open').addEventListener('click', () => {
 /** 입력(특히 관리자 토큰)을 모두 지움 — 브라우저 화면에 토큰이 남지 않게 */
 function clearAdd() {
   addForm().reset();
+  delete addForm().elements.category.dataset.suggested; // 다음에 열 때 추천을 다시 받게
   addForm().elements.name.placeholder = '비우면 주소 이름';
   document.getElementById('add-result').replaceChildren();
 }
@@ -776,4 +785,6 @@ addDialog().addEventListener('click', (e) => { if (e.target === e.currentTarget)
 addDialog().addEventListener('cancel', clearAdd);
 addDialog().addEventListener('close', clearAdd);
 document.getElementById('add-preview').addEventListener('click', addPreview);
+// 운영자가 종류를 직접 고르면 그 뒤 [미리 점검]의 추천이 덮어쓰지 않게 (28단계)
+document.getElementById('add-category').addEventListener('change', (e) => { e.target.dataset.suggested = 'no'; });
 addForm().addEventListener('submit', addSubmit);

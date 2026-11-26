@@ -174,6 +174,22 @@
           <label class="addform__row"><span>이름</span><input name="name" type="text" maxlength="60" placeholder="비우면 주소 이름" autocomplete="off"></label>
           <label class="addform__row"><span>설명</span><input name="description" type="text" maxlength="100" placeholder="예: 팀 프로젝트 (Vercel)" autocomplete="off"></label>
         </div>
+        <!-- 서비스 종류 (28단계): 대시보드 아이콘을 정함. [미리 점검]을 누르면 이름·설명으로 추천한 종류가 골라짐(직접 고른 뒤에는 바꾸지 않음) -->
+        <label class="addform__row"><span>종류 <small>아이콘 · 미리 점검하면 추천</small></span>
+          <select name="category" id="add-category">
+            <option value="">추천에 맡기기</option>
+            <option value="game">게임</option>
+            <option value="chat">채팅</option>
+            <option value="ai">AI</option>
+            <option value="note">기록·메모</option>
+            <option value="lifestyle">패션·생활</option>
+            <option value="health">의료·건강</option>
+            <option value="work">사내 업무</option>
+            <option value="education">교육</option>
+            <option value="shopping">쇼핑</option>
+            <option value="community">커뮤니티</option>
+            <option value="other">기타</option>
+          </select></label>
         <div class="addform__two">
           <label class="addform__row"><span>상태 확인 주소 <small>선택 · 같은 사이트 안</small></span>
             <input name="healthUrl" type="url" inputmode="url" placeholder="https://my-app.pages.dev/api/health" autocomplete="off" spellcheck="false"></label>
