@@ -643,6 +643,8 @@ const ADD_ERROR_TEXT = {
   consent_required: '운영자 동의 확인에 체크해야 추가할 수 있습니다.',
   already_exists: '이미 점검 중인 사이트입니다.',
   limit_reached: '켜진 서비스가 상한에 이르렀습니다. 다른 서비스를 끈 뒤 추가해 주세요.',
+  // 29단계: 서비스 수는 상한 안이어도, 켜진 점검(HTTP·DNS)이 많으면 5분마다 보내는 요청이 무료 한도(회차당 50개)에 걸림
+  check_limit_reached: '켜진 점검이 너무 많아 5분 점검 요청 한도를 넘습니다. 상태 확인 주소를 빼거나 다른 서비스를 끈 뒤 추가해 주세요.',
   unauthorized: '관리자 토큰이 맞지 않습니다.',
   admin_api_disabled: '서버에 관리자 토큰이 등록되지 않아 추가할 수 없습니다.',
   // 알림 받을 메일 (19단계)
@@ -721,9 +723,13 @@ async function addPreview() {
     }
     const allOk = data.checks.every((c) => c.isSuccess);
     let text = allOk ? '모두 정상입니다. [추가]를 누르면 다음 5분 회차부터 점검합니다.' : '실패한 점검이 있습니다. 주소를 확인해 주세요. 그대로 추가하면 장애로 기록될 수 있습니다.';
+    // 점검 예산 (29단계): 예전 서버 응답에는 checkLimit이 없으므로 있을 때만 봄
+    const overChecks = data.checkLimit != null && data.checkCount > data.checkLimit;
     if (data.alreadyExists) text = ADD_ERROR_TEXT.already_exists;
     else if (data.activeCount >= data.limit) text = ADD_ERROR_TEXT.limit_reached;
-    addShow(allOk && !data.alreadyExists && data.activeCount < data.limit ? 'ok' : 'warn', `${text} (서비스 키: ${data.proposed.key})`, data.checks);
+    else if (overChecks) text = ADD_ERROR_TEXT.check_limit_reached;
+    const room = data.checkLimit != null ? ` · 추가 뒤 서비스 ${Math.min(data.activeCount + 1, data.limit)}/${data.limit}개, 점검 ${data.checkCount}/${data.checkLimit}개` : '';
+    addShow(allOk && !data.alreadyExists && data.activeCount < data.limit && !overChecks ? 'ok' : 'warn', `${text} (서비스 키: ${data.proposed.key}${room})`, data.checks);
   } catch (err) {
     console.error(err);
     addShow('bad', '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');

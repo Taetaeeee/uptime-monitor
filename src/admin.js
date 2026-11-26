@@ -22,6 +22,7 @@ import {
   deleteMaintenance,
   getMonitorSource,
   getServiceRows,
+  getCheckCounts,
   insertServiceWithMonitors,
   setServiceActive,
   setServiceCategory,
@@ -33,7 +34,7 @@ import {
 import { subscribersStatus, normalizeEmail, maskEmail } from './subscribers.js';
 import { inviteSubscriber } from './subscribe-api.js';
 import { toIsoSeconds } from './time.js';
-import { validateServiceInput, serviceKeyFor, buildMonitors, MAX_SERVICES, suggestCategory, checkCategory } from './service-admin.js';
+import { validateServiceInput, serviceKeyFor, buildMonitors, MAX_SERVICES, suggestCategory, checkCategory, checkBudget } from './service-admin.js';
 import { observe } from './checker.js';
 import { observeDns } from './dns.js';
 import { judgeCheck, judgeDns } from './judge.js';
@@ -172,6 +173,7 @@ export async function handleAdmin(request, env, url, deps = {}) {
     const rows = await getServiceRows(env.DB);
     const monitors = buildMonitors(v.value);
     const checks = await previewChecks(monitors, deps);
+    const budget = checkBudget((await getCheckCounts(env.DB)).active, monitors.length); // 29단계: 추가하면 켜진 점검이 몇 개가 되는지
     return json({
       ok: true,
       proposed: { key: serviceKeyFor(v.value.host, rows.map((r) => r.key)), name: v.value.name, homeUrl: v.value.homeUrl },
@@ -180,6 +182,8 @@ export async function handleAdmin(request, env, url, deps = {}) {
       alreadyExists: rows.some((r) => r.isActive && sameSite(r.homeUrl, v.value.homeUrl)),
       activeCount: rows.filter((r) => r.isActive).length,
       limit: MAX_SERVICES,
+      checkCount: budget.after, // 추가한 뒤 켜진 점검 수
+      checkLimit: budget.limit,
       checks,
     });
   }
@@ -204,6 +208,9 @@ export async function handleAdmin(request, env, url, deps = {}) {
     const key = serviceKeyFor(v.value.host, rows.map((r) => r.key));
     const sortOrder = Math.max(0, ...rows.map((r) => r.sortOrder ?? 0)) + 1; // 맨 뒤에 붙임
     const monitors = buildMonitors(v.value);
+    // 점검 예산 (29단계): 서비스 수가 상한 안이어도 켜진 점검이 44개를 넘으면 Cron 1회 요청 한도(무료 50)에 걸릴 수 있어 거부
+    const budget = checkBudget((await getCheckCounts(env.DB)).active, monitors.length);
+    if (!budget.ok) return json({ error: 'check_limit_reached', checkCount: budget.after, checkLimit: budget.limit }, 409);
     await insertServiceWithMonitors(env.DB, { key, name: v.value.name, description: v.value.description, homeUrl: v.value.homeUrl, sortOrder, category: v.value.category }, monitors, toIsoSeconds(now));
     console.log(`[관리자] 서비스 추가 ${key} (${v.value.host}), 점검 ${monitors.length}개`);
     let subscriber = null;
@@ -258,6 +265,12 @@ export async function handleAdmin(request, env, url, deps = {}) {
       const target = rows.find((r) => r.key === m[1]);
       if (!target) return json({ error: 'service_not_found' }, 404);
       if (!target.isActive && rows.filter((r) => r.isActive).length >= MAX_SERVICES) return json({ error: 'limit_reached', limit: MAX_SERVICES }, 409);
+      if (!target.isActive) {
+        // 점검 예산 (29단계): 다시 켜면 그 서비스의 점검이 모두 다시 켜짐
+        const counts = await getCheckCounts(env.DB, m[1]);
+        const budget = checkBudget(counts.active, counts.serviceChecks);
+        if (!budget.ok) return json({ error: 'check_limit_reached', checkCount: budget.after, checkLimit: budget.limit }, 409);
+      }
     }
     const changed = await setServiceActive(env.DB, m[1], body.isActive);
     if (changed === 0) return json({ error: 'service_not_found' }, 404);
