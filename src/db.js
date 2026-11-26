@@ -834,6 +834,19 @@ export async function setServiceCategory(db, key, category) {
  * 서비스와 그 점검을 켜거나 끈다 (삭제 대신 끄기: 기록은 남김).
  * @returns {Promise<number>} 바뀐 서비스 수 (0이면 없는 키)
  */
+/**
+ * 점검 예산 확인용 (29단계): 켜진 HTTP·DNS 점검 수, 그리고 key 서비스에 묶인 HTTP·DNS 점검 수 (다시 켤 때 늘어날 수)
+ * 관리자 추가·다시 켜기 때만 부름 (Cron·공개 화면은 안 씀). 에이전트 점검(tcp 등)은 Worker가 요청을 보내지 않아서 세지 않음
+ */
+export async function getCheckCounts(db, key = null) {
+  const row = await db.prepare(
+    `SELECT (SELECT COUNT(*) FROM monitors WHERE is_active = 1 AND kind IN ('http', 'dns')) AS active,
+            (SELECT COUNT(*) FROM monitors WHERE kind IN ('http', 'dns')
+                AND service_id = (SELECT id FROM services WHERE service_key = ?1)) AS service_checks`
+  ).bind(key).first();
+  return { active: row?.active ?? 0, serviceChecks: row?.service_checks ?? 0 };
+}
+
 export async function setServiceActive(db, key, active) {
   const flag = active ? 1 : 0;
   const [svc] = await db.batch([

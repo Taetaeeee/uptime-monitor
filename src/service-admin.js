@@ -6,8 +6,33 @@
 //   - 공개 인터넷의 https 사이트만 받습니다 (IP 주소·내부용 이름·이 Worker 자신은 거부)
 // 판단은 모두 이 파일의 순수 함수에 모아서 node --test로 경계 사례를 확인합니다. DB·네트워크는 admin.js가 맡습니다.
 
-/** 켜진 서비스 상한: D1 무료 한도와 Worker가 5분마다 보내는 요청 수를 생각한 값 (바꾸기 쉽게 상수 하나로) */
-export const MAX_SERVICES = 10;
+/** 켜진 서비스 상한: D1 무료 한도와 Worker가 5분마다 보내는 요청 수를 생각한 값 (바꾸기 쉽게 상수 하나로)
+ *  10 → 20 (29단계, 2026-11-26). 서비스 개수만으로는 요청 수를 못 지켜서 아래 점검 예산을 함께 봅니다. */
+export const MAX_SERVICES = 20;
+
+// ─────────────────────────────────────────────
+// 점검 예산 (29단계) — Cron 1회가 바깥으로 보내는 요청 수 지키기
+// ─────────────────────────────────────────────
+// Workers 무료 플랜은 실행 1회에 바깥 요청(fetch)을 50개까지만 보낼 수 있습니다 (공식 문서 Workers limits, 2026-11-25 수정본).
+// 리다이렉트도 1개씩 세고, 넘으면 그 뒤 요청은 실패합니다 → 점검이 '네트워크 오류'로 기록되어 가짜 장애가 됩니다.
+// HTTP·DNS 점검은 회차마다 요청 1개씩(DNS는 DoH 조회 1개), 상태 확인 주소가 붙은 서비스는 점검이 3개라
+// 서비스 수만 세면 20개 × 3 = 60으로 넘칠 수 있어요. 그래서 켜진 점검 수에도 상한을 둡니다.
+//   50 − 6(여유: 장애 메일 몇 통 + 리다이렉트 몇 번. 2026-11-26 실측 리다이렉트 1번) = 44
+// D1 호출은 이 50개에 넣지 않습니다: 50번이 넘는 04:00 정리 회차가 라이브에서 성공했고, 문서에도 '내부 서비스 1,000'으로 따로 적혀 있음
+export const FETCH_LIMIT_PER_RUN = 50;
+export const FETCH_RESERVE = 6;
+export const MAX_ACTIVE_CHECKS = FETCH_LIMIT_PER_RUN - FETCH_RESERVE;
+
+/**
+ * 점검을 더 켜도 예산 안인지 (순수 함수)
+ * @param {number} activeChecks  지금 켜진 HTTP·DNS 점검 수
+ * @param {number} adding        새로 켜질 점검 수 (서비스 추가 2~3개, 다시 켜기는 그 서비스의 점검 수)
+ * @returns {{ ok: boolean, after: number, limit: number }}
+ */
+export function checkBudget(activeChecks, adding) {
+  const after = activeChecks + adding;
+  return { ok: after <= MAX_ACTIVE_CHECKS, after, limit: MAX_ACTIVE_CHECKS };
+}
 
 // ─────────────────────────────────────────────
 // 서비스 종류 (28단계) — 대시보드·서비스 상세의 아이콘을 종류로 고릅니다 (0022 services.category, DB CHECK와 같은 목록)
