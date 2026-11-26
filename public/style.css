@@ -15,7 +15,9 @@
   --text: #cbd5e1;
   --heading: #f8fafc;
   --muted: #94a3b8;
-  --faint: #64748b;
+  /* 가장 흐린 글자(안내·시각·단위). 30단계: #64748b는 카드 배경(#15213a)에서 3.4:1이라 KWCAG 기준(4.5:1)에 못 미쳐
+     가장 밝은 카드 배경에서도 4.6:1이 되는 값으로 올림. muted(6.3:1)보다는 여전히 흐려서 위계는 유지 */
+  --faint: #7b8ba1;
 
   --good: #34d399;   --good-bg: rgba(16, 185, 129, 0.10);  --good-line: rgba(16, 185, 129, 0.25);
   --warn: #fbbf24;   --warn-bg: rgba(245, 158, 11, 0.10);  --warn-line: rgba(245, 158, 11, 0.25);
@@ -649,13 +651,16 @@ body:has(.modal[open]) { overflow: hidden; }
   --text: #334155;
   --heading: #0f172a;
   --muted: #475569;
-  --faint: #64748b;
+  /* 30단계: 밝은 화면 글자색을 배경·연한 상태 배경 위에서도 4.6:1 이상으로 (KWCAG 2.2 수준, test/contrast.test.js가 확인)
+     faint #64748b 4.4:1 → #617087, good #059669 3.3:1 → #047753, warn #b45309 4.4:1 → #aa4f09, bad #e11d48 4.49:1 → #cb1a41,
+     info #2563eb → #2460e4 (상태 알약이 바탕(#f3f6fb) 위에 놓일 때까지 계산) */
+  --faint: #617087;
 
-  --good: #059669;   --good-bg: rgba(16, 185, 129, 0.10);  --good-line: rgba(5, 150, 105, 0.30);
-  --warn: #b45309;   --warn-bg: rgba(245, 158, 11, 0.12);  --warn-line: rgba(180, 83, 9, 0.30);
-  --bad: #e11d48;    --bad-bg: rgba(244, 63, 94, 0.08);    --bad-line: rgba(225, 29, 72, 0.30);
-  --info: #2563eb;   --info-bg: rgba(59, 130, 246, 0.08);  --info-line: rgba(37, 99, 235, 0.28);
-  --idle: #64748b;   --idle-bg: rgba(100, 116, 139, 0.10); --idle-line: rgba(100, 116, 139, 0.25);
+  --good: #047753;   --good-bg: rgba(16, 185, 129, 0.10);  --good-line: rgba(5, 150, 105, 0.30);
+  --warn: #aa4f09;   --warn-bg: rgba(245, 158, 11, 0.12);  --warn-line: rgba(180, 83, 9, 0.30);
+  --bad: #cb1a41;    --bad-bg: rgba(244, 63, 94, 0.08);    --bad-line: rgba(225, 29, 72, 0.30);
+  --info: #2460e4;   --info-bg: rgba(59, 130, 246, 0.08);  --info-line: rgba(37, 99, 235, 0.28);
+  --idle: #5a687e;   --idle-bg: rgba(100, 116, 139, 0.10); --idle-line: rgba(100, 116, 139, 0.25); /* 30단계: '점검 대기' 알약 글자 4.1:1 → 4.6:1 */
 
   --bar-good: #10b981;
   --bar-warn: #f59e0b;

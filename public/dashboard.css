@@ -7,8 +7,12 @@
 .dash {
   --d-bg: #0b1220; --d-side: #0d1628; --d-panel: #111b2e; --d-panel2: #15213a;
   --d-line: #22304d; --d-line2: #2b3b5c;
-  --d-text: #e6edf7; --d-muted: #93a3bd; --d-faint: #64748b;
+  /* d-faint: 30단계에 #64748b(카드 배경에서 3.4:1) → #7b8ba1(4.6:1). 공용 --faint와 같은 값 */
+  --d-text: #e6edf7; --d-muted: #93a3bd; --d-faint: #7b8ba1;
   --d-blue: #3b82f6; --d-blue-soft: rgba(59, 130, 246, .16); --d-nav-on: #dbeafe;
+  /* 흰 글자를 얹는 파란 버튼 배경(30단계): #3b82f6 위 흰 글자는 3.7:1이라 한 단계 진한 파랑(5.2:1).
+     --d-blue 자체를 바꾸지 않는 이유: 어두운 배경 위 파란 글자·초점 외곽선은 #3b82f6이 더 잘 보임(진한 파랑은 3.6:1) */
+  --d-blue-fill: #2563eb;
   --d-good: #22c55e; --d-good-soft: rgba(34, 197, 94, .14); --d-good-text: #4ade80;
   --d-warn: #f59e0b; --d-warn-soft: rgba(245, 158, 11, .15); --d-warn-text: #fbbf24;
   --d-bad: #ef4444; --d-bad-soft: rgba(239, 68, 68, .15); --d-bad-text: #f87171;
@@ -30,10 +34,12 @@
 :root[data-theme="light"] .dash {
   --d-bg: #f3f6fb; --d-side: #ffffff; --d-panel: #ffffff; --d-panel2: #f6f8fc;
   --d-line: #e2e8f0; --d-line2: #cbd5e1;
-  --d-text: #0f172a; --d-muted: #475569; --d-faint: #64748b;
+  /* 30단계: 글자색을 밝은 배경·연한 상태 배경 위에서 4.6:1 이상으로 (faint 4.4 → 4.6, good-text 4.49 → 4.6, warn-text 4.4 → 4.6) */
+  --d-text: #0f172a; --d-muted: #475569; --d-faint: #617087;
   --d-blue: #2563eb; --d-blue-soft: rgba(37, 99, 235, .10); --d-nav-on: #1d4ed8;
-  --d-good: #16a34a; --d-good-soft: rgba(22, 163, 74, .10); --d-good-text: #15803d;
-  --d-warn: #d97706; --d-warn-soft: rgba(217, 119, 6, .12); --d-warn-text: #b45309;
+  --d-blue-fill: #2563eb;
+  --d-good: #16a34a; --d-good-soft: rgba(22, 163, 74, .10); --d-good-text: #157e3c;
+  --d-warn: #d97706; --d-warn-soft: rgba(217, 119, 6, .12); --d-warn-text: #af5109;
   --d-bad: #dc2626; --d-bad-soft: rgba(220, 38, 38, .10); --d-bad-text: #b91c1c;
   --d-info: #2563eb; --d-info-text: #1d4ed8;
   --d-violet: #7c3aed; --d-teal: #0d9488;
@@ -46,8 +52,9 @@
 }
 .dash .glow { display: none; }
 
-.skip { position: absolute; left: -9999px; top: 8px; z-index: 50; padding: 8px 12px; border-radius: 8px; background: var(--d-blue); color: #fff; }
+.skip { position: absolute; left: -9999px; top: 8px; z-index: 50; padding: 8px 12px; border-radius: 8px; background: var(--d-blue-fill); color: #fff; }
 .skip:focus { left: 8px; }
+.skip:hover { color: #fff; } /* 공용 a:hover(하늘색)가 파란 배경 위에서 2.0:1이 되지 않게 */
 
 /* ── 틀: 왼쪽 메뉴(220px) + 본문 ── */
 .shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
@@ -164,7 +171,7 @@
 @media (prefers-reduced-motion: reduce) { .cycle__dot::after { animation: none; opacity: 0; } }
 
 .svc-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-.pilltab { background: var(--d-blue); color: #fff; padding: 7px 14px; border-radius: 999px; font-weight: 600; }
+.pilltab { background: var(--d-blue-fill); color: #fff; padding: 7px 14px; border-radius: 999px; font-weight: 600; }
 .dash .search { position: static; margin-left: auto; display: flex; align-items: center; gap: 8px; border: 1px solid var(--d-line2); border-radius: 9px; padding: 7px 12px; color: var(--d-faint); min-width: 260px; max-width: none; flex: 0 1 320px; }
 .dash .search > [data-icon] { position: static; }
 .dash .search input { background: none; border: 0; padding: 0; color: var(--d-text); font: inherit; outline: none; width: 100%; box-shadow: none; }
@@ -217,7 +224,7 @@
 .chip:focus-visible { outline: 2px solid var(--d-blue); outline-offset: 2px; }
 .chip__state { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; }
 .chip__state .ico { width: 12px; height: 12px; }
-.chip--up .chip__state { color: var(--d-good); }
+.chip--up .chip__state { color: var(--d-good-text); } /* 30단계: 글자는 글자용 색으로 (밝은 화면의 --d-good은 흰 배경에서 3.3:1) */
 .chip--down .chip__state { color: var(--d-bad); }
 .chip--slow .chip__state { color: var(--d-warn); }
 .chip--maintenance .chip__state, .chip--paused .chip__state, .chip--unknown .chip__state { color: var(--d-info); }
@@ -423,7 +430,7 @@
 .addform__actions { display: flex; justify-content: flex-end; gap: 8px; }
 .btn2 { font: inherit; font-weight: 600; font-size: 13.5px; padding: 8px 16px; border-radius: 9px; cursor: pointer; color: var(--d-text); background: var(--d-panel2); border: 1px solid var(--d-line2); }
 .btn2:hover { border-color: var(--d-blue); }
-.btn2--primary { background: var(--d-blue); border-color: var(--d-blue); color: #fff; }
+.btn2--primary { background: var(--d-blue-fill); border-color: var(--d-blue-fill); color: #fff; }
 .btn2:disabled { opacity: .55; cursor: wait; }
 @media (max-width: 560px) { .addform__two { grid-template-columns: minmax(0, 1fr); } }
 
