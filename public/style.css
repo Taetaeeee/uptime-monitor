@@ -271,6 +271,8 @@ main.wrap { padding-top: 32px; padding-bottom: 24px; }
   color: var(--heading); font: inherit; font-size: .875rem; outline: none;
 }
 .search input:focus { border-color: rgba(59, 130, 246, 0.55); }
+/* 31단계: 테두리 색만 바뀌면 키보드로 어디 있는지 알기 어려워서 전역 :focus-visible과 같은 2px 외곽선 */
+.search:focus-within { outline: 2px solid var(--info); outline-offset: 2px; border-radius: var(--radius-sm); }
 .search input::placeholder { color: var(--faint); }
 .filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .filter {
@@ -770,7 +772,7 @@ body:has(.modal[open]) { overflow: hidden; }
 @media (min-width: 720px) { .evidence { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1280px) { .evidence { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .evidence__item { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--surface-2); font-size: .82rem; color: var(--muted); }
-.evidence__item h3 { margin: 0 0 6px; font-size: .92rem; color: var(--heading); }
+.evidence__item h2 { margin: 0 0 6px; font-size: .92rem; color: var(--heading); } /* 31단계: h3 → h2 (h1 바로 아래 단계) */
 .evidence__item p { margin: 0 0 8px; }
 .evidence__item ul { margin: 0; padding-left: 18px; }
 .evidence__item li { margin-bottom: 4px; }

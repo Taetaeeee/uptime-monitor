@@ -44,7 +44,7 @@ function checkCard(s) {
   const badge = sourceBadge(s.source, s.state);
   if (badge) tags.append(badge);
   tags.append(el('span', 'card__kind', kind.text));
-  title.append(el('h3', 'card__name', s.name), tags);
+  title.append(el('h2', 'card__name', s.name), tags); // 31단계: h1 바로 아래라 h2 (모양은 .card__name이 정함)
   top.append(kindIco, title);
 
   // 가운데: 30일 가동률 / 마지막 측정값

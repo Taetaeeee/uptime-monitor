@@ -69,22 +69,22 @@
       <section class="panel" aria-label="운영 근거 자료">
         <div class="evidence">
           <article class="evidence__item">
-            <h3>장애 훈련</h3>
+            <h2>장애 훈련</h2>
             <p>일부러 낸 장애로 감지 → 알림 → 복구 → 사후 보고서까지 확인했습니다. 실제 서비스 장애가 아닌 <strong>훈련</strong>이라 화면의 장애 이력에서는 지웠고, 기록은 PDF로 남겼습니다.</p>
             <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/drills/drill-a-incident-41.pdf" target="_blank" rel="noopener noreferrer">훈련 기록 PDF</a></p>
           </article>
           <article class="evidence__item">
-            <h3>판정 규칙 측정</h3>
+            <h2>판정 규칙 측정</h2>
             <p>설계에 쓰지 않은 공개 데이터로 탐지율·오탐·지연을 쟀습니다. 이 서비스의 HTTP 점검 성능을 잰 것은 아닙니다.</p>
             <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/blob/main/docs/evaluation/results.md" target="_blank" rel="noopener noreferrer">측정 결과 표</a></p>
           </article>
           <article class="evidence__item">
-            <h3>자동 테스트</h3>
+            <h2>자동 테스트</h2>
             <p>판정·집계 로직을 순수 함수로 분리해 테스트하고, 푸시마다 CI에서 JS·Python 테스트를 다시 실행합니다.</p>
             <p class="evidence__links"><a href="https://github.com/Taetaeeee/uptime-monitor/tree/main/test" target="_blank" rel="noopener noreferrer">테스트 코드</a> · <a href="https://github.com/Taetaeeee/uptime-monitor/actions/workflows/test.yml" target="_blank" rel="noopener noreferrer">CI 실행 결과</a></p>
           </article>
           <article class="evidence__item evidence__item--limits">
-            <h3>알려진 한계 <span class="evidence__asof">(2026-11-19 기준)</span></h3>
+            <h2>알려진 한계 <span class="evidence__asof">(2026-11-19 기준)</span></h2>
             <ul>
               <li>도메인 만료는 판정 로직만 있고 실제 조회는 하지 않습니다.</li>
               <li>에이전트 무응답 감지는 운영에서 켠 대상이 없습니다.</li>

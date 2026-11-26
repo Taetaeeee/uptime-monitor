@@ -191,7 +191,8 @@ function renderServiceRows(svc) {
 
       const name = el('div');
       name.style.minWidth = '0';
-      const title = el('h3', 'svc__name');
+      // 31단계: h1(서비스 모니터링) 바로 아래 단계라 h2 (h3이면 제목 단계를 건너뛰어 화면 읽기 프로그램의 제목 탐색이 끊김). 모양은 클래스가 정함
+      const title = el('h2', 'svc__name');
       const link = el('a', 'svc__link', s.name);
       link.href = href;
       title.append(link);
