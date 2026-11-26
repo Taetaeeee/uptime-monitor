@@ -39,7 +39,7 @@ test('checkPublicUrl: 거부해야 하는 주소들', () => {
 
 test('validateServiceInput: 이름 기본값은 호스트, 동의는 추가에만 필수, 상태 확인 주소는 같은 호스트만', () => {
   const ok = validateServiceInput({ url: 'https://my-app.pages.dev', consent: true }, { selfHost: SELF });
-  assert.deepEqual(ok, { ok: true, value: { homeUrl: 'https://my-app.pages.dev/', host: 'my-app.pages.dev', name: 'my-app.pages.dev', description: null, healthUrl: null, healthKeyword: null } });
+  assert.deepEqual(ok, { ok: true, value: { homeUrl: 'https://my-app.pages.dev/', host: 'my-app.pages.dev', name: 'my-app.pages.dev', description: null, healthUrl: null, healthKeyword: null, category: 'other' } }); // 종류를 안 고르면 추천값 (28단계)
 
   assert.equal(validateServiceInput({ url: 'https://my-app.pages.dev' }, { selfHost: SELF }).error, 'consent_required');
   assert.equal(validateServiceInput({ url: 'https://my-app.pages.dev', consent: 'yes' }, { selfHost: SELF }).error, 'consent_required');
@@ -143,7 +143,7 @@ test('추가: 서비스 1개 + 점검 3개를 실제(real)·켜짐으로 만들�
   const res = await admin(db, 'POST', '/api/admin/services', NEW);
   assert.equal(res.status, 201);
   assert.deepEqual(await res.json(), {
-    ok: true, key: 'my-app', name: '내 앱',
+    ok: true, key: 'my-app', name: '내 앱', category: 'other', // '팀 프로젝트'에는 추천 단어가 없어서 기타 (28단계)
     checks: [{ name: '내 앱 (HTTP)', kind: 'http' }, { name: '내 앱 (DNS)', kind: 'dns' }, { name: '내 앱 (상태 확인)', kind: 'http' }],
   });
   const svc = db.sqlite.prepare("SELECT * FROM services WHERE service_key = 'my-app'").get();

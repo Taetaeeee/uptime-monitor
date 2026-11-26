@@ -53,7 +53,8 @@ function renderHead(s) {
 
   const head = el('section', 'sd-head');
   const ico = el('span', 'sd-head__ico');
-  ico.append(icon(SERVICE_ICON[s.key] ?? 'globe'));
+  ico.append(serviceIcon(s)); // 종류별 아이콘 (28단계)
+  ico.title = `종류: ${CATEGORY_TEXT[s.category] ?? CATEGORY_TEXT.other}`;
 
   const who = el('div', 'sd-head__who');
   who.append(el('h1', '', s.name));

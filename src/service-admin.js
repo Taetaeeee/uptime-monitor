@@ -9,6 +9,48 @@
 /** 켜진 서비스 상한: D1 무료 한도와 Worker가 5분마다 보내는 요청 수를 생각한 값 (바꾸기 쉽게 상수 하나로) */
 export const MAX_SERVICES = 10;
 
+// ─────────────────────────────────────────────
+// 서비스 종류 (28단계) — 대시보드·서비스 상세의 아이콘을 종류로 고릅니다 (0022 services.category, DB CHECK와 같은 목록)
+// ─────────────────────────────────────────────
+export const SERVICE_CATEGORIES = ['game', 'chat', 'ai', 'note', 'lifestyle', 'health', 'work', 'education', 'shopping', 'community', 'other'];
+export const CATEGORY_LABEL = {
+  game: '게임', chat: '채팅', ai: 'AI', note: '기록·메모', lifestyle: '패션·생활', health: '의료·건강',
+  work: '사내 업무', education: '교육', shopping: '쇼핑', community: '커뮤니티', other: '기타',
+};
+
+// 추천 단어 표: 위에서부터 먼저 맞는 종류로 정합니다 (순서가 곧 우선순위).
+//   - '학원 팀 채팅'은 교육보다 채팅, '병원 인트라넷'은 의료보다 사내 업무, '공여자 추적 … 검사 결과 기록'은 기록보다 의료가 맞아서 이 순서
+//   - 영어 짧은 단어(ai 등)는 단어 경계(\b)로만 찾음 ('mail'·'daily' 안의 ai를 잡지 않게)
+//   - 'log'는 넣지 않음 ('FITLOG' 같은 이름에 섞여 기록으로 잘못 잡혀서)
+const CATEGORY_RULES = [
+  ['game', /게임|시뮬레이션|퍼즐|\bgames?\b/i],
+  ['chat', /채팅|메신저|대화방|\bchat\b|\bmessenger\b/i],
+  ['ai', /인공지능|\bai\b|\bgpt\b|\bllm\b|챗봇/i],
+  ['work', /인트라넷|사내|업무|그룹웨어|\berp\b|\bintranet\b/i],
+  ['health', /의료|건강|병원|환자|기증|진료|헬스|\bhealth\b|\bmedical\b/i],
+  ['note', /기록|메모|일기|노트|\bnotes?\b|\bdiary\b/i],
+  ['lifestyle', /옷장|체형|패션|코디|스타일|요리|레시피|\bfashion\b/i],
+  ['education', /교육|학습|강의|공부|학원|\bstudy\b|\blearn/i],
+  ['shopping', /쇼핑|상점|마켓|주문|장바구니|쿠폰|\bshop\b|\bstore\b|\bmarket\b/i],
+  ['community', /커뮤니티|게시판|이웃|마을|빌리지|\bcommunity\b|\bvillage\b/i],
+];
+
+/**
+ * 이름·설명으로 서비스 종류를 추천한다 (순수 함수, 28단계). 못 찾으면 'other'.
+ * 추천은 '+ 서비스 추가' 팝업의 기본값일 뿐이고, 저장 전에 운영자가 고릅니다.
+ */
+export function suggestCategory(name, description) {
+  const text = `${name ?? ''} ${description ?? ''}`;
+  for (const [category, re] of CATEGORY_RULES) if (re.test(text)) return category;
+  return 'other';
+}
+
+/** 종류 값 검사: 목록 안의 값만 (없으면 null — 추가할 때는 추천값을 씀) */
+export function checkCategory(raw) {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  return SERVICE_CATEGORIES.includes(raw) ? { ok: true, value: raw } : { ok: false };
+}
+
 const MAX_URL = 300;
 const MAX_NAME = 60;
 const MAX_DESC = 100;
@@ -89,6 +131,9 @@ export function validateServiceInput(body, { selfHost, requireConsent = true } =
   }
   if (keyword.value && !healthUrl) return { ok: false, error: 'keyword_without_health' };
 
+  const category = checkCategory(body.category);
+  if (!category.ok) return { ok: false, error: 'category_invalid' };
+
   if (requireConsent && body.consent !== true) return { ok: false, error: 'consent_required' };
 
   return {
@@ -100,6 +145,8 @@ export function validateServiceInput(body, { selfHost, requireConsent = true } =
       description: description.value,
       healthUrl,
       healthKeyword: keyword.value,
+      // 종류(28단계): 고르지 않았으면 이름·설명으로 추천한 값
+      category: category.value ?? suggestCategory(name.value ?? site.host, description.value),
     },
   };
 }
