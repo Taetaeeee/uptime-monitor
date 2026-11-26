@@ -175,7 +175,8 @@
 .dash .search { position: static; margin-left: auto; display: flex; align-items: center; gap: 8px; border: 1px solid var(--d-line2); border-radius: 9px; padding: 7px 12px; color: var(--d-faint); min-width: 260px; max-width: none; flex: 0 1 320px; }
 .dash .search > [data-icon] { position: static; }
 .dash .search input { background: none; border: 0; padding: 0; color: var(--d-text); font: inherit; outline: none; width: 100%; box-shadow: none; }
-.dash .search:focus-within { border-color: var(--d-blue); }
+/* 31단계: 입력칸 자체는 외곽선을 끄고(칸 안에 돋보기와 함께 있어서) 감싸는 칸에 2px 외곽선 — 전역 :focus-visible과 같은 모양 */
+.dash .search:focus-within { border-color: var(--d-blue); outline: 2px solid var(--d-blue); outline-offset: 2px; }
 
 /* ── 서비스 줄: 아이콘 | 이름·태그 | 상태 | 30일 가동률 | 최근 점검 | 세부 점검 상태 (한 줄) ── */
 .svc-list { display: grid; gap: 12px; }
@@ -413,7 +414,9 @@
 .addform em, .addform__check em { font-style: normal; font-size: 11px; color: var(--d-warn-text); margin-left: 4px; }
 .addform input[type="url"], .addform input[type="text"], .addform input[type="password"], .addform select {
   font: inherit; font-size: 14px; color: var(--d-text); background: var(--d-panel2); border: 1px solid var(--d-line2); border-radius: 9px; padding: 8px 10px; min-width: 0; }
-.addform input:focus, .addform select:focus { outline: none; border-color: var(--d-blue); }
+.addform input:focus, .addform select:focus { border-color: var(--d-blue); }
+/* 31단계: 예전에는 outline: none + 테두리 색만이라 키보드 초점이 잘 안 보였음 */
+.addform input:focus-visible, .addform select:focus-visible { outline: 2px solid var(--d-blue); outline-offset: 1px; }
 .addform__two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .addform__check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--d-text); }
 .addform__check input { width: 16px; height: 16px; accent-color: var(--d-blue); }

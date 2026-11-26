@@ -120,3 +120,36 @@ test('흰 글자 버튼은 --d-blue가 아니라 --d-blue-fill을 배경으로 �
     assert.match(line, /background: var\(--d-blue-fill\)/, sel);
   }
 });
+
+// ── 31단계: 초점 외곽선과 제목 단계 ──
+
+test('초점 외곽선 색(파랑)이 둘레 배경 위에서 3:1 이상 (비텍스트 대비 기준)', () => {
+  const dash = css('dashboard.css');
+  for (const [theme, t] of [['어두운', tokens(dash, '.dash')], ['밝은', { ...tokens(dash, '.dash'), ...tokens(dash, ':root[data-theme="light"] .dash') }]]) {
+    for (const bg of ['--d-bg', '--d-side', '--d-panel', '--d-panel2']) {
+      const r = contrast(t['--d-blue'], t[bg]);
+      assert.ok(r >= 3, `${theme} --d-blue ${t['--d-blue']} on ${bg} ${t[bg]} = ${r.toFixed(2)}:1`);
+    }
+  }
+  const pub = css('style.css');
+  for (const [theme, t] of [['어두운', tokens(pub, ':root')], ['밝은', tokens(pub, ':root[data-theme="light"]')]]) {
+    const r = contrast(t['--info'], t['--bg']);
+    assert.ok(r >= 3, `${theme} --info on --bg = ${r.toFixed(2)}:1`);
+  }
+});
+
+test('입력 칸 초점: 외곽선을 끈 곳은 감싸는 칸이나 :focus-visible이 대신 외곽선을 그린다', () => {
+  const dash = css('dashboard.css');
+  assert.match(dash, /\.dash \.search:focus-within \{[^}]*outline: 2px solid/);
+  assert.match(dash, /\.addform input:focus-visible, \.addform select:focus-visible \{[^}]*outline: 2px solid/);
+  assert.doesNotMatch(dash, /\.addform input:focus, \.addform select:focus \{[^}]*outline: none/);
+  assert.match(css('style.css'), /\.search:focus-within \{[^}]*outline: 2px solid/);
+});
+
+test('제목 단계: h1 바로 아래 목록 제목은 h2 (대시보드 서비스 이름·서비스 페이지 카드·운영 근거 카드)', () => {
+  assert.match(css('app.js'), /el\('h2', 'svc__name'\)/);
+  assert.match(css('services.js'), /el\('h2', 'card__name'/);
+  const ev = css('evidence.html');
+  assert.doesNotMatch(ev, /<h3[\s>]/, '운영 근거에 h3 없음 (h1 → h2)');
+  assert.match(css('style.css'), /\.evidence__item h2 \{/);
+});
