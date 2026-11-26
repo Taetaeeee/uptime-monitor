@@ -248,7 +248,7 @@
    - 라이브(2026-11-25 배포, 0021만 미적용이었음): 카드 제목 '최근 변경', 기존 변경은 모두 kind unknown('첫 화면 변경'), changeCounts에 deployDay·deployWeek, 콘솔 오류 없음. 배포가 잦은 동료 서비스는 아직 '잦은 변경 · 24시간 6번'(다음 배포부터 '배포')
    - README 스크린샷 교체 (2026-11-25, 커밋 전): 라이브 화면 10장(대시보드 어두운·밝은·390px, 운영 지표 팝업, 서비스 추가 팝업, 서비스 페이지 점검 21개, Keychats 상세, 11월 보고서, 새로 주간 보고서·운영 근거 보존 정책).
      Edge 헤드리스 + DevTools 프로토콜로 찍음(팝업은 열고 찍음, 스크립트는 프로젝트 밖). 동료 서비스 이름은 사용자가 공개를 허락해 그대로 둠. 장애 #41 훈련 화면 2장은 유지
-28. 서비스 종류별 아이콘  ← 완료 (2026-11-26, 커밋 전, 브랜치 feat/service-category. 0022 원격 적용·배포 전)
+28. 서비스 종류별 아이콘  ← 완료 (2026-11-26, db3fe3e → main 병합 14bc935·푸시, 0022 원격 적용·배포·라이브 확인, Notion B-28)
    - 배경: 아이콘이 public/detail.js에 서비스 키 2개(고쳐라!→게임, Keychats→채팅)로만 적혀 있어 '+ 서비스 추가'로 만든 8개는 모두 지구본
    - 0022(services.category, 기본 other, CHECK 11종: game·chat·ai·note·lifestyle·health·work·education·shopping·community·other) + 기존 10개 초기값(사용자 승인: 게임 3·채팅·패션·생활·기록·메모·의료·건강·사내 업무·AI·커뮤니티)
    - service-admin.js SERVICE_CATEGORIES·CATEGORY_LABEL·suggestCategory(단어 표, 순서=우선순위: game>chat>ai>work>health>note>lifestyle>education>shopping>community, 영어는 단어 경계, 'log'는 안 씀)·checkCategory,
@@ -258,3 +258,5 @@
    - D1: 읽기 늘지 않음(서비스 표에 열 하나), 쓰기는 0022 때 10행 + 추가·종류 바꾸기 때만
    - 확인: node --test 507개 통과(새 5개: 실제 10개 이름·설명으로 추천 = 0022 초기값, 단어 경계, 입력 검사, 추가·PATCH, 0022 기본값·CHECK·서버 목록과 같음, 종류마다 아이콘·한글 이름). 가짜 D1 화면: 종류 10가지 아이콘(어두운·밝은), 서비스 상세 머리, 추가 팝업 선택 칸, 콘솔 오류 없음
    - 순서 주의: 새 코드가 services.category를 읽으므로 0022 원격 적용 먼저, 배포는 그 뒤. 배포 뒤 README 대시보드 스크린샷(지구본 아이콘)은 다시 찍어야 함
+   - 라이브(2026-11-26, 0022만 미적용이었음): 원격 services.category 10개 모두 초기값대로, /api/services category, 대시보드 아이콘 title 10개(게임 3·채팅·패션·생활·기록·메모·커뮤니티·의료·건강·사내 업무·AI), 서비스 상세 'AI', 추가 팝업 종류 칸, 콘솔 오류 없음
+   - README 스크린샷 5장 다시 찍음 (2026-11-26, 대시보드 어두운·밝은·390px, Keychats 상세, 서비스 추가 팝업 — 종류별 아이콘·종류 칸). 나머지 5장은 아이콘이 없어 그대로
